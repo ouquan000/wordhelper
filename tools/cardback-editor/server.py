@@ -26,6 +26,7 @@ import socket
 import subprocess
 import sys
 import threading
+import traceback
 import urllib.request
 import webbrowser
 from datetime import datetime
@@ -961,6 +962,17 @@ def _report_port_busy(exc):
     return 1
 
 
+def _pause_if_frozen():
+    """双击 exe 时窗口是黑框，报完错一闪就没了 —— 停下来等人按回车。
+    用 python server.py 跑的时候不拦（终端里能看见，Ctrl+C 也方便）。"""
+    if not FROZEN:
+        return
+    try:
+        input("按回车关闭这个窗口…")
+    except (EOFError, OSError, KeyboardInterrupt):
+        pass
+
+
 def main(argv=None):
     global LAN_URL, PORT
 
@@ -981,6 +993,7 @@ def main(argv=None):
             port = 0
         if not 1 <= port <= 65535:
             print("端口不对：%s（要给 1-65535 之间的数字）" % value, flush=True)
+            _pause_if_frozen()
             return 2
         PORT = port
 
@@ -997,7 +1010,9 @@ def main(argv=None):
     try:
         httpd = CardbackServer((HOST, PORT), Handler)
     except OSError as exc:
-        return _report_port_busy(exc)
+        code = _report_port_busy(exc)
+        _pause_if_frozen()
+        return code
 
     os.makedirs(HISTORY_DIR, exist_ok=True)
     notes = ensure_initialized()
@@ -1050,4 +1065,13 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        sys.exit(0)
+    except Exception:  # noqa: BLE001 - 双击 exe 时别报完错一闪就没
+        traceback.print_exc()
+        _pause_if_frozen()
+        sys.exit(1)
