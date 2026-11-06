@@ -1,5 +1,6 @@
 package com.kaoyan.wordhelper.ui.viewmodel
 
+import com.kaoyan.wordhelper.data.repository.CardBackRefreshResult
 import android.app.Application
 import android.content.ContentResolver
 import android.net.Uri
@@ -68,6 +69,10 @@ data class EarlyReviewUiState(
 class BookManageViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = (application as KaoyanWordApp).repository
     private val settingsRepository: SettingsRepository = (application as KaoyanWordApp).settingsRepository
+    private val cardBackRepository = (application as KaoyanWordApp).cardBackRepository
+
+    /** 卡背结构刷新中（词库页右上角那个图标要转圈）。 */
+    val cardBackRefreshing: StateFlow<Boolean> = cardBackRepository.refreshing
 
     private val _importPreview = MutableStateFlow<ImportPreview?>(null)
     val importPreview: StateFlow<ImportPreview?> = _importPreview.asStateFlow()
@@ -80,6 +85,18 @@ class BookManageViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
+
+    /** 拉一次电脑上的卡背结构；失败只提示，不动当前卡背。 */
+    fun refreshCardBack() {
+        viewModelScope.launch {
+            val result = cardBackRepository.refresh()
+            _message.value = when (result) {
+                is CardBackRefreshResult.Success ->
+                    "卡背结构已更新：第 ${result.revision} 版，${result.blockCount} 块"
+                is CardBackRefreshResult.Failure -> result.message
+            }
+        }
+    }
 
     private val _earlyReviewUiState = MutableStateFlow(EarlyReviewUiState())
     val earlyReviewUiState: StateFlow<EarlyReviewUiState> = _earlyReviewUiState.asStateFlow()

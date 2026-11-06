@@ -59,6 +59,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
@@ -89,6 +92,7 @@ fun BookManageScreen(
     val importBookName by viewModel.importBookName.collectAsStateWithLifecycle()
     val isImporting by viewModel.isImporting.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val cardBackRefreshing by viewModel.cardBackRefreshing.collectAsStateWithLifecycle()
     val earlyReviewState by viewModel.earlyReviewUiState.collectAsStateWithLifecycle()
     val plannedNewWordsEnabled by viewModel.plannedNewWordsEnabled.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -318,12 +322,41 @@ fun BookManageScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "当前词书：$activeBookName",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "当前词书：$activeBookName",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            // 1.4.2：从电脑拉一次卡背结构。手机上只留这一个入口。
+                            IconButton(
+                                onClick = viewModel::refreshCardBack,
+                                enabled = !cardBackRefreshing,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .testTag("cardback_refresh_button")
+                            ) {
+                                if (cardBackRefreshing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Refresh,
+                                        contentDescription = "刷新卡背结构",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
                         Text(
                             text = "词书 ${books.size} 本 · 累计词条 $totalWords",
                             style = MaterialTheme.typography.bodySmall,

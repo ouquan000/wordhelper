@@ -199,10 +199,12 @@ fun ProfileScreen(
                         fontScale = settings.fontScale,
                         darkMode = settings.darkMode,
                         plannedNewWordsEnabled = settings.plannedNewWordsEnabled,
+                        cardBackUrl = settings.cardBackUrl,
                         onNewWordsLimitChange = viewModel::updateNewWordsLimit,
                         onFontScaleChange = viewModel::updateFontScale,
                         onDarkModeChange = viewModel::updateDarkMode,
-                        onPlannedNewWordsEnabledChange = viewModel::updatePlannedNewWordsEnabled
+                        onPlannedNewWordsEnabledChange = viewModel::updatePlannedNewWordsEnabled,
+                        onCardBackUrlChange = viewModel::updateCardBackUrl
                     )
                 }
             }
@@ -359,11 +361,14 @@ private fun SettingsCard(
     fontScale: Float,
     darkMode: DarkMode,
     plannedNewWordsEnabled: Boolean,
+    cardBackUrl: String,
     onNewWordsLimitChange: (Int) -> Unit,
     onFontScaleChange: (Float) -> Unit,
     onDarkModeChange: (DarkMode) -> Unit,
-    onPlannedNewWordsEnabledChange: (Boolean) -> Unit
+    onPlannedNewWordsEnabledChange: (Boolean) -> Unit,
+    onCardBackUrlChange: (String) -> Unit
 ) {
+    var cardBackUrlInput by remember(cardBackUrl) { mutableStateOf(cardBackUrl) }
     var dailyNewWordsInput by remember(newWordsLimit) { mutableStateOf(newWordsLimit.toString()) }
     val parsedDailyNewWords = dailyNewWordsInput.toIntOrNull()
     val canSaveDailyNewWords = parsedDailyNewWords != null &&
@@ -435,6 +440,36 @@ private fun SettingsCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = "卡背结构地址", style = MaterialTheme.typography.bodySmall)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = cardBackUrlInput,
+                        onValueChange = { cardBackUrlInput = it },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("settings_cardback_url"),
+                        placeholder = { Text(text = "http://192.168.1.10:8765") }
+                    )
+                    TextButton(
+                        onClick = { onCardBackUrlChange(cardBackUrlInput.trim()) },
+                        enabled = cardBackUrlInput.trim() != cardBackUrl
+                    ) {
+                        Text(text = "保存")
+                    }
+                }
+                Text(
+                    text = "电脑上跑着卡背编辑器时填它的地址；只填 IP:端口也行，会自动补成 /cardback.json。" +
+                        "留空 = 只用手机上的结构。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

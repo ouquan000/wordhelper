@@ -122,6 +122,13 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** 卡背结构地址（1.4.2）；留空就只用手机本地结构。 */
+    fun updateCardBackUrl(url: String) {
+        viewModelScope.launch {
+            settingsRepository.updateCardBackUrl(url)
+        }
+    }
+
     fun exportDatabase(uri: Uri?) {
         if (uri == null) return
         viewModelScope.launch {
