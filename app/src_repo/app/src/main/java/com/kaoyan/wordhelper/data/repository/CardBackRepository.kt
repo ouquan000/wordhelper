@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -21,7 +22,9 @@ sealed interface CardBackRefreshResult {
     data class Success(
         val revision: Int,
         val blockCount: Int,
-        val unknownTypes: List<String>
+        val unknownTypes: List<String>,
+        /** 内容与 revision 都没变时不再写盘、不重渲染（契约 §6）。 */
+        val unchanged: Boolean = false
     ) : CardBackRefreshResult
 
     data class Failure(val message: String) : CardBackRefreshResult
@@ -53,6 +56,9 @@ class CardBackRepository(
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
         .callTimeout(8, TimeUnit.SECONDS)
+        // 手动刷新频率极低，不池化连接：每次都用新连接，避开「复用到已被服务端关掉的连接」这类偶发失败
+        .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
+        .retryOnConnectionFailure(true)
         .build()
 
     private val cacheFile: File
@@ -108,6 +114,18 @@ class CardBackRepository(
         }
         val config = (decoded as CardBackDecodeResult.Ok).config
 
+        // 契约 §6：revision 没变大、内容也没变，就什么都不做（不写盘、不重渲染、不谎报已更新）。
+        // 内容变了但 revision 没涨（手改 published 文件之类）仍然放行，免得用户改完白改。
+        val current = _config.value
+        if (config.revision <= current.revision && sameContent(config, current)) {
+            return CardBackRefreshResult.Success(
+                revision = current.revision,
+                blockCount = current.renderableBlocks.size,
+                unknownTypes = config.unknownTypes,
+                unchanged = true
+            )
+        }
+
         withContext(Dispatchers.IO) {
             // 旧的缓存先转成「上一份成功的」，再写新的，写失败也能回退
             if (cacheFile.isFile && cacheFile.length() > 0L) {
@@ -157,17 +175,34 @@ class CardBackRepository(
     }
 
     private fun fetch(url: String): String? {
-        return runCatching {
-            val request = Request.Builder()
-                .url(url)
-                .header("Cache-Control", "no-cache")
-                .build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@use null
-                response.body?.string()
-            }
-        }.getOrNull()
+        // 偶发连接失效（实测约 7%，重试即好）—— 手动刷新这么低频，重试一次完全划算。
+        repeat(2) { attempt ->
+            val body = runCatching { fetchOnce(url) }.getOrNull()
+            if (body != null) return body
+            if (attempt == 0) runCatching { Thread.sleep(150) }
+        }
+        return null
     }
+
+    private fun fetchOnce(url: String): String? {
+        val request = Request.Builder()
+            .url(url)
+            .header("Cache-Control", "no-cache")
+            .header("Connection", "close")
+            .build()
+        return client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return@use null
+            response.body?.string()
+        }
+    }
+
+    /** 两份清单「画出来是不是一样」——只看影响渲染的字段，revision/updatedAt 不算。 */
+    private fun sameContent(a: CardBackConfig, b: CardBackConfig): Boolean =
+        a.schemaVersion == b.schemaVersion &&
+            a.book == b.book &&
+            a.spacingDp == b.spacingDp &&
+            a.motion == b.motion &&
+            a.blocks == b.blocks
 
     companion object {
         /**

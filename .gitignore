@@ -37,3 +37,4 @@ neko-health.cmd
 # ── 卡背编辑器运行时数据（发布清单、历史版本、state）──
 tools/cardback-editor/published/
 tools/cardback-editor/__pycache__/
+artifacts-test/

@@ -92,7 +92,11 @@ class BookManageViewModel(application: Application) : AndroidViewModel(applicati
             val result = cardBackRepository.refresh()
             _message.value = when (result) {
                 is CardBackRefreshResult.Success -> buildString {
-                    append("卡背结构已更新：第 ${result.revision} 版，${result.blockCount} 块")
+                    if (result.unchanged) {
+                        append("卡背结构已是最新：第 ${result.revision} 版，${result.blockCount} 块")
+                    } else {
+                        append("卡背结构已更新：第 ${result.revision} 版，${result.blockCount} 块")
+                    }
                     if (result.unknownTypes.isNotEmpty()) {
                         append("；跳过不认识的块：")
                         append(result.unknownTypes.joinToString("、"))
