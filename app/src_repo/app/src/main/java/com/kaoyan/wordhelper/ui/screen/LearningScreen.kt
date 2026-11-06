@@ -1,7 +1,7 @@
 package com.kaoyan.wordhelper.ui.screen
 
-import androidx.compose.animation.AnimatedContent
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.SizeTransform
@@ -19,6 +19,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -65,6 +67,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -72,8 +75,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -530,6 +535,9 @@ fun LearningScreen(
                                 AnimatedContent(
                                     targetState = cardState,
                                     transitionSpec = { wordCardTransition(lastRating) },
+                                    // 同词内的状态变化（如点星星改生词本）不该重建卡片，
+                                    // 否则 remember 的翻面状态会被重置、还会多播一次切换动画。
+                                    contentKey = { it.word.id },
                                     label = "wordCardTransition"
                                 ) { state ->
                                     SwipeableWordCard(
@@ -1627,6 +1635,8 @@ private fun WordCard(
         )
     )
 
+    val tapMaxDragPx = with(density) { 4.dp.toPx() }
+
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(28.dp),
@@ -1634,16 +1644,16 @@ private fun WordCard(
             width = 1.dp,
             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.26f)
         ),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        onClick = {
-            isFlipped = !isFlipped
-            onFlipChanged(isFlipped)
-        }
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight()
+                .cardFlipTap(tapMaxDragPx) {
+                    isFlipped = !isFlipped
+                    onFlipChanged(isFlipped)
+                }
                 .background(if (showFront) frontBrush else backBrush)
                 .padding(horizontal = 20.dp, vertical = 20.dp)
                 .heightIn(min = 260.dp)
@@ -1851,6 +1861,57 @@ private fun WordCard(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * 卡片「轻触翻面」手势，替代原来的 Card(onClick)。
+ *
+ * 不用 Card(onClick)/clickable 的原因：
+ * 1) Material 的 indication 会给整张卡片画按压态涟漪，也就是用户看到的「水波纹」；
+ * 2) clickable 默认 awaitFirstDown(requireUnconsumed = true)，卡背滚动或惯性 fling
+ *    一旦消费了按下事件，点击就再也翻不回正面。
+ *
+ * 判定规则：按下 → 中途位移不超过 [tapMaxDragPx] → 抬起，且抬起事件没有被内部
+ * 滚动手势消费，才算一次点击。全程不消费任何事件、不画任何视觉反馈。
+ *
+ * 挂在内层 Column 上、监听 Main 阶段：Main 从叶子往根传播，星星/发音/AI 灯泡/
+ * 卡背 verticalScroll 都先于本节点处理，它们消费掉 up 之后这里才读 isConsumed。
+ */
+private fun Modifier.cardFlipTap(
+    tapMaxDragPx: Float,
+    onClick: () -> Unit
+): Modifier = composed {
+    val currentOnClick by rememberUpdatedState(onClick)
+    pointerInput(tapMaxDragPx) {
+        awaitEachGesture {
+            // Initial 阶段拿按下：此时还没有内部手势消费事件，滚动惯性也拦不住。
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val downPosition = down.position
+            var maxDragSq = 0f
+            var multiTouch = false
+            var upSeen = false
+            var upConsumed = true
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Main)
+                if (event.changes.count { it.pressed } > 1) {
+                    multiTouch = true
+                    break
+                }
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                val delta = change.position - downPosition
+                val dragSq = delta.x * delta.x + delta.y * delta.y
+                if (dragSq > maxDragSq) maxDragSq = dragSq
+                if (!change.pressed) {
+                    upSeen = true
+                    upConsumed = change.isConsumed
+                    break
+                }
+            }
+            val isTap = upSeen && !upConsumed && !multiTouch &&
+                maxDragSq <= tapMaxDragPx * tapMaxDragPx
+            if (isTap) currentOnClick()
         }
     }
 }
