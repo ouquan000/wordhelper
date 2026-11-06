@@ -82,8 +82,10 @@
 
 ```
 TITLE → PHONETIC → DIVIDER → MEANING → MEMORY → COLLOCATIONS
-→ EXAMPLE → PHRASES → SYNONYMS → REL_WORDS → DIVIDER → EF_STATS
+→ EXAMPLE → PHRASES → SYNONYMS → REL_WORDS → EF_STATS
 ```
+
+共 **11 块、只有 1 条分隔线**。`EF_STATS` 面板**自带**上方那条分隔线（1.4.1 里它本来就是跟面板一起出现、一起消失的），所以**不要在它前面再放一个 `DIVIDER`**：那会在无进度时剩一条孤零零的线，有进度时又会画出两条。
 
 ---
 
@@ -100,22 +102,26 @@ TITLE → PHONETIC → DIVIDER → MEANING → MEMORY → COLLOCATIONS
 
 **为什么不下发颜色值**：App 有暗色模式。写死 `#FF3B30` 在暗色下会糊成一片。语义名由 App 映射到 `MaterialTheme.colorScheme`：
 
-| 语义名 | 映射 |
-|---|---|
-| `default` | `onSurface` |
-| `primary` | `primary` |
-| `secondary` | `secondary` |
-| `accent` | `tertiary` |
-| `muted` | `onSurfaceVariant` |
-| `warning` | `error` |
+| 语义名 | 映射 | 备注 |
+|---|---|---|
+| `default` | 该块的**原生标题色** | 不是固色：MEANING/MEMORY 等原生就是 `primary`，EXAMPLE 是 `onSurfaceVariant` |
+| `primary` | `primary` | |
+| `secondary` | `secondary` | |
+| `accent` | `tertiary` | |
+| `muted` | `onSurfaceVariant` | 想要「像正文」的标题用它 |
+| `warning` | `error` | |
 
-`size` 只作用于**内容文字**；块标题恒为 `labelLarge`（可改颜色，不可改字号）。映射：
+> `default` 表示**不覆盖**。默认清单里每个块都是 `default`，正是靠这一条，1.4.1 的渲染结果才能一像素不动。
 
-| size | 内容文字 |
+`size` 只作用于**内容文字**；块标题恒为 `labelLarge`（可改颜色，不可改字号）。它不是一个绝对字号，而是**相对该块原生正文的倍率**：
+
+| size | 效果 |
 |---|---|
-| `S` | `bodySmall` |
-| `M` | `bodyMedium` |
-| `L` | `bodyLarge` |
+| 缺省 / `M` | 原样，一像素不动 |
+| `S` | 原生正文 × `0.9`（`fontSize` 与 `lineHeight` 同时乘） |
+| `L` | 原生正文 × `1.15` |
+
+为什么是倍率而不是「S=bodySmall / M=bodyMedium / L=bodyLarge」：各块的原生正文本来就不同档（MEANING 用 `bodyLarge`、MEMORY 用 `bodyMedium`、EXAMPLE 用 `bodySmall`），若统一映射成绝对档位，默认清单只要写一次 `M` 就会把外观从 1.4.1 挪开。倍率法则下「不改就是不变」天然成立。
 
 ---
 
@@ -148,7 +154,8 @@ TITLE → PHONETIC → DIVIDER → MEANING → MEMORY → COLLOCATIONS
 | `overshootPx` | -1.0 | 在该位置的位移（先冲过再回落） |
 | `overshootScale` | 1.0015 | 在该位置的缩放 |
 
-取值范围全部 `> 0`；越界就钳到边界，不报错。
+数值必须是有限数；除 `overshootPx`（**允许负数**，它本来就是\"先冲过去再回来\"）外，其余都要 `> 0`。
+`overshootPx = 0` 视为无效（等于把反冲关掉，想关就删掉这行用默认值）。越界钳到边界，不报错。
 
 ---
 
@@ -161,16 +168,24 @@ TITLE → PHONETIC → DIVIDER → MEANING → MEMORY → COLLOCATIONS
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/` | 编辑器页面 |
+| GET | `/` | 编辑器页面（`index.html` / `styles.css` / `app.js` / `samples.js`，按扩展名白名单放行） |
 | GET | `/cardback.json` | **手机拉的就是这个**，返回已发布配置 |
 | GET | `/api/state` | `{ok,revision,updatedAt,publishedAt,lanUrl,historyCount}` |
-| POST | `/api/publish` | body = 完整配置。服务端校验 → `revision+1` → 旧的进 history |
-| GET | `/api/history` | `[{revision,savedAt}]` |
+| POST | `/api/publish` | body = 完整配置。服务端校验 → 自己定 `revision`（`+1`）→ 旧的进 history |
+| GET | `/api/history` | `{ok,items:[{revision,savedAt}]}` |
 | POST | `/api/rollback` | `{revision:n}` 把某版恢复为当前 |
 
-失败一律 `{"ok":false,"error":"人话原因"}`，HTTP 400；成功 `{"ok":true,...}`。
+**归属与语义（实现口径，以此为准）**：
+- `publish` **忽略 body 里的 `revision`**，版本号由服务端给，客户端算不出并发安全的自增。
+- `rollback` 是\"把某一版重新发布\"：**先把当前版归档进 history，再写回目标版**，所以 `historyCount` 会涨，回退动作本身也可回退。
+- `savedAt` 用的是**归档时间**（这一版进 history 的时刻），不是它最初被发布的时刻。
+- 发布成功返回新 `revision`；手机端只在 `revision` 变大时才替换本地清单。
 
-发布时服务端要**再校验一遍**：`blocks` 非空、每个 `type` 在允许集合内、`id` 不重复。任何一条不过就拒绝，并把原因回给编辑器。
+失败一律 `{"ok":false,"error":"人话原因"}`，HTTP 400；成功 `{"ok":true,...}`。
+读写磁盘异常（目录不可写、JSON 损坏）返回 HTTP 500，不吞异常。
+
+发布时服务端要**再校验一遍**：`blocks` 非空、`id` 不重复、每个 `type` 是字符串。任何一条不过就拒绝，并把原因回给编辑器（指明是第几个块、哪个字段）。
+**未知 `type` 不在拒绝之列**：它被原样保存、在响应里以 `warnings` 提示\"这个块手机端会跳过\"——因为 1.4.2 的手机端遇到不认识的块就是跳过而不会崩，拒绝反而会让用户改一个字就没法发布。
 
 ---
 
