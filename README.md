@@ -39,6 +39,8 @@ work_anki_enligish/
 │  └─ src_repo/          安卓源码（Fork 自上游，改动见「本仓库改了什么」）
 ├─ content/
 │  └─ words/             导入用的词条 JSON（每批一个文件，按日期或用途命名）
+├─ tools/
+│  └─ card-editor/       **卡背可视化编辑工具**（1.4.2 计划，见下方专节）
 ├─ media/                以后放图片（本版未使用）
 ├─ sync-service/         以后放电脑端同步服务（本版未使用）
 ├─ docs/                 设计说明、验收记录、截图
@@ -140,9 +142,61 @@ export MSYS2_ARG_CONV_EXCL='*'
 1. 新增 `tb_word_memory`（`word_id` 主键 + 记忆思路 + 常用搭配），数据库 13 → 14
 2. 导入解析器支持 `approach` / `collocations`
 3. 卡背新增「记忆思路」「常用搭配」两个区块，释义按词性分行
-4. `versionCode` / `versionName` 升到 2 / 1.3，签名固定
+4. **1.4**：内置 5228 词种子 `content/seed/cet6_cards.json`，首启自动导入成「六级记忆卡」
+5. **1.4.1preview**：去掉 `Card(onClick)` 的按压态水波纹；翻面改自研 `Modifier.cardFlipTap`（4dp 位移门控 + 抬手未被消费）；`AnimatedContent` 补 `contentKey = word.id`，修掉「点星星连带翻面」
+6. `versionCode` / `versionName` 升到 4 / 1.4.1preview，签名固定
 
-**刻意没做**：配图、动效、云同步、界面重做。
+**刻意没做**：配图、云同步、界面重做。
+
+## 卡背编辑工具（1.4.2 计划，尚未实现）
+
+> 给后来接手的人：**`tools/card-editor/` 这个目录以后会有东西**，不是空壳忘了删。
+
+### 它是什么
+
+一个浏览器里打开的本地网页，用来可视化编辑卡片背面的结构：
+
+```
+┌─────────────┬──────────────────────┐
+│ 组件库       │  卡背实时预览          │
+│ □ 文本块     │ ┌──────────────────┐ │
+│ □ 例句块     │ │  ...             │ │
+│ □ 按钮       │ └──────────────────┘ │
+└─────────────┴──────────────────────┘
+        [预览]  [发布到手机]
+```
+
+### 为什么需要它
+
+现在卡背长什么样是**写死在 `WordCard` 代码里**的（`app/src_repo/.../ui/screen/LearningScreen.kt`）：释义 → 例句 → 记忆思路 → 常用搭配。想加一块、换个顺序、改个颜色，都得改代码、重新编译、装包。
+
+这个工具把卡背变成一份 **JSON 清单**：
+
+```json
+{
+  "version": 3,
+  "blocks": [
+    { "type": "title", "text": "increase" },
+    { "type": "phonetic", "text": "/ɪnˈkriːs/" },
+    { "type": "meaning" },
+    { "type": "example" },
+    { "type": "approach" },
+    { "type": "collocations" },
+    { "type": "action", "action": "rewrite", "label": "重写" }
+  ],
+  "motion": { "staggerGap": 90, "enterDuration": 220 }
+}
+```
+
+App 读清单照着渲染。改完点「发布」，手机在词库页点刷新图标就拉到新版本——**不用重装**。
+
+### 三条硬边界
+
+1. 结构只到**段落级**（按顺序排列的块），**不做自由绝对定位**——手机宽度差异会让绝对定位错位
+2. 新按钮的**行为**必须在 App 里预先实现；清单只能决定它出不出、放哪、叫什么、什么颜色
+3. 不认识的块类型，App 跳过并提示，**不让整张卡变空**
+
+完整决策（含用户原话、两个按钮位置、动效参数、离线排队规则）见 [`docs/decisions-1.4.2.md`](docs/decisions-1.4.2.md)。
 
 ## 本版验证记录（模拟器 API 34）
 
