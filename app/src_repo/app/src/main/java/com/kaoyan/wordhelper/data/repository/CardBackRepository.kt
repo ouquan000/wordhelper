@@ -92,7 +92,7 @@ class CardBackRepository(
                 ?: return CardBackRefreshResult.Failure("还没填卡背结构地址（我的 → 设置 → 卡背结构地址）")
 
             val body = withContext(Dispatchers.IO) { fetch(url) }
-                ?: return CardBackRefreshResult.Failure("连不上电脑，检查电脑上的服务开着没、手机和电脑是不是同一个网")
+                ?: return CardBackRefreshResult.Failure("电脑没连上：检查电脑上的服务开着没、手机和电脑是不是同一个网")
 
             return applyRemoteBody(body)
         } finally {
