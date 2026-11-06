@@ -94,6 +94,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kaoyan.wordhelper.KaoyanWordApp
@@ -101,6 +103,11 @@ import com.kaoyan.wordhelper.R
 import com.kaoyan.wordhelper.data.entity.Progress
 import com.kaoyan.wordhelper.data.entity.Word
 import com.kaoyan.wordhelper.data.model.AIContentType
+import com.kaoyan.wordhelper.data.model.CardBackBlock
+import com.kaoyan.wordhelper.data.model.CardBackBlockType
+import com.kaoyan.wordhelper.data.model.CardBackColor
+import com.kaoyan.wordhelper.data.model.CardBackConfig
+import com.kaoyan.wordhelper.data.model.CardBackSize
 import com.kaoyan.wordhelper.data.model.StudyRating
 import com.kaoyan.wordhelper.ui.component.AIGeneratedBadge
 import com.kaoyan.wordhelper.ui.component.AnimatedStarToggle
@@ -132,6 +139,7 @@ fun LearningScreen(
     onModeChange: (LearningMode) -> Unit = {}
 ) {
     val activeBook by viewModel.activeBook.collectAsStateWithLifecycle()
+    val cardBackConfig by viewModel.cardBackConfig.collectAsStateWithLifecycle()
     val currentWord by viewModel.currentWord.collectAsStateWithLifecycle()
     val currentIndex by viewModel.currentIndex.collectAsStateWithLifecycle()
     val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
@@ -564,6 +572,7 @@ fun LearningScreen(
                                             pronounceLoading = pronouncingWordId == state.word.id,
                                             onFlipChanged = { isCardFlipped = it },
                                             starEnabled = !isAnswering,
+                                            cardBackConfig = cardBackConfig,
                                             modifier = swipeModifier.fillMaxHeight()
                                         )
                                     }
@@ -1562,6 +1571,7 @@ private fun WordCard(
     pronounceLoading: Boolean,
     onFlipChanged: (Boolean) -> Unit,
     starEnabled: Boolean,
+    cardBackConfig: CardBackConfig,
     modifier: Modifier = Modifier
 ) {
     var isFlipped by remember(word.id) { mutableStateOf(false) }
@@ -1746,89 +1756,14 @@ private fun WordCard(
                             )
                         }
                     } else {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 4.dp, vertical = 12.dp)
-                                .graphicsLayer { rotationY = 180f }
-                                .verticalScroll(backContentScrollState),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(
-                                text = displayWord,
-                                style = backWordStyle,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            if (word.phonetic.isNotBlank()) {
-                                Text(
-                                    text = word.phonetic,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f))
-                            if (word.meaning.isNotBlank()) {
-                                Text(
-                                    text = "释义",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = formatMeaningByPos(word.meaning),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            WordMemorySection(title = "记忆思路", content = word.approach)
-                            WordMemorySection(title = "常用搭配", content = word.collocations)
-                            if (word.example.isNotBlank()) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                                ) {
-                                    Text(
-                                        text = "例句\n${word.example}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-                                    )
-                                }
-                            }
-                            WordExtraSection(title = "短语", content = word.phrases)
-                            WordExtraSection(title = "近义词", content = word.synonyms)
-                            WordExtraSection(title = "同根词", content = word.relWords)
-                            currentProgress?.let { progress ->
-                                val efValue = progress.easeFactor
-                                val efOffset = efValue - 2.5f
-                                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f))
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                                    ) {
-                                        Text(
-                                            text = "EF系数因子：${formatEfValue(efValue)}",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = "相对基准2.50偏移：${formatEfOffset(efOffset)}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = "当前间隔：${progress.intervalDays}天 · 复习次数：${progress.reviewCount}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        CardBackBlocks(
+                            config = cardBackConfig,
+                            word = word,
+                            currentProgress = currentProgress,
+                            displayWord = displayWord,
+                            backWordStyle = backWordStyle,
+                            scrollState = backContentScrollState
+                        )
                     }
                 }
                 if (aiAvailable) {
@@ -1863,6 +1798,206 @@ private fun WordCard(
             }
         }
     }
+}
+
+/**
+ * 卡背内容区（1.4.2）：块顺序 / 显隐 / 标题文案 / 颜色 / 字号全部来自 [CardBackConfig]。
+ *
+ * 红线：默认清单（CardBackDefaults.DEFAULT_JSON）渲染出来必须与 1.4.1 逐像素一致。
+ * 所以每个块的字体、内边距、分隔线、圆角都照抄原实现；配置里的 color / size 只是
+ * 「可选覆盖」，不填时就用该类型的原生样式。
+ */
+@Composable
+private fun CardBackBlocks(
+    config: CardBackConfig,
+    word: Word,
+    currentProgress: Progress?,
+    displayWord: String,
+    backWordStyle: TextStyle,
+    scrollState: androidx.compose.foundation.ScrollState
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 12.dp)
+            .graphicsLayer { rotationY = 180f }
+            .verticalScroll(scrollState),
+        verticalArrangement = Arrangement.spacedBy(config.spacingDp.dp)
+    ) {
+        config.renderableBlocks.forEach { block ->
+            CardBackBlockView(
+                block = block,
+                word = word,
+                currentProgress = currentProgress,
+                displayWord = displayWord,
+                backWordStyle = backWordStyle
+            )
+        }
+    }
+}
+
+/**
+ * 渲染单个块。它会向父 Column 吐**多个**兄弟节点（例如 MEANING 的标题 + 正文），
+ * 这是有意的：1.4.1 里它们本来就是 spacedBy(12dp) 的兄弟，套一层嵌套 Column 会改间距。
+ *
+ * `type == null` 表示手机还不认识这个块，直接跳过；汇总提示由外层负责。
+ */
+@Composable
+private fun CardBackBlockView(
+    block: CardBackBlock,
+    word: Word,
+    currentProgress: Progress?,
+    displayWord: String,
+    backWordStyle: TextStyle
+) {
+    val overrideColor = block.style.color.resolveCardBackColor()
+    val bodyStyle = block.style.size
+    when (block.type) {
+        CardBackBlockType.TITLE -> Text(
+            text = displayWord,
+            style = backWordStyle,
+            fontWeight = FontWeight.SemiBold,
+            color = overrideColor ?: androidx.compose.ui.graphics.Color.Unspecified,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        CardBackBlockType.PHONETIC -> if (word.phonetic.isNotBlank()) {
+            Text(
+                text = word.phonetic,
+                style = MaterialTheme.typography.bodyMedium.scaledBy(bodyStyle),
+                color = overrideColor ?: MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        CardBackBlockType.DIVIDER -> HorizontalDivider(
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
+        )
+
+        CardBackBlockType.MEANING -> if (word.meaning.isNotBlank()) {
+            if (!block.resolvedTitle.isNullOrEmpty()) {
+                Text(
+                    text = block.resolvedTitle.orEmpty(),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = overrideColor ?: MaterialTheme.colorScheme.primary
+                )
+            }
+            Text(
+                text = formatMeaningByPos(word.meaning),
+                style = MaterialTheme.typography.bodyLarge.scaledBy(bodyStyle),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        CardBackBlockType.MEMORY -> WordMemorySection(
+            title = block.resolvedTitle,
+            content = word.approach,
+            titleColor = overrideColor ?: MaterialTheme.colorScheme.primary,
+            contentStyle = MaterialTheme.typography.bodyMedium.scaledBy(bodyStyle)
+        )
+
+        CardBackBlockType.COLLOCATIONS -> WordMemorySection(
+            title = block.resolvedTitle,
+            content = word.collocations,
+            titleColor = overrideColor ?: MaterialTheme.colorScheme.primary,
+            contentStyle = MaterialTheme.typography.bodyMedium.scaledBy(bodyStyle)
+        )
+
+        CardBackBlockType.EXAMPLE -> if (word.example.isNotBlank()) {
+            val exampleTitle = block.resolvedTitle
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+            ) {
+                Text(
+                    text = if (exampleTitle.isNullOrEmpty()) word.example
+                    else "$exampleTitle\n${word.example}",
+                    style = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle),
+                    color = overrideColor ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                )
+            }
+        }
+
+        CardBackBlockType.PHRASES -> WordExtraSection(
+            title = block.resolvedTitle,
+            content = word.phrases,
+            titleColor = overrideColor ?: MaterialTheme.colorScheme.primary,
+            contentStyle = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle)
+        )
+
+        CardBackBlockType.SYNONYMS -> WordExtraSection(
+            title = block.resolvedTitle,
+            content = word.synonyms,
+            titleColor = overrideColor ?: MaterialTheme.colorScheme.primary,
+            contentStyle = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle)
+        )
+
+        CardBackBlockType.REL_WORDS -> WordExtraSection(
+            title = block.resolvedTitle,
+            content = word.relWords,
+            titleColor = overrideColor ?: MaterialTheme.colorScheme.primary,
+            contentStyle = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle)
+        )
+
+        CardBackBlockType.EF_STATS -> currentProgress?.let { progress ->
+            val efValue = progress.easeFactor
+            val efOffset = efValue - 2.5f
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f))
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = "EF系数因子：${formatEfValue(efValue)}",
+                        style = MaterialTheme.typography.labelLarge.scaledBy(bodyStyle),
+                        color = overrideColor ?: MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "相对基准2.50偏移：${formatEfOffset(efOffset)}",
+                        style = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "当前间隔：${progress.intervalDays}天 · 复习次数：${progress.reviewCount}",
+                        style = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        null -> Unit
+    }
+}
+
+/**
+ * 语义色 → 具体颜色。
+ *
+ * `null` 和 `DEFAULT` 都表示「不覆盖」，走该块的原生标题色 —— 这样默认清单才能和
+ * 1.4.1 一模一样。要强行压成正文色用 `MUTED`（onSurfaceVariant）。
+ */
+@Composable
+private fun CardBackColor.resolveCardBackColor(): androidx.compose.ui.graphics.Color? =
+    when (this) {
+        CardBackColor.DEFAULT -> null
+        CardBackColor.PRIMARY -> MaterialTheme.colorScheme.primary
+        CardBackColor.SECONDARY -> MaterialTheme.colorScheme.secondary
+        CardBackColor.ACCENT -> MaterialTheme.colorScheme.tertiary
+        CardBackColor.MUTED -> MaterialTheme.colorScheme.onSurfaceVariant
+        CardBackColor.WARNING -> MaterialTheme.colorScheme.error
+    }
+
+/** 字号三档 → 缩放后的样式；null / M 原样返回，保证默认清单零变化。 */
+private fun TextStyle.scaledBy(size: CardBackSize?): TextStyle {
+    if (size == null || size == CardBackSize.M) return this
+    val factor = if (size == CardBackSize.S) 0.9f else 1.15f
+    val scaledFontSize = if (fontSize.isSpecified) (fontSize.value * factor).sp else fontSize
+    val scaledLineHeight = if (lineHeight.isSpecified) (lineHeight.value * factor).sp else lineHeight
+    return copy(fontSize = scaledFontSize, lineHeight = scaledLineHeight)
 }
 
 /**
@@ -1937,9 +2072,11 @@ private fun formatMeaningByPos(meaning: String): String {
  */
 @Composable
 private fun WordMemorySection(
-    title: String,
+    title: String?,
     content: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary,
+    contentStyle: TextStyle = MaterialTheme.typography.bodyMedium
 ) {
     val lines = remember(content) {
         content.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
@@ -1949,11 +2086,13 @@ private fun WordMemorySection(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
+        if (!title.isNullOrEmpty()) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                color = titleColor
+            )
+        }
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
@@ -1966,7 +2105,7 @@ private fun WordMemorySection(
                 lines.forEach { line ->
                     Text(
                         text = line,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = contentStyle,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
@@ -1977,9 +2116,11 @@ private fun WordMemorySection(
 
 @Composable
 private fun WordExtraSection(
-    title: String,
+    title: String?,
     content: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary,
+    contentStyle: TextStyle = MaterialTheme.typography.bodySmall
 ) {
     if (content.isBlank()) return
     Surface(
@@ -1991,14 +2132,16 @@ private fun WordExtraSection(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
+            if (!title.isNullOrEmpty()) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = titleColor
+                )
+            }
             Text(
                 text = content,
-                style = MaterialTheme.typography.bodySmall,
+                style = contentStyle,
                 color = MaterialTheme.colorScheme.onSurface
             )
         }

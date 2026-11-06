@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.kaoyan.wordhelper.KaoyanWordApp
 import com.kaoyan.wordhelper.data.entity.Book
 import com.kaoyan.wordhelper.data.model.AIContentType
+import com.kaoyan.wordhelper.data.model.CardBackConfig
 import com.kaoyan.wordhelper.data.entity.Progress
 import com.kaoyan.wordhelper.data.entity.Word
 import com.kaoyan.wordhelper.data.model.DailyStatsAggregate
@@ -88,6 +89,10 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     private val settingsRepository = (application as KaoyanWordApp).settingsRepository
     private val aiConfigRepository = (application as KaoyanWordApp).aiConfigRepository
     private val aiRepository = (application as KaoyanWordApp).aiRepository
+    private val cardBackRepository = (application as KaoyanWordApp).cardBackRepository
+
+    /** 卡背结构清单（1.4.2）；默认就是 1.4.1 的样子。 */
+    val cardBackConfig: StateFlow<CardBackConfig> = cardBackRepository.config
     private val mlScheduler: MLEnhancedScheduler = (application as KaoyanWordApp).mlScheduler
     private val mlOnlineTrainer: OnlineTrainer? = run {
         val app = application as KaoyanWordApp
