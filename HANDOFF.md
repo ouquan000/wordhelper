@@ -1,10 +1,10 @@
 # 交接文档（新会话从这里开始）
 
-> 生成时间：2026-11-06 20:05（1.4.2 方案已逐条谈定，等用户开新窗口开工）
+> 生成时间：2026-11-06 21:30（**1.4.2 已开发完成**，等测试 + 评分，装真机待用户点头）
 > 仓库根：`D:\deepseek harness\work_anki_enligish`
 > 当前 HEAD：见 `git log --oneline -1`；工作区**干净**
-> 提交线：`faf823e` 1.3 → `62cccf9` 1.4 内置 5228 词种子 → `cf8c80c` 调试纪律 → `4ad923d` 交接 → `9689807` 1.4.1preview → 本次「1.4.2 决策记录」
-> 用户手机现装：**1.4.1preview（versionName 1.4.1preview / versionCode 4）**，已用**无线 adb** 接管（见 §4）
+> 提交线：`faf823e` 1.3 → `62cccf9` 1.4 内置 5228 词种子 → `cf8c80c` 调试纪律 → `4ad923d` 交接 → `9689807` 1.4.1preview → `573dc7c` 冻结 1.4.2 验收规格 → `1f4a86d` 清单 schema 契约 → 卡背按清单渲染 / 编辑器 / 本地服务 / 文档（共 10 笔，见 `git log --oneline`）
+> 用户手机现装：**1.4.1preview（versionName 1.4.1preview / versionCode 4）**，已用**无线 adb** 接管（见 §4）。`dist/english-app-1.4.2.apk`（versionCode 5）**已出包、只在模拟器验过，还没装真机**
 >
 > ⚠️ **开工 1.4.2 之前先读 [`docs/decisions-1.4.2.md`](docs/decisions-1.4.2.md)** —— 里面是用户逐条拍板的范围、边界、两个按钮的确切位置、动效参数、离线排队规则。用户已经回答过的问题，**不要再问一遍**。
 
@@ -14,7 +14,25 @@
 
 把开源安卓背单词 App「不爱背单词」改造成**我自己的六级图文记忆卡**：1.4 已把 **5228 个词（含记忆思路 + 常用搭配 + 中英例句）内置进 APK**，首启自动导入成「六级记忆卡」并设为当前词书。**1.4.1preview（versionCode 4）** 修完了「卡背上下滑误翻面 + 点一下有水波纹」：去掉 `Card(onClick)` 换成非可点重载，翻面改自研 `Modifier.cardFlipTap`（4dp 位移门控 + 未被消费才翻），并给 `AnimatedContent` 补 `contentKey = word.id` 修掉「点星星连带翻面」。独立评分员按冻结规格跑出 **100/100**，报告在 `docs/report-1.4.1-test.md`。
 
-**当前状态**：1.4.1preview 已装到真机、代码已提交。**1.4.2 要做什么已经跟用户逐条谈定**，全部记录在 [`docs/decisions-1.4.2.md`](docs/decisions-1.4.2.md)：电脑端可视化编辑工具 + 卡背结构可下发 + 手机上「刷新卡背结构」按钮；重写/标记放 1.4.3。**开工前先读那份，别重新问用户。**
+**当前状态（2026-11-06 晚）**：**1.4.2 已开发完成并出包**（`dist/english-app-1.4.2.apk`，versionCode 5 / versionName 1.4.2，33,048,035 B），已在模拟器 `emulator-5554` 全链路验过；**真机未装**。
+
+### 1.4.2 做了什么（已交付）
+
+1. **卡背改成按 JSON 清单渲染**：默认清单 11 块（TITLE / PHONETIC / DIVIDER / MEANING / MEMORY / COLLOCATIONS / EXAMPLE / PHRASES / SYNONYMS / REL_WORDS / EF_STATS）。默认清单下与 1.4.1 **逐像素一致**（front 0 px；back 33 px / 0.0014%，最大通道差 4/255，纯抗锯齿）。
+2. **电脑端可视化编辑器**：`tools/cardback-editor/`（零依赖原生 JS + Python3 标准库服务）。浏览器里拖块调顺序、开关显隐、改标题、选 6 种语义色、字号 S/M/L，右侧实时预览，一键发布到手机。
+3. **手机上两个入口**：词库页「当前词书：六级记忆卡」行最右侧的 refresh 图标；我的页「卡背结构地址」输入框（可填 `IP:8765`，也接受完整 URL —— **这就是给「在外面远程操控电脑改结构」留的接口**）。
+4. **容错四级**：电脑不在 → 提示「电脑没连上…」且卡背沿用旧的；非法清单 → 手机端拒收、退回上一版；未知 type → 跳过并提示；失败重启仍是上一版。服务端保留历史版本，`/api/rollback` 一键回退。
+
+### 怎么用（用户视角）
+
+双击 `tools/cardback-editor/启动编辑器.bat` → 浏览器开 `http://127.0.0.1:8765/` → 改 → 点发布 → 手机在我「我的」页填 `电脑IP:8765` 保存 → 回词库页点刷新图标。完整说明见 `README.md`「卡背编辑工具」一节。
+
+### 还没做的
+
+- **验收**：按用户要求，先派**测试 agent** 跑冻结规格，再派**评分 agent** 独立复核（规格 `docs/test-spec-1.4.2.md`，sha256 锁在同名 `.lock`）。
+- **1.4.3**：重写按钮 + 模型下拉 + 折叠输入框 + 离线标记队列 + 电脑端改写服务（见 `docs/decisions-1.4.2.md`）。
+- **动效参数**（820 / 90 / 220 / 72% / -1 / 1.0015）已写进 schema 与清单，**App 还没接管** —— 留到 1.4.3 或单独一步。
+- **装真机**：等用户点头。
 
 ---
 
@@ -23,13 +41,18 @@
 | 路径 | 是什么 |
 |---|---|
 | `app/src_repo/` | 安卓源码（**已删除嵌套 .git**，上游基线 c0a7fe0） |
-| `app/src_repo/app/src/main/java/com/kaoyan/wordhelper/` | 主代码；改动集中在 `data/entity/WordMemory.kt`、`data/dao/WordMemoryDao.kt`、`data/dao/WordDao.kt`、`data/database/AppDatabase.kt`、`util/WordFileParser.kt`、`ui/screen/LearningScreen.kt` |
+| `app/src_repo/app/src/main/java/com/kaoyan/wordhelper/` | 主代码。1.4.2 新增 `data/model/CardBack.kt`（schema/枚举/`CardBackCodec`）、`data/model/CardBackDefaults.kt`（内置默认 11 块清单）、`data/repository/CardBackRepository.kt`（缓存/在线刷新/回退）；改 `ui/screen/LearningScreen.kt`（`CardBackBlocks` 按清单渲染）、`ui/screen/BookManageScreen.kt`（刷新图标）、`ui/screen/ProfileScreen.kt`（地址输入）、两个 ViewModel、`SettingsRepository.kt`（`cardBackUrl`）、`KaoyanWordApp.kt`（仓库装配 + bootstrap）、`AndroidManifest.xml`（`usesCleartextTraffic`） |
 | `content/words/test20.json` | 20 词试验导入包（20,719 B） |
 | `content/seed/cet6_cards.json` | **1.4 内置种子**（5228 词，4.70 MB，schema 同 test20 + version/book 元信息） |
 | `tools/build_seed.py` | 由 `by-word/*.json` 重新生成上面这份种子（纯脚本，零模型） |
 | `dist/english-app-1.3-t20.apk` | 1.3 版 APK（30,723,515 B，versionCode 2） |
 | `dist/english-app-1.4-cet6.apk` | **1.4 版 APK（32,998,851 B，versionCode 3，内置 5228 词）** |
-| `docs/shots/` | 卡背验收截图 3 张 |
+| `dist/english-app-1.4.2.apk` | **1.4.2 版 APK**（33,048,035 B，versionCode 5 / versionName 1.4.2，含卡背清单 + 编辑器配套） |
+| `tools/cardback-editor/` | 1.4.2 电脑端编辑器：`index.html`/`styles.css`/`app.js`/`samples.js`（零依赖）+ `server.py`（Python3 标准库，8765）+ `启动编辑器.bat`；`published/` 是运行时数据（gitignore） |
+| `docs/cardback-schema-1.4.2.md` | **卡背清单契约**（JSON 结构、11 种块、6 语义色、字号倍率、动效默认、6 个 HTTP 接口、容错分级） |
+| `docs/test-spec-1.4.2.md` + `.lock` | **冻结的验收规格**（A 外观 30 / B 下发 30 / C 容错 20 / D 编辑器 15 / E 文档 5，K1–K5 否决项），sha256 锁文件 |
+| `docs/testdata/cardback-*.json` | 验收用 5 个清单样本（valid-modern / valid-minimal / invalid-empty-blocks / invalid-schema / unknown-type） |
+| `docs/shots/base-1.4.1/`、`docs/shots/new-1.4.2/` | 1.4.1 基线三屏 + 1.4.2 对照与各 toast 证据截图 |
 | `docs/report-maimemo-card-format.md` | 墨墨卡片格式报告（8 节，已交付） |
 | `docs/report-maimemo-sync.md` | 墨墨同步报告（8 节，已交付） |
 | `_toolchain/` | Gradle 8.9、gradle-home、**签名 wordhelper.jks**（不入库） |
@@ -79,6 +102,23 @@ cd "/d/deepseek harness/work_anki_enligish/app/src_repo"
 - 验收要看卡背：`adb shell input swipe` 上滑 + `adb exec-out screencap -p > x.png`
 - 拉 App 数据库：`adb exec-out "run-as com.kaoyan.wordhelper cat /data/data/com.kaoyan.wordhelper/databases/kaoyan_words.db" > D:/xxx.db`（还要一起拉 `-wal`/`-shm` 才有最新提交）
 
+### 1.4.2 的电脑端服务与模拟器坐标
+
+```bash
+cd "/d/deepseek harness/work_anki_enligish"
+python tools/cardback-editor/server.py          # 0.0.0.0:8765，Ctrl+C 停
+# 模拟器访问宿主机用 10.0.2.2；真机用电脑局域网 IP
+curl -s http://127.0.0.1:8765/api/state
+curl -X POST http://127.0.0.1:8765/api/publish -d @docs/testdata/cardback-valid-modern.json
+curl -X POST http://127.0.0.1:8765/api/rollback -d '{"revision":1}'
+```
+
+- 停服务：`netstat -ano | grep :8765` 找 PID → **`cmd //c "taskkill /PID <pid> /F"`**（Git Bash 里直接 `taskkill //PID` 会被改写成无效参数）
+- 模拟器底部导航中心 y=2208：学习 x=126 / 查词 501 / 词库 677 / 我的 953
+- **词库页 refresh 图标的真实触摸中心是 (966, 544)**（图标画在 y≈458，按视觉位置点会点空）
+- toast 抓拍：成功约 0.35 s 后截；服务关闭要等 5 s OkHttp 超时后再等 1–2 s。连拍 10 张再按 toast 区域 `y1880:2080,x150:930` 的均值/标准差挑帧最稳
+- 模拟器时区是 **UTC**（状态栏 12:xx = 本机 20:xx），别拿它验「今天」
+
 ### 无线 adb（11-06 已验证可用）
 
 ```bash
@@ -95,7 +135,7 @@ export MSYS2_ARG_CONV_EXCL='*'
 - **持久性**：`service.adb.tcp.port=5555` 在手机重启前一直有效；重启后 adbd 退回 USB 模式，需要重新 `tcpip 5555`（不想插线就走系统「无线调试」+ 它的端口）。
 - **命门**：锁屏不影响连接，但 vivo 省电策略可能掐 WiFi；换 WiFi 会换 IP（DHCP）。本机 `adb mdns check` 报 `mdns daemon unavailable`，没有 mDNS 自动发现，IP 变了要手动重连。
 
-**版本号铁律**：每次发版 `versionCode` 必须 +1（当前 **3**，下次 4）；DB 版本当前 14，下次改动必须 15。
+**版本号铁律**：每次发版 `versionCode` 必须 +1（1.4→3、1.4.1preview→4、**1.4.2→5，当前 5**，下次 1.4.3 用 6）；**修一个 bug 不许连跳版本号**——内部验证包沿用同号覆盖重装，只有用户要留档时才升。DB 版本当前 14（1.4.2 没动 schema），下次改表必须 15。
 
 ---
 
@@ -122,14 +162,14 @@ export MSYS2_ARG_CONV_EXCL='*'
    - 做法：`Card` 换非可点重载（去 ripple）；翻面改自研 `Modifier.cardFlipTap`（`awaitFirstDown(Initial, requireUnconsumed=false)` + 累计最大位移 ≤4dp + 抬手未被消费）；`AnimatedContent` 补 `contentKey = word.id`。
    - 结果：独立评分 **100/100**（`docs/report-1.4.1-test.md`），F5 水波纹色差 0.00/0.00%（旧包 19.71/98.13%）。
    - 遗留：长按 1.5 秒松手仍会翻面（与旧版 `Card(onClick)` 一致，非本次引入）；E1 动画连贯性只在模拟器 3fps 下录过，真机没测。
-2. **【1.4.2 · 范围已定，动手前必读 `docs/decisions-1.4.2.md`】卡背可下发 + 电脑端编辑工具**
-   - ① 卡背从「写死在 `WordCard` 里」改成「读 JSON 清单渲染」：块列表 + 顺序 + 样式 + 动效参数
-   - ② 电脑端简易编辑网页（左组件库 / 右实时预览 / 底部「发布到手机」），**必须写进 README**
-   - ③ 词库页「当前词书：六级记忆卡」行**最右侧**加 Material `refresh` 图标按钮 → 拉新结构
-   - ④ 保留上一次成功的版本，允许一键回退；不认识的块跳过并提示，**绝不让卡片变空**
-   - ⑤ 动效参数化：V7 那套（标题 820ms / 错峰 90ms / 反冲 72% 处 -1px / 条目 220ms easeOutExpo）
-   - ⑥ 结构只到「段落级」，不做自由绝对定位；新按钮的**行为**必须预置在代码里，能下发的只是「出不出/放哪/文案/颜色」
-   - 重写按钮 + 模型下拉 + 离线标记队列 + 电脑端改写服务 → **1.4.3**
+2. **【1.4.2 · ✅ 已交付，等验收】**卡背可下发 + 电脑端编辑工具
+   - ① 卡背已从「写死在 `WordCard` 里」改成「读 JSON 清单渲染」（块列表 + 顺序 + 显隐 + 标题 + 6 语义色 + 字号 S/M/L；动效字段在 schema 里但 App 未接管）
+   - ② 电脑端编辑器 `tools/cardback-editor/`（左组件库 / 中画布拖排序 / 右实时预览 / 底部发布到手机），已写进 `README.md`
+   - ③ 词库页「当前词书」行最右侧 Material refresh 图标 → 拉新结构；我的页可填地址
+   - ④ 四级容错：保留上一版、服务端历史 + `/api/rollback`、未知块跳过并提示、非法清单拒收，**不会让卡片变空**
+   - ⑤ 结构只到「段落级」，不做自由绝对定位；新按钮的行为预置在代码里
+   - ⑥ 待办：跑测试 agent + 评分 agent（规格 `docs/test-spec-1.4.2.md` 已冻结）；动效接管 → 1.4.3
+   - **1.4.3**：重写按钮 + 模型下拉 + 离线标记队列 + 电脑端改写服务
 3. **【待做】两份墨墨报告的三处修正**：四键→三键、助记可带图（图存 OSS 不入库）、同步补 oplog 增量（手动按钮才是整包）。用户已口头确认口径，只差改文档。
 4. **【可选项】清掉两本内置大词库**（完整词库 20863 / 精选 5663）：种子词书已替代它们，但目前没删——`WordbookFullLoader` 的读音索引还依赖那两个大 JSON，删词书不删 assets 才安全。
 5. **【待用户确认】左滑「太简单」仍易误触**：判定线是卡片宽度的 30%（`SWIPE_TRIGGER_RATIO = 0.3f`，有效区 0.8），横着蹭一下就可能把词判成「太简单」直接跳走。等用户确认他说的「反面的效果」是翻面还是换词，再决定要不要收紧到 40~50%。
@@ -170,4 +210,4 @@ export MSYS2_ARG_CONV_EXCL='*'
 1. **先读本文件 + [`docs/decisions-1.4.2.md`](docs/decisions-1.4.2.md)**，再跑 `git log --oneline -3`、`git status` 确认工作区干净。
 2. **别急着改代码**：用户红线是「没被叫就不许动手」。第一句先问他要做什么，只有他说「开始/改」才动。
 3. **真机**：`10AF941PZJ00AKH`，已可无线接（`adb connect 10.103.216.69:5555`，见 §4）。但默认仍先在模拟器 `mf` 上验；真机要动屏幕之前说一声。
-4. **接手时的状态**：1.4.1preview 已交付（独立评分 100/100）；**1.4.2 方案已逐条谈定**，照 `docs/decisions-1.4.2.md` 做，用户已说「开新窗口开工」。左滑易误触用户明确说「先不修」，别再主动提。
+4. **接手时的状态**：1.4.1preview 已交付（评分 100/100）；**1.4.2 已开发完成、已出包并只在模拟器验过**，验收规格冻结在 `docs/test-spec-1.4.2.md`（sha256 见 `.lock`，执行方不得改）。按用户要求要跑「测试 agent → 评分 agent」两轮独立复核，之后才装真机。左滑易误触用户明确说「先不修」，别再主动提。
