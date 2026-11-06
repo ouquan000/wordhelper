@@ -1,18 +1,18 @@
 # 交接文档（新会话从这里开始）
 
-> 生成时间：2026-11-06 17:45（1.4 已交付并入库，等待下一步指令）
+> 生成时间：2026-11-06 19:22（1.4.1preview 已交付、已入库；准备开发 1.4.2）
 > 仓库根：`D:\deepseek harness\work_anki_enligish`
-> 当前 HEAD：`cf8c80c`「文档：写入调试纪律」；工作区**干净**
-> 最近提交：`faf823e` 1.3 → `62cccf9` 1.4 内置 5228 词种子 → `cf8c80c` 调试纪律文档
-> 用户手机现装：**1.4（versionName 1.4 / versionCode 3）**；曾有 1.4.1，已被用户要求回退并作废
+> 当前 HEAD：`9689807`「1.4.1preview：卡片翻面手势改造 + 独立验收 100 分」；工作区**干净**
+> 提交线：`faf823e` 1.3 → `62cccf9` 1.4 内置 5228 词种子 → `cf8c80c` 调试纪律 → `4ad923d` 交接 → `9689807` 1.4.1preview
+> 用户手机现装：**1.4.1preview（versionName 1.4.1preview / versionCode 4）**，已用**无线 adb** 接管（见 §4）
 
 ---
 
 ## 1. 一句话现状
 
-把开源安卓背单词 App「不爱背单词」改造成**我自己的六级图文记忆卡**：1.4 版已把 **5228 个词（含记忆思路 + 常用搭配 + 中英例句）内置进 APK**，首启自动导入成「六级记忆卡」并设为当前词书，真机（10AF941PZJ00AKH）装好、翻卡验收通过，代码已提交（`62cccf9`）。
+把开源安卓背单词 App「不爱背单词」改造成**我自己的六级图文记忆卡**：1.4 已把 **5228 个词（含记忆思路 + 常用搭配 + 中英例句）内置进 APK**，首启自动导入成「六级记忆卡」并设为当前词书。**1.4.1preview（versionCode 4）** 修完了「卡背上下滑误翻面 + 点一下有水波纹」：去掉 `Card(onClick)` 换成非可点重载，翻面改自研 `Modifier.cardFlipTap`（4dp 位移门控 + 未被消费才翻），并给 `AnimatedContent` 补 `contentKey = word.id` 修掉「点星星连带翻面」。独立评分员按冻结规格跑出 **100/100**，报告在 `docs/report-1.4.1-test.md`。
 
-**当前卡在一件事上**：用户报告「卡背上下滑动时偶尔会翻面」，并补充「你没修好，不能把点一下之后的颜色变化去掉吗」。根因和改法都已写好（见 §6 第 1 条），**但用户明确要求：没被叫就不许动手**，所以等一句「开始」再改。图片暂缓，「卡背标记有问题→次日换新思路」等增量功能排在后面。
+**当前状态**：1.4.1preview 已装到真机、代码已提交（`9689807`），等用户定 1.4.2 做什么。候选：同步按钮（用户已同意排到下个小版本）、两份墨墨报告修正、卡背标记问题换思路。
 
 ---
 
@@ -71,10 +71,27 @@ cd "/d/deepseek harness/work_anki_enligish/app/src_repo"
 - `local.properties` 必须写 **正斜杠** `sdk.dir=D:/Android/Sdk`（反斜杠会被 Properties 解析吃掉，报「文件名、目录名或卷标语法不正确」）
 - 装：`adb install -r <apk>`（同签名才能覆盖；换签名要先卸载，进度会丢）；降级覆盖要加 `-d`
 - **adb 不在 PATH 里**：能用的是 GlideX 自带的 `/c/Program Files/ASUS/GlideX/adb.exe`（5037 端口已在跑）；Git Bash 里调 adb 前 `export MSYS2_ARG_CONV_EXCL='*'`，否则 `/sdcard/...` 会被改写成 Windows 路径
-- 模拟器：AVD `mf`（API 34 x86_64，headless + swiftshader）；真机 `10AF941PZJ00AKH` 已 USB 连着
+- 模拟器：AVD `mf`（API 34 x86_64，headless + swiftshader）；真机 `10AF941PZJ00AKH`
+- **真机已可无线操作**（用户 11-06 19:10 授权接管）：`adb connect 10.103.216.69:5555`，见下方「无线 adb」
 - **默认在模拟器验，真机只在交付时碰且先问用户**（见 §8）
 - 验收要看卡背：`adb shell input swipe` 上滑 + `adb exec-out screencap -p > x.png`
 - 拉 App 数据库：`adb exec-out "run-as com.kaoyan.wordhelper cat /data/data/com.kaoyan.wordhelper/databases/kaoyan_words.db" > D:/xxx.db`（还要一起拉 `-wal`/`-shm` 才有最新提交）
+
+### 无线 adb（11-06 已验证可用）
+
+```bash
+ADB="/c/Program Files/ASUS/GlideX/adb.exe"
+export MSYS2_ARG_CONV_EXCL='*'
+# 首次要 USB 连着跑一次；之后手机不重启就一直有效
+"$ADB" -s 10AF941PZJ00AKH tcpip 5555
+"$ADB" connect 10.103.216.69:5555
+"$ADB" devices                              # 应同时列出序列号与 IP:5555
+"$ADB" -s 10.103.216.69:5555 shell echo OK  # 确认无线真的通了再拔线
+```
+
+- **别信手机「无线调试」页面上显示的 IP**：显示 `172.19.0.1:34427` 是 `tun0` 的 VPN 虚拟网卡，电脑连过去必然超时（10060）。真实地址用 `adb shell ip addr show | grep 'inet '` 看 **wlan0** 那一行。
+- **持久性**：`service.adb.tcp.port=5555` 在手机重启前一直有效；重启后 adbd 退回 USB 模式，需要重新 `tcpip 5555`（不想插线就走系统「无线调试」+ 它的端口）。
+- **命门**：锁屏不影响连接，但 vivo 省电策略可能掐 WiFi；换 WiFi 会换 IP（DHCP）。本机 `adb mdns check` 报 `mdns daemon unavailable`，没有 mDNS 自动发现，IP 变了要手动重连。
 
 **版本号铁律**：每次发版 `versionCode` 必须 +1（当前 **3**，下次 4）；DB 版本当前 14，下次改动必须 15。
 
@@ -92,23 +109,23 @@ cd "/d/deepseek harness/work_anki_enligish/app/src_repo"
 8. **Compose 点按阈值 8dp**：`Card(onClick)` / `clickable` 只在小位移下判点按，这个阈值远大于「人以为的滑动」——凡是「滑动也会触发点击」的 bug，先怀疑它，别去怀疑手势库。
 9. **本机 logcat 不收 D 级日志**：`adb logcat -d --pid=<pid>` 里 D 行恒为 0，埋点要用 `Log.w` 才看得见。
 10. **拉数据库必须带 WAL**：`kaoyan_words.db` 之外还要拉 `-wal`、`-shm`（命名成 `xxx-wal`/`xxx-shm` 放同目录），否则读到的是旧快照，会得出「进度没写进去」的错误结论。
+11. **手机「无线调试」页显示的 IP 可能是假的**：vivo 开了 VPN/代理后显示 `172.19.0.1:34427`（`tun0` 地址），电脑连必超时（10060）。真实地址永远是 `ip addr` 里 `wlan0` 那一个。另外本机 `adb mdns check` 报 `mdns daemon unavailable`，别指望自动发现。
+12. **`AnimatedContent` 的 `targetState` 带非标识字段 = 整棵树重建**：本项目 `cardState = WordCardState(word, isInNewWords)`，点星星改了收藏状态，就被判成「换了张卡」，旧卡销毁、`remember(word.id)` 全归零，翻面状态跟着丢、还白播一次切换动画。修法是加 `contentKey = { it.word.id }`。凡是「改了个小状态，整个组件状态莫名回到初始」的怪现象，先查这条。
 
 ---
 
 ## 6. 待办（按优先级）
 
-1. **【最优先，等用户一句「开始」】卡背「上下滑误翻面 + 点一下变色」**
-   - **根因**：翻面挂在整张卡片的 `Card(onClick=…)` 上；Compose 点按阈值 8dp（本机 640dpi ≈ 32px），位移不足此值的拖动一律算点按；同时 `Card` 自带 ripple，用户看到的「颜色变化」就是它——**只拦翻面动作不够，必须把点击本身去掉**。
-   - **已提方案（未实施）**：`Card` 换成非可点重载；翻面改由 `pointerInput` 自研点按——`awaitEachGesture` + `awaitFirstDown(requireUnconsumed=false, pass=PointerEventPass.Initial)` 累计 `positionChange().getDistance()`，抬手时判断：位移 ≤4dp **且**过程中未被滚动/横滑消费，才翻面；卡背「滚动进行中或刚结束 400ms 内」不翻面。左右滑动与三键不动。
-   - **必须先在模拟器（`mf`）验**：干净点按翻、20px 拖动不翻、大滚动不翻、滚动后 1s 点按能翻；通过后再按用户指令装真机一次。
-   - **历史教训**：此前做过 1.4.1（只加 4dp 门控、保留 `Card(onClick)`），用户判定「没修好」（ripple 还在）并要求回退，版本号已退回 `versionCode 3 / 1.4`，产物与文档章节已删除。**别重走这条路。**
-2. **【已完成】量产方案 = 内置**：1.4 已把 5228 词打进 APK，首启导入，真机验收通过、已提交。
-3. **【已完成】种子生成脚本**：`tools/build_seed.py`（`derivation`→`approach`、`meaning` 按词性拆行、过滤分词噪声与缺失音标的条目）。
-4. **【待做】两份墨墨报告的三处修正**：四键→三键、助记可带图（图存 OSS 不入库）、同步补 oplog 增量（手动按钮才是整包）。用户已口头确认口径，只差改文档。
-5. **【可选项】清掉两本内置大词库**（完整词库 20863 / 精选 5663）：种子词书已经替代它们，但目前没删——`WordbookFullLoader` 的读音索引还依赖那两个大 JSON，删词书不删 assets 才安全。
-6. **【待用户确认】左滑「太简单」仍易误触**：判定线是卡片宽度的 30%（`SWIPE_TRIGGER_RATIO = 0.3f`，有效区 0.8），横着蹭一下就可能把词判成「太简单」直接跳走。等用户确认他说的「反面的效果」是翻面还是换词，再决定要不要收紧到 40~50%。
-7. 之后才做的事：图片（5183 词已有一张 A 图，832×1216）、「卡背标记有问题→次日换新思路」、同步服务。
-8. **改种子内容的正确姿势**：改 `by-word` 数据 → `python tools/build_seed.py`（或手改 cet6_cards.json）→ `version` +1 → 重新打包安装；不想重装就 `adb push cet6_cards.json /sdcard/Android/data/com.kaoyan.wordhelper/files/` 后重启 App。
+1. **【已完成 ✅ 1.4.1preview】卡背「上下滑误翻面 + 点一下有水波纹」**
+   - 做法：`Card` 换非可点重载（去 ripple）；翻面改自研 `Modifier.cardFlipTap`（`awaitFirstDown(Initial, requireUnconsumed=false)` + 累计最大位移 ≤4dp + 抬手未被消费）；`AnimatedContent` 补 `contentKey = word.id`。
+   - 结果：独立评分 **100/100**（`docs/report-1.4.1-test.md`），F5 水波纹色差 0.00/0.00%（旧包 19.71/98.13%）。
+   - 遗留：长按 1.5 秒松手仍会翻面（与旧版 `Card(onClick)` 一致，非本次引入）；E1 动画连贯性只在模拟器 3fps 下录过，真机没测。
+2. **【1.4.2 候选·用户已同意】「同步按钮」**：用户要「点个同步按钮刷新卡片内容」，明确说排到下一个小版本。
+3. **【待做】两份墨墨报告的三处修正**：四键→三键、助记可带图（图存 OSS 不入库）、同步补 oplog 增量（手动按钮才是整包）。用户已口头确认口径，只差改文档。
+4. **【可选项】清掉两本内置大词库**（完整词库 20863 / 精选 5663）：种子词书已替代它们，但目前没删——`WordbookFullLoader` 的读音索引还依赖那两个大 JSON，删词书不删 assets 才安全。
+5. **【待用户确认】左滑「太简单」仍易误触**：判定线是卡片宽度的 30%（`SWIPE_TRIGGER_RATIO = 0.3f`，有效区 0.8），横着蹭一下就可能把词判成「太简单」直接跳走。等用户确认他说的「反面的效果」是翻面还是换词，再决定要不要收紧到 40~50%。
+6. 之后才做的事：图片（5183 词已有一张 A 图，832×1216）、「卡背标记有问题→次日换新思路」、同步服务。
+7. **改种子内容的正确姿势**：改 `by-word` 数据 → `python tools/build_seed.py`（或手改 cet6_cards.json）→ `version` +1 → 重新打包安装；不想重装就 `adb push cet6_cards.json /sdcard/Android/data/com.kaoyan.wordhelper/files/` 后重启 App。
 
 ---
 
@@ -132,7 +149,7 @@ cd "/d/deepseek harness/work_anki_enligish/app/src_repo"
 - **结论优先**，不要罗列工具名；改动编号列出；验收要真机证据。
 - 不要在 C 盘堆东西；保持仓库卫生。
 - **不要擅自开始写代码**，等他一句「开始」。
-- **调试纪律：模拟器随便折腾，真机只在交付时碰，且每次碰之前先问他。** 改代码/编译不需要设备；手势、UI、布局先在 `emulator-5554` 上验，别把他的手机当调试台（本轮就是这么被批评的）。
+- **调试纪律：模拟器随便折腾；真机默认不碰，碰之前问一句。** 例外：2026-11-06 19:10 用户主动说「我连接上有线 adb 了…要啥自己拿」并开了无线 adb，等于授权接管。授权范围内可直接读数据、看界面；**要动屏幕（点/滑/装包）之前先打声招呼**，因为那会跟他抢手指。
 - **不为一个 bug 连升版本号**：内部验证包用同版本号覆盖安装，只有他要留档/发版才升号。
 - 不动他正在用的 DSH / Anki 环境，不碰他账号密码。
 - 他今晚就要开始背单词，**速度 > 完美**。
@@ -141,7 +158,7 @@ cd "/d/deepseek harness/work_anki_enligish/app/src_repo"
 
 ## 9. 新会话怎么开局
 
-1. **先读本文件**，再看 `git log --oneline -3` 确认在 `cf8c80c`、`git status` 干净。
-2. **别急着改代码**：用户上一轮的原话是「我叫你动手了吗？下次不许了啊」。第一句先问他要做什么，只有他说「开始/改」才动。
-3. 真机在他手上（`10AF941PZJ00AKH`），**默认不碰**；要验 UI 就起模拟器 `mf`。
-4. 当前唯一技术债是 §6 第 1 条那个手势 bug，方案已成型，等他点头。
+1. **先读本文件**，再跑 `git log --oneline -3` 确认 HEAD 在 `9689807`、`git status` 干净。
+2. **别急着改代码**：用户红线是「没被叫就不许动手」。第一句先问他要做什么，只有他说「开始/改」才动。
+3. **真机**：`10AF941PZJ00AKH`，已可无线接（`adb connect 10.103.216.69:5555`，见 §4）。但默认仍先在模拟器 `mf` 上验；真机要动屏幕之前说一声。
+4. **接手时的状态**：1.4.1preview 已交付（独立评分 100/100）；1.4.2 候选见 §6 第 2 条（同步按钮），另外左滑易误触还等他拍板。

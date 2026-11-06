@@ -73,12 +73,32 @@ Gradle 发行版走腾讯云镜像，两者都不改项目源码。
 |---|---|
 | 签名 | `_toolchain/signing/wordhelper.jks`（别名 `wordhelper`），**这把 key 不能换、不能丢** |
 | 包名 | `com.kaoyan.wordhelper`，与官方版相同 |
-| 版本号 | `versionCode` 与 `versionName` 同步维护（当前 `versionCode 3 / versionName 1.4`） |
+| 版本号 | `versionCode` 与 `versionName` 同步维护（当前 `versionCode 4 / versionName 1.4.1preview`） |
 
 数据库版本只升不降，每次升级都带迁移。当前 13 → 14（只新建 `tb_word_memory`，不动旧表）。
 
 > 唯一的例外：官方版用的是作者的签名，与本项目不同，所以**从官方版切过来必须卸载一次**，
 > 学习进度会清空。切过来之后，后续版本都能互相覆盖。
+
+## 无线调试（adb over WiFi）
+
+真机可以完全脱离 USB 线，**只要手机不重启就一直有效**。
+
+```bash
+# 首次需要 USB 连着（之后就不用了）
+ADB="/c/Program Files/ASUS/GlideX/adb.exe"
+export MSYS2_ARG_CONV_EXCL='*'
+"$ADB" -s 10AF941PZJ00AKH tcpip 5555
+"$ADB" connect 10.103.216.69:5555
+"$ADB" devices                              # 应同时列出序列号与 IP:5555
+"$ADB" -s 10.103.216.69:5555 shell echo OK  # 确认无线通道真能用，再拔线
+```
+
+- **手机真实 IP**：`adb shell ip addr show | grep 'inet '`，看 **wlan0** 那一行。
+- **别信手机「无线调试」页面显示的 IP**：它可能是 `172.19.0.1`（`tun0` 的 VPN 虚拟网卡），电脑连过去只会超时。
+- **持久性**：`service.adb.tcp.port=5555` 在手机重启前一直有效。重启后 adbd 退回 USB 模式，需要重新 `adb tcpip 5555`；不想插线就走系统「无线调试」+ 它显示的端口。
+- **命门**：锁屏不影响连接，但 vivo 的省电策略可能掐 WiFi；换 WiFi 会换 IP（DHCP）。
+- 本机 `adb mdns check` 报 `mdns daemon unavailable`，没有 mDNS 自动发现，IP 变了要手动重连。
 
 ## 导入测试词条
 
@@ -147,6 +167,7 @@ Gradle 发行版走腾讯云镜像，两者都不改项目源码。
 
 ## 版本号约定
 
-- 当前交付 `versionCode 3 / versionName 1.4`（内置 5228 词种子）
-- **下一次构建（发版给用户留档）才改成 `versionCode 4`**；内部验证包不要升号，覆盖安装即可
+- 当前交付 `versionCode 4 / versionName 1.4.1preview`（卡片翻面手势改造版，独立验收 100/100）
+- 上一版 `versionCode 3 / versionName 1.4`（内置 5228 词种子，`dist/english-app-1.4-cet6.apk`）
+- **下一次发版 `versionCode` +1（→5）**；内部验证包不要升号，同号覆盖安装即可
 - 数据库版本 14；下次加表或加列必须是 15，并补一条迁移
