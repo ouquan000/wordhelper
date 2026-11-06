@@ -25,6 +25,7 @@ private const val DEFAULT_RECOGNITION_AUTO_PRONOUNCE_ENABLED = false
 private const val DEFAULT_NEW_WORDS_SHUFFLE_ENABLED = false
 private const val DEFAULT_ML_ADAPTIVE_ENABLED = false
 private const val DEFAULT_PLANNED_NEW_WORDS_ENABLED = false
+private const val DEFAULT_CARD_BACK_URL = ""
 private val Context.dataStore by preferencesDataStore(name = "user_settings")
 
 data class UserSettings(
@@ -40,7 +41,9 @@ data class UserSettings(
     val recognitionAutoPronounceEnabled: Boolean = DEFAULT_RECOGNITION_AUTO_PRONOUNCE_ENABLED,
     val newWordsShuffleEnabled: Boolean = DEFAULT_NEW_WORDS_SHUFFLE_ENABLED,
     val mlAdaptiveEnabled: Boolean = DEFAULT_ML_ADAPTIVE_ENABLED,
-    val plannedNewWordsEnabled: Boolean = DEFAULT_PLANNED_NEW_WORDS_ENABLED
+    val plannedNewWordsEnabled: Boolean = DEFAULT_PLANNED_NEW_WORDS_ENABLED,
+    /** 卡背结构地址；空 = 没配，刷新时提示去设置里填。 */
+    val cardBackUrl: String = DEFAULT_CARD_BACK_URL
 )
 
 data class TodayNewWordsPlan(
@@ -102,7 +105,8 @@ class SettingsRepository(private val context: Context) {
             mlAdaptiveEnabled =
                 prefs[KEY_ML_ADAPTIVE_ENABLED] ?: DEFAULT_ML_ADAPTIVE_ENABLED,
             plannedNewWordsEnabled =
-                prefs[KEY_PLANNED_NEW_WORDS_ENABLED] ?: DEFAULT_PLANNED_NEW_WORDS_ENABLED
+                prefs[KEY_PLANNED_NEW_WORDS_ENABLED] ?: DEFAULT_PLANNED_NEW_WORDS_ENABLED,
+            cardBackUrl = prefs[KEY_CARD_BACK_URL] ?: DEFAULT_CARD_BACK_URL
         )
     }
 
@@ -158,6 +162,10 @@ class SettingsRepository(private val context: Context) {
         dataStore.edit { prefs -> prefs[KEY_PLANNED_NEW_WORDS_ENABLED] = enabled }
     }
 
+    suspend fun updateCardBackUrl(url: String) {
+        dataStore.edit { prefs -> prefs[KEY_CARD_BACK_URL] = url.trim() }
+    }
+
     /** 已导入的内置种子词库版本号，用于判断要不要重导内容。 */
     suspend fun cardSeedVersion(): Int {
         return dataStore.data.map { prefs -> prefs[KEY_CARD_SEED_VERSION] ?: 0 }.first()
@@ -202,6 +210,7 @@ class SettingsRepository(private val context: Context) {
         private val KEY_NEW_WORDS_SHUFFLE_ENABLED = booleanPreferencesKey("new_words_shuffle_enabled")
         private val KEY_ML_ADAPTIVE_ENABLED = booleanPreferencesKey("ml_adaptive_enabled")
         private val KEY_PLANNED_NEW_WORDS_ENABLED = booleanPreferencesKey("planned_new_words_enabled")
+        private val KEY_CARD_BACK_URL = stringPreferencesKey("card_back_url")
         private val KEY_CARD_SEED_VERSION = intPreferencesKey("card_seed_version")
         private val KEY_TODAY_NEW_WORDS_PLAN_DATE = stringPreferencesKey("today_new_words_plan_date")
         private val KEY_TODAY_NEW_WORDS_PLAN_BOOK_ID = stringPreferencesKey("today_new_words_plan_book_id")

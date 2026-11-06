@@ -5,6 +5,7 @@ import com.kaoyan.wordhelper.data.database.AppDatabase
 import com.kaoyan.wordhelper.data.model.CardSeedLoader
 import com.kaoyan.wordhelper.data.repository.AIConfigRepository
 import com.kaoyan.wordhelper.data.repository.AIRepository
+import com.kaoyan.wordhelper.data.repository.CardBackRepository
 import com.kaoyan.wordhelper.data.repository.ForecastRepository
 import com.kaoyan.wordhelper.data.repository.PronunciationRepository
 import com.kaoyan.wordhelper.data.repository.SettingsRepository
@@ -37,6 +38,11 @@ class KaoyanWordApp : Application() {
 
     val forecastRepository: ForecastRepository by lazy {
         ForecastRepository(database, settingsRepository)
+    }
+
+    /** 卡背结构清单（1.4.2）：只读文件 + 网络，不碰数据库。 */
+    val cardBackRepository: CardBackRepository by lazy {
+        CardBackRepository(this, settingsRepository)
     }
 
     val aiConfigRepository: AIConfigRepository by lazy {
@@ -74,6 +80,8 @@ class KaoyanWordApp : Application() {
     override fun onCreate() {
         super.onCreate()
         appScope.launch {
+            // 卡背结构：先读本地缓存，读不到就用内置默认；不阻塞首屏
+            cardBackRepository.bootstrap()
             val settings = settingsRepository.settingsFlow.first()
             if (settings.algorithmV4Enabled) {
                 repository.repairMasteredStatusForV4()
