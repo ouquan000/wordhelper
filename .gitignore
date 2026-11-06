@@ -1,0 +1,31 @@
+# ── 构建产物 ─────────────────────────────
+app/src_repo/app/build/
+app/src_repo/.gradle/
+app/src_repo/build/
+app/src_repo/local.properties
+*.log
+
+# ── 本机工具链（Gradle 发行版 + 依赖缓存 + 签名私钥，1.6G，绝不入库）──
+_toolchain/
+
+# ── 调研期临时产物 ───────────────────────
+_recon/
+uz.xml
+
+# ── 大二进制：APK 不进行版本管理，随 Release/网盘分发 ──
+dist/*.apk
+
+# ── 与项目无关的既有目录（工作区里原本就有的东西）──
+cyber-eggs/
+cyber-eggs-20261008.zip
+folia-music-player-mini/
+word-breakout-visual-lab-mini/
+venv-anki/
+_codex_audit/
+_compat_audit/
+cdpfetch.ps1
+neko-health.cmd
+
+# ── DSH 会话内部数据 ─────────────────────
+.dsh-codex/
+.dsh-meow/
