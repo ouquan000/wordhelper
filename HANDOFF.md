@@ -1,15 +1,18 @@
 # 交接文档（新会话从这里开始）
 
-> 生成时间：2026-11-06 17:40（1.4 内置版）
+> 生成时间：2026-11-06 17:45（1.4 已交付并入库，等待下一步指令）
 > 仓库根：`D:\deepseek harness\work_anki_enligish`
-> 当前 HEAD：`faf823e`「初始提交：不爱背单词 1.3 记忆思路改造」（1.4 改动未提交）
-> 工作区未提交：`README.md`、`HANDOFF.md`、`docs/report-maimemo-*.md`、`content/seed/`、`tools/`、以及 `app/src_repo` 里 1.4 的五处代码改动
+> 当前 HEAD：`cf8c80c`「文档：写入调试纪律」；工作区**干净**
+> 最近提交：`faf823e` 1.3 → `62cccf9` 1.4 内置 5228 词种子 → `cf8c80c` 调试纪律文档
+> 用户手机现装：**1.4（versionName 1.4 / versionCode 3）**；曾有 1.4.1，已被用户要求回退并作废
 
 ---
 
 ## 1. 一句话现状
 
-把开源安卓背单词 App「不爱背单词」改造成**我自己的六级图文记忆卡**：1.4 版已把 **5228 个词（含记忆思路 + 常用搭配 + 中英例句）内置进 APK**，首启自动导入成「六级记忆卡」并设为当前词书，真机（10AF941PZJ00AKH）装好、翻卡验收通过。下一步只剩图片（暂缓）与「卡背标记有问题」这类增量功能。
+把开源安卓背单词 App「不爱背单词」改造成**我自己的六级图文记忆卡**：1.4 版已把 **5228 个词（含记忆思路 + 常用搭配 + 中英例句）内置进 APK**，首启自动导入成「六级记忆卡」并设为当前词书，真机（10AF941PZJ00AKH）装好、翻卡验收通过，代码已提交（`62cccf9`）。
+
+**当前卡在一件事上**：用户报告「卡背上下滑动时偶尔会翻面」，并补充「你没修好，不能把点一下之后的颜色变化去掉吗」。根因和改法都已写好（见 §6 第 1 条），**但用户明确要求：没被叫就不许动手**，所以等一句「开始」再改。图片暂缓，「卡背标记有问题→次日换新思路」等增量功能排在后面。
 
 ---
 
@@ -66,9 +69,12 @@ cd "/d/deepseek harness/work_anki_enligish/app/src_repo"
 
 - 产物：`app/src_repo/app/build/outputs/apk/debug/app-debug.apk`
 - `local.properties` 必须写 **正斜杠** `sdk.dir=D:/Android/Sdk`（反斜杠会被 Properties 解析吃掉，报「文件名、目录名或卷标语法不正确」）
-- 装：`adb install -r <apk>`（同签名才能覆盖；换签名要先卸载，进度会丢）
+- 装：`adb install -r <apk>`（同签名才能覆盖；换签名要先卸载，进度会丢）；降级覆盖要加 `-d`
+- **adb 不在 PATH 里**：能用的是 GlideX 自带的 `/c/Program Files/ASUS/GlideX/adb.exe`（5037 端口已在跑）；Git Bash 里调 adb 前 `export MSYS2_ARG_CONV_EXCL='*'`，否则 `/sdcard/...` 会被改写成 Windows 路径
 - 模拟器：AVD `mf`（API 34 x86_64，headless + swiftshader）；真机 `10AF941PZJ00AKH` 已 USB 连着
-- 模拟器验收要看卡背：`adb shell input swipe` 上滑 + `adb exec-out screencap -p > x.png`
+- **默认在模拟器验，真机只在交付时碰且先问用户**（见 §8）
+- 验收要看卡背：`adb shell input swipe` 上滑 + `adb exec-out screencap -p > x.png`
+- 拉 App 数据库：`adb exec-out "run-as com.kaoyan.wordhelper cat /data/data/com.kaoyan.wordhelper/databases/kaoyan_words.db" > D:/xxx.db`（还要一起拉 `-wal`/`-shm` 才有最新提交）
 
 **版本号铁律**：每次发版 `versionCode` 必须 +1（当前 **3**，下次 4）；DB 版本当前 14，下次改动必须 15。
 
@@ -91,13 +97,18 @@ cd "/d/deepseek harness/work_anki_enligish/app/src_repo"
 
 ## 6. 待办（按优先级）
 
-1. **【已完成】量产方案 = 内置**：1.4 已把 5228 词打进 APK，首启导入，真机验收通过。
-2. **【已完成】种子生成脚本**：`tools/build_seed.py`（`derivation`→`approach`、`meaning` 按词性拆行、过滤分词噪声与缺失音标的条目）。
-3. **【待做】两份墨墨报告的三处修正**：四键→三键、助记可带图（图存 OSS 不入库）、同步补 oplog 增量（手动按钮才是整包）。用户已口头确认口径，只差改文档。
-4. **【可选项】清掉两本内置大词库**（完整词库 20863 / 精选 5663）：种子词书已经替代它们，但目前没删——`WordbookFullLoader` 的读音索引还依赖那两个大 JSON，删词书不删 assets 才安全。
-5. **【待用户确认】左滑「太简单」仍易误触**：判定线是卡片宽度的 30%（`SWIPE_TRIGGER_RATIO = 0.3f`，有效区 0.8），横着蹭一下就可能把词判成「太简单」直接跳走。等用户确认他说的「反面的效果」是翻面还是换词，再决定要不要收紧到 40~50%。
-6. 之后才做的事：图片（5183 词已有一张 A 图，832×1216）、「卡背标记有问题→次日换新思路」、同步服务。
-7. **改种子内容的正确姿势**：改 `by-word` 数据 → `python tools/build_seed.py`（或手改 cet6_cards.json）→ `version` +1 → 重新打包安装；不想重装就 `adb push cet6_cards.json /sdcard/Android/data/com.kaoyan.wordhelper/files/` 后重启 App。
+1. **【最优先，等用户一句「开始」】卡背「上下滑误翻面 + 点一下变色」**
+   - **根因**：翻面挂在整张卡片的 `Card(onClick=…)` 上；Compose 点按阈值 8dp（本机 640dpi ≈ 32px），位移不足此值的拖动一律算点按；同时 `Card` 自带 ripple，用户看到的「颜色变化」就是它——**只拦翻面动作不够，必须把点击本身去掉**。
+   - **已提方案（未实施）**：`Card` 换成非可点重载；翻面改由 `pointerInput` 自研点按——`awaitEachGesture` + `awaitFirstDown(requireUnconsumed=false, pass=PointerEventPass.Initial)` 累计 `positionChange().getDistance()`，抬手时判断：位移 ≤4dp **且**过程中未被滚动/横滑消费，才翻面；卡背「滚动进行中或刚结束 400ms 内」不翻面。左右滑动与三键不动。
+   - **必须先在模拟器（`mf`）验**：干净点按翻、20px 拖动不翻、大滚动不翻、滚动后 1s 点按能翻；通过后再按用户指令装真机一次。
+   - **历史教训**：此前做过 1.4.1（只加 4dp 门控、保留 `Card(onClick)`），用户判定「没修好」（ripple 还在）并要求回退，版本号已退回 `versionCode 3 / 1.4`，产物与文档章节已删除。**别重走这条路。**
+2. **【已完成】量产方案 = 内置**：1.4 已把 5228 词打进 APK，首启导入，真机验收通过、已提交。
+3. **【已完成】种子生成脚本**：`tools/build_seed.py`（`derivation`→`approach`、`meaning` 按词性拆行、过滤分词噪声与缺失音标的条目）。
+4. **【待做】两份墨墨报告的三处修正**：四键→三键、助记可带图（图存 OSS 不入库）、同步补 oplog 增量（手动按钮才是整包）。用户已口头确认口径，只差改文档。
+5. **【可选项】清掉两本内置大词库**（完整词库 20863 / 精选 5663）：种子词书已经替代它们，但目前没删——`WordbookFullLoader` 的读音索引还依赖那两个大 JSON，删词书不删 assets 才安全。
+6. **【待用户确认】左滑「太简单」仍易误触**：判定线是卡片宽度的 30%（`SWIPE_TRIGGER_RATIO = 0.3f`，有效区 0.8），横着蹭一下就可能把词判成「太简单」直接跳走。等用户确认他说的「反面的效果」是翻面还是换词，再决定要不要收紧到 40~50%。
+7. 之后才做的事：图片（5183 词已有一张 A 图，832×1216）、「卡背标记有问题→次日换新思路」、同步服务。
+8. **改种子内容的正确姿势**：改 `by-word` 数据 → `python tools/build_seed.py`（或手改 cet6_cards.json）→ `version` +1 → 重新打包安装；不想重装就 `adb push cet6_cards.json /sdcard/Android/data/com.kaoyan.wordhelper/files/` 后重启 App。
 
 ---
 
@@ -125,3 +136,12 @@ cd "/d/deepseek harness/work_anki_enligish/app/src_repo"
 - **不为一个 bug 连升版本号**：内部验证包用同版本号覆盖安装，只有他要留档/发版才升号。
 - 不动他正在用的 DSH / Anki 环境，不碰他账号密码。
 - 他今晚就要开始背单词，**速度 > 完美**。
+
+---
+
+## 9. 新会话怎么开局
+
+1. **先读本文件**，再看 `git log --oneline -3` 确认在 `cf8c80c`、`git status` 干净。
+2. **别急着改代码**：用户上一轮的原话是「我叫你动手了吗？下次不许了啊」。第一句先问他要做什么，只有他说「开始/改」才动。
+3. 真机在他手上（`10AF941PZJ00AKH`），**默认不碰**；要验 UI 就起模拟器 `mf`。
+4. 当前唯一技术债是 §6 第 1 条那个手势 bug，方案已成型，等他点头。
