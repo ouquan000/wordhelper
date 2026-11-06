@@ -3,7 +3,7 @@
 > 生成时间：2026-11-06 21:30（**1.4.2 已开发完成**，等测试 + 评分，装真机待用户点头）
 > 仓库根：`D:\deepseek harness\work_anki_enligish`
 > 当前 HEAD：见 `git log --oneline -1`；工作区**干净**
-> 提交线：`faf823e` 1.3 → `62cccf9` 1.4 内置 5228 词种子 → `cf8c80c` 调试纪律 → `4ad923d` 交接 → `9689807` 1.4.1preview → `573dc7c` 冻结 1.4.2 验收规格 → `1f4a86d` 清单 schema 契约 → 卡背按清单渲染 / 编辑器 / 本地服务 / 文档（共 10 笔，见 `git log --oneline`）
+> 提交线：`faf823e` 1.3 → `62cccf9` 1.4 内置 5228 词种子 → `cf8c80c` 调试纪律 → `4ad923d` 交接 → `9689807` 1.4.1preview → `573dc7c` 冻结 1.4.2 验收规格 → `1f4a86d` 清单 schema 契约 → 卡背按清单渲染 / 编辑器与服务 / 契约与 README / 版本号与证据 / B6 修复 / exe 打包（完整列表见 `git log --oneline`）
 > 用户手机现装：**1.4.1preview（versionName 1.4.1preview / versionCode 4）**，已用**无线 adb** 接管（见 §4）。`dist/english-app-1.4.2.apk`（versionCode 5）**已出包、只在模拟器验过，还没装真机**
 >
 > ⚠️ **开工 1.4.2 之前先读 [`docs/decisions-1.4.2.md`](docs/decisions-1.4.2.md)** —— 里面是用户逐条拍板的范围、边界、两个按钮的确切位置、动效参数、离线排队规则。用户已经回答过的问题，**不要再问一遍**。
@@ -28,11 +28,11 @@
 - 独立测试 agent 按冻结规格跑完：**98 / 100**（A 30/30 · B 28/30 · C 20/20 · D 15/15 · E 5/5），K1–K5 否决项均未触发。报告 `docs/report-1.4.2-test.md`，证据 `docs/shots/test-1.4.2/`（`artifacts-test/` 是它的临时工作区，160 MB，已 gitignore）。
 - 唯一失分项 **B6**（手机端缺 revision 闸门）已修：`CardBackRepository` 现在「revision 没变大且内容没变」就不写盘、不重渲染，toast 改口「卡背结构已是最新：第 N 版，N 块」；顺手给拉取加了 `Connection: close` + 失败重试一次，压掉测试中约 7% 的偶发「电脑没连上」。
 - 复测（模拟器）：同内容连点两次 → 配置 mtime 不变、toast「已是最新」；发布新版 → mtime 变、toast「已更新」；rollback 回默认 → 与 1.4.1 基线 front 0 px / back 0.0112%（max 4）。
-- **评分 agent 独立复核待跑**（同一份冻结规格，不看测试报告）。
+- **评分 agent 独立复核进行中**（同一份冻结规格、不看测试报告；中途因用户打游戏暂停过一次，2026-11-07 续跑）。
 
 ### 怎么用（用户视角）
 
-双击 `tools/cardback-editor/启动编辑器.bat` → 浏览器开 `http://127.0.0.1:8765/` → 改 → 点发布 → 手机在我「我的」页填 `电脑IP:8765` 保存 → 回词库页点刷新图标。完整说明见 `README.md`「卡背编辑工具」一节。
+双击 `tools/cardback-editor/启动编辑器.bat`（或双击 `dist/exe/卡背编辑器.exe` / 桌面快捷方式「卡背编辑器」，**不需要装 Python**）→ 浏览器开 `http://127.0.0.1:8765/` → 改 → 点发布 → 手机在我「我的」页填 `电脑IP:8765` 保存 → 回词库页点刷新图标。完整说明见 `README.md`「卡背编辑工具」一节。
 
 ### 还没做的
 
@@ -54,8 +54,9 @@
 | `tools/build_seed.py` | 由 `by-word/*.json` 重新生成上面这份种子（纯脚本，零模型） |
 | `dist/english-app-1.3-t20.apk` | 1.3 版 APK（30,723,515 B，versionCode 2） |
 | `dist/english-app-1.4-cet6.apk` | **1.4 版 APK（32,998,851 B，versionCode 3，内置 5228 词）** |
-| `dist/english-app-1.4.2.apk` | **1.4.2 版 APK**（33,048,035 B，versionCode 5 / versionName 1.4.2，含卡背清单 + 编辑器配套） |
-| `tools/cardback-editor/` | 1.4.2 电脑端编辑器：`index.html`/`styles.css`/`app.js`/`samples.js`（零依赖）+ `server.py`（Python3 标准库，8765）+ `启动编辑器.bat`；`published/` 是运行时数据（gitignore） |
+| `dist/english-app-1.4.2.apk` | **1.4.2 版 APK**（33,221,506 B，versionCode 5 / versionName 1.4.2，含卡背清单 + B6 修复） |
+| `tools/cardback-editor/` | 1.4.2 电脑端编辑器：`index.html`/`styles.css`/`app.js`/`samples.js`（零依赖）+ `server.py`（Python3 标准库，8765）+ `启动编辑器.bat` + `build-exe.bat`（重打包 exe）；`published/` 是运行时数据（gitignore） |
+| `dist/exe/卡背编辑器.exe` | **编辑器单文件 exe**（PyInstaller onefile，8.6 MB，免 Python，桌面有快捷方式）；`published/` 落在 exe 同级；不进 git，用 `build-exe.bat` 重建 |
 | `docs/cardback-schema-1.4.2.md` | **卡背清单契约**（JSON 结构、11 种块、6 语义色、字号倍率、动效默认、6 个 HTTP 接口、容错分级） |
 | `docs/test-spec-1.4.2.md` + `.lock` | **冻结的验收规格**（A 外观 30 / B 下发 30 / C 容错 20 / D 编辑器 15 / E 文档 5，K1–K5 否决项），sha256 锁文件 |
 | `docs/testdata/cardback-*.json` | 验收用 5 个清单样本（valid-modern / valid-minimal / invalid-empty-blocks / invalid-schema / unknown-type） |
