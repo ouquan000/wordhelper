@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "book": "六级记忆卡（极简）",
+  "revision": 3,
+  "updatedAt": "2026-11-06T20:31:00+08:00",
+  "blocks": [
+    { "id": "word", "type": "TITLE" },
+    { "id": "mean", "type": "MEANING", "title": "释义" },
+    { "id": "memory", "type": "MEMORY", "title": "记忆思路" }
+  ]
+}

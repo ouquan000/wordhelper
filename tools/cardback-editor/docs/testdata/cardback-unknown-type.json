@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "book": "六级记忆卡（含 1.4.3 预留块）",
+  "revision": 6,
+  "updatedAt": "2026-11-06T20:34:00+08:00",
+  "spacing": 12,
+  "blocks": [
+    { "id": "word", "type": "TITLE", "visible": true, "title": null, "style": null },
+    { "id": "ipa", "type": "PHONETIC", "visible": true, "title": null, "style": null },
+    { "id": "div1", "type": "DIVIDER", "visible": true, "title": null, "style": null },
+    { "id": "mean", "type": "MEANING", "visible": true, "title": "释义", "style": null },
+    { "id": "memory", "type": "MEMORY", "visible": true, "title": "记忆思路", "style": null },
+    { "id": "collocations", "type": "COLLOCATIONS", "visible": true, "title": "常用搭配", "style": null },
+    { "id": "example", "type": "EXAMPLE", "visible": true, "title": "例句", "style": null },
+    { "id": "rewrite", "type": "REWRITE_BUTTON", "visible": true, "title": "重写思路", "style": { "color": "primary", "size": "M" } },
+    { "id": "div2", "type": "DIVIDER", "visible": true, "title": null, "style": null },
+    { "id": "ef", "type": "EF_STATS", "visible": true, "title": "", "style": null }
+  ]
+}

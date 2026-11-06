@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 99,
+  "book": "六级记忆卡",
+  "revision": 5,
+  "updatedAt": "2026-11-06T20:33:00+08:00",
+  "spacing": 12,
+  "blocks": [
+    { "id": "word", "type": "TITLE", "visible": true, "title": null, "style": null },
+    { "id": "mean", "type": "MEANING", "visible": true, "title": "释义", "style": null },
+    { "id": "memory", "type": "MEMORY", "visible": true, "title": "记忆思路", "style": null }
+  ]
+}
