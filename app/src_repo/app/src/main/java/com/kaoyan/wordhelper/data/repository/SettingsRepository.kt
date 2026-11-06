@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.kaoyan.wordhelper.data.model.PronunciationSource
 import com.kaoyan.wordhelper.util.DateUtils
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private const val DEFAULT_NEW_WORDS_LIMIT = 20
@@ -157,6 +158,15 @@ class SettingsRepository(private val context: Context) {
         dataStore.edit { prefs -> prefs[KEY_PLANNED_NEW_WORDS_ENABLED] = enabled }
     }
 
+    /** 已导入的内置种子词库版本号，用于判断要不要重导内容。 */
+    suspend fun cardSeedVersion(): Int {
+        return dataStore.data.map { prefs -> prefs[KEY_CARD_SEED_VERSION] ?: 0 }.first()
+    }
+
+    suspend fun updateCardSeedVersion(version: Int) {
+        dataStore.edit { prefs -> prefs[KEY_CARD_SEED_VERSION] = version }
+    }
+
     suspend fun saveTodayNewWordsPlan(bookId: Long, wordIds: List<Long>) {
         val learningDate = DateUtils.currentLearningDate().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
         val normalizedWordIds = wordIds.distinct().joinToString(separator = ",")
@@ -192,6 +202,7 @@ class SettingsRepository(private val context: Context) {
         private val KEY_NEW_WORDS_SHUFFLE_ENABLED = booleanPreferencesKey("new_words_shuffle_enabled")
         private val KEY_ML_ADAPTIVE_ENABLED = booleanPreferencesKey("ml_adaptive_enabled")
         private val KEY_PLANNED_NEW_WORDS_ENABLED = booleanPreferencesKey("planned_new_words_enabled")
+        private val KEY_CARD_SEED_VERSION = intPreferencesKey("card_seed_version")
         private val KEY_TODAY_NEW_WORDS_PLAN_DATE = stringPreferencesKey("today_new_words_plan_date")
         private val KEY_TODAY_NEW_WORDS_PLAN_BOOK_ID = stringPreferencesKey("today_new_words_plan_book_id")
         private val KEY_TODAY_NEW_WORDS_PLAN_WORD_IDS = stringPreferencesKey("today_new_words_plan_word_ids")

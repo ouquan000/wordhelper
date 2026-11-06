@@ -12,6 +12,8 @@ import com.kaoyan.wordhelper.data.entity.StudyLog
 import com.kaoyan.wordhelper.data.entity.Word
 import com.kaoyan.wordhelper.data.entity.WordEntity
 import com.kaoyan.wordhelper.data.entity.WordMemory
+import com.kaoyan.wordhelper.data.model.CardSeedLoader
+import com.kaoyan.wordhelper.data.model.CardSeedPayload
 import com.kaoyan.wordhelper.data.model.DailyStatsAggregate
 import com.kaoyan.wordhelper.data.model.PresetBookCatalog
 import com.kaoyan.wordhelper.data.model.PresetBookSeed
@@ -103,6 +105,35 @@ class WordRepository(private val database: AppDatabase) {
             bookDao.updateTotalCount(bookId, wordDao.getWordCount(bookId))
             bookId
         }
+    }
+
+    /**
+     * 把内置种子词库落到一本词书里（没有就新建，有就原地更新），返回词书 id。
+     *
+     * 内容与记忆思路按 word_key 去重后 REPLACE 写入，不碰 tb_progress，
+     * 所以重复执行只刷新「词义 / 例句 / 记忆思路 / 搭配」，学习进度不会重置。
+     * 没有任何可用的其他活跃词书时，自动把这本书设为当前词书。
+     */
+    suspend fun ensureCardSeedBook(seed: CardSeedPayload): Long {
+        val bookName = seed.book.trim().ifBlank { CardSeedLoader.DEFAULT_BOOK_NAME }
+        val drafts = CardSeedLoader.toDrafts(seed)
+        if (drafts.isEmpty()) return 0L
+
+        var bookId = 0L
+        database.withTransaction {
+            val existing = bookDao.findByNameAndType(bookName, Book.TYPE_IMPORTED)
+            bookId = existing?.id ?: bookDao.insert(
+                Book(name = bookName, type = Book.TYPE_IMPORTED, totalCount = 0, isActive = false)
+            )
+            upsertDraftsForBook(bookId, drafts)
+            bookDao.updateTotalCount(bookId, wordDao.getWordCount(bookId))
+            val active = bookDao.getActiveBook()
+            if (active == null || active.type == Book.TYPE_NEW_WORDS) {
+                bookDao.deactivateAll()
+                bookDao.activate(bookId)
+            }
+        }
+        return bookId
     }
 
     suspend fun ensurePresetBooks(presetSeeds: List<PresetBookSeed> = PresetBookCatalog.presets) {

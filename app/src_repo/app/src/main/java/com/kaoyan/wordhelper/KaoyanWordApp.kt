@@ -2,6 +2,7 @@ package com.kaoyan.wordhelper
 
 import android.app.Application
 import com.kaoyan.wordhelper.data.database.AppDatabase
+import com.kaoyan.wordhelper.data.model.CardSeedLoader
 import com.kaoyan.wordhelper.data.repository.AIConfigRepository
 import com.kaoyan.wordhelper.data.repository.AIRepository
 import com.kaoyan.wordhelper.data.repository.ForecastRepository
@@ -76,6 +77,14 @@ class KaoyanWordApp : Application() {
             val settings = settingsRepository.settingsFlow.first()
             if (settings.algorithmV4Enabled) {
                 repository.repairMasteredStatusForV4()
+            }
+            // 内置种子词库：首次启动导入，种子 version 变大时原地更新（进度不重置）
+            val cardSeed = CardSeedLoader.load(this@KaoyanWordApp)
+            if (cardSeed != null && cardSeed.version > settingsRepository.cardSeedVersion()) {
+                val seededBookId = repository.ensureCardSeedBook(cardSeed)
+                if (seededBookId > 0L) {
+                    settingsRepository.updateCardSeedVersion(cardSeed.version)
+                }
             }
             val presetSeeds = WordbookFullLoader.loadPresets(this@KaoyanWordApp).getOrNull()
             if (!presetSeeds.isNullOrEmpty()) {
