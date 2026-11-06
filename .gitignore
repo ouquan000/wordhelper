@@ -15,6 +15,9 @@ uz.xml
 # ── 大二进制：APK 不进行版本管理，随 Release/网盘分发 ──
 dist/*.apk
 
+# ── exe 打包产物（9MB，用 tools/cardback-editor/build-exe.bat 重新生成）──
+dist/exe/
+
 # ── 与项目无关的既有目录（工作区里原本就有的东西）──
 cyber-eggs/
 cyber-eggs-20261008.zip

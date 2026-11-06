@@ -35,14 +35,21 @@ from urllib.parse import unquote, urlsplit
 # ---------------------------------------------------------------- 常量
 
 HOST = "0.0.0.0"
-PORT = 8765
+DEFAULT_PORT = 8765
+PORT = DEFAULT_PORT
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# 打包成 exe 后（PyInstaller）：网页文件在解包出来的临时目录里，
+# 而 published/ 要落在 exe 旁边，用户才找得到、才不会每次重装就丢。
+# 直接用 python server.py 跑时，两个目录都是本文件所在目录。
+FROZEN = bool(getattr(sys, "frozen", False))
+BUNDLE_DIR = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.abspath(sys.executable)) if FROZEN else BUNDLE_DIR
+
 PUBLISHED_DIR = os.path.join(BASE_DIR, "published")
 HISTORY_DIR = os.path.join(PUBLISHED_DIR, "history")
 CONFIG_PATH = os.path.join(PUBLISHED_DIR, "cardback.json")
 STATE_PATH = os.path.join(PUBLISHED_DIR, "state.json")
-INDEX_PATH = os.path.join(BASE_DIR, "index.html")
+INDEX_PATH = os.path.join(BUNDLE_DIR, "index.html")
 
 # 契约 §2：1.4.2 手机端认识的 11 种块。
 # REWRITE_BUTTON 是 1.4.3 预留，不在集合里 —— 发布时放行并给 warning。
@@ -802,7 +809,7 @@ class Handler(BaseHTTPRequestHandler):
         rel = unquote(path).lstrip("/")
         if not rel or rel.startswith(".") or "/" in rel or "\\" in rel:
             return None
-        full = os.path.join(BASE_DIR, rel)
+        full = os.path.join(BUNDLE_DIR, rel)
         if not os.path.isfile(full):
             return None
         ext = os.path.splitext(rel)[1].lower()
@@ -955,9 +962,28 @@ def _report_port_busy(exc):
 
 
 def main(argv=None):
-    global LAN_URL
+    global LAN_URL, PORT
 
     args = list(sys.argv[1:] if argv is None else argv)
+
+    # --port 8767 / --port=8767：默认 8765；被占用或要同时开两个时才用得上
+    for i, arg in enumerate(args):
+        value = None
+        if arg == "--port" and i + 1 < len(args):
+            value = args[i + 1]
+        elif arg.startswith("--port="):
+            value = arg.split("=", 1)[1]
+        if value is None:
+            continue
+        try:
+            port = int(value)
+        except ValueError:
+            port = 0
+        if not 1 <= port <= 65535:
+            print("端口不对：%s（要给 1-65535 之间的数字）" % value, flush=True)
+            return 2
+        PORT = port
+
     open_browser = "--no-browser" not in args and "--no-open" not in args
 
     for stream in (sys.stdout, sys.stderr):
