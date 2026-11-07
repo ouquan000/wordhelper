@@ -265,6 +265,22 @@ export MSYS2_ARG_CONV_EXCL='*'
 - **20 词测试书**：`assets/test20_cards.json` 从六级卡抽 20 词（带记忆思路），书名「测试·20词」，只建书不切当前书、可删、删了不复活
 - 完整词库两本没有删；生词本引用随记录清理一起清空
 - 当前 `versionCode 8 / versionName 1.4.3.2`
+- APK：`dist/english-app-1.4.3.2.apk`（33,139,773 B，md5 `e3bd6b57c4fb9a0016aac6ccb5be6183`）
+
+## 1.4.4 方向（尚未开工，等用户拍板）
+
+候选按优先级（详见 `HANDOFF.md` §9）：
+
+1. **批量重写**：按书/筛选一次标记多个词，电脑端队列已支持；解决「5500 词里思路差的很多、一个个点不现实」
+2. **重写记录页完善**：补 `instruction`、按书筛选、批量重试；手机端加入口
+3. **卡背动效接管**：schema 里的 `motion` 参数（820/90/220/72%/-1/1.0015）目前 App 没读
+4. **词书管理**：隐藏/删除两本内置大词库、生词本隐藏开关
+5. **学习记录按书隔离**：`tb_daily_stats` / `tb_study_log` 缺 `book_id`，要 DB 16
+6. **调度算法对照实验**：现有算法 vs FSRS（Anki 4 已采用），只在「测试·20词」上跑影子模式
+   - 参考 [fsrs4anki](https://github.com/open-spaced-repetition/fsrs4anki)、
+     [srs-benchmark](https://github.com/open-spaced-repetition/srs-benchmark)、
+     [Anki 手册](https://docs.ankiweb.net/deck-options.html)
+7. **安全收口**：8765 目前 0.0.0.0 且无鉴权，`/rewrite/marks` 会花模型钱
 
 ## 版本号约定
 
