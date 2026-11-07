@@ -1,0 +1,247 @@
+{
+  "generatedAt": "2026-11-07T04:39:24.118092+00:00",
+  "files": [
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\FakeNetstat.cs",
+      "bytes": 633,
+      "sha256": "96eb6d966bc312f7206bd17695a5b8920d5253aab5638a00981649d3adae0387"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\FakeWB.cs",
+      "bytes": 2001,
+      "sha256": "a6420a1e918b0892725148a20d83dd9f19da00f4ef8f843c40fc9789c1195815"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\final-audit.json",
+      "bytes": 21089,
+      "sha256": "485526719483c12dcc9f21e20896d43c0e9242e4675a4447286cdf614cf45ebd"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\final_inventory.ps1",
+      "bytes": 2087,
+      "sha256": "19acffd2612f1d4bdb9fa30989e899bca36a3f3aa14f58800af46b23dc0ade7e"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\finalize_round2.py",
+      "bytes": 24167,
+      "sha256": "66bfceba6b181c6f23209bb921f87e380e0caa481f7b4dce77dadd469f4a304a"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\fresh-health-stdout.log",
+      "bytes": 3375,
+      "sha256": "11d48b82b141192a207e8095477d49cc02f38f6ccb862a6b7cec71878978df1b"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\g1-default-output.log",
+      "bytes": 175,
+      "sha256": "72cf533eaab53bb29fd388c252bda2116efb1d562beab4f0358b8bdbd3ff3d9f"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\g1-explicit-output.log",
+      "bytes": 92,
+      "sha256": "c0a0bd5fd7ee19d5598078af607a6270241cec45ed7e096ff04de227e687299c"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\g1-results.json",
+      "bytes": 9173,
+      "sha256": "26fcae2a2aa3ed912bc1bd8a3a6d58d2fffe9331540228434d24a9303b3b9e20"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\g1_harness.py",
+      "bytes": 5028,
+      "sha256": "7e5d380500042b6a43aa09248cb97a9f6914d60a3bcab21141d6b53da963b881"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\health-supplement-evidence.jsonl",
+      "bytes": 50298,
+      "sha256": "29be541a1752c6abe8582fc42a270291541913b07d040dbe34ba681a041bfb20"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\health-supplement-results.json",
+      "bytes": 74052,
+      "sha256": "9736772584a84c1ac90ba8b13b4c4bdb291fef826d3934ea85f2e6f1d5c94c91"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\health_supplement.py",
+      "bytes": 4803,
+      "sha256": "55e9ab1807d1e8ff4d9d97318627ae14d9c6590fc7d4396c1481b7cb7d5e6ed8"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\inventory.ps1",
+      "bytes": 918,
+      "sha256": "30006ab3d93a8372343233fcf96262ff333240d56d9ad44faf481d53c11c0718"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\launcher-v3-evidence.jsonl",
+      "bytes": 18582,
+      "sha256": "cf8f1ad361020b323a8738ff2c09081f4a9f685b95c2855368b12d24c598ff30"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\launcher-v3-results.json",
+      "bytes": 20188,
+      "sha256": "3746d4de6d0530caa3bf51e727ed89b2878a64d07971b076bbc3ab71a7751e6b"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\launcher-v3-router-output.log",
+      "bytes": 382,
+      "sha256": "2e40a28f692c37443baa113fb43ba6b4927b240955717dea54acd475f2dd5484"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\launcher_v3.py",
+      "bytes": 8931,
+      "sha256": "6378d86cc1c7dd1d9941f410fcb8692179e14a2e1f015ad2a2f94b889f3c64fa"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\live-g2-results.json",
+      "bytes": 27576,
+      "sha256": "3637aeb97b8b707ac02e5fbfcd6e6b34f7ce2510f37b7a738039d08a9fa7b1d2"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\live_g2.py",
+      "bytes": 6608,
+      "sha256": "62cf5a94456b1c907756f04e108794820338cabd98027b70372fc6fc54241dd0"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\own_children_check.ps1",
+      "bytes": 605,
+      "sha256": "f5bbe4b20f9b038d2451a29f10e4dc8627fa360b669fdd86b8864198ba78230b"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\policy-offline-True-stdout.log",
+      "bytes": 920,
+      "sha256": "8824e694c823657e127d53c90f9c539373bdd7120fd948a22f4c5127e0db8ece"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\policy-online-False-stdout.log",
+      "bytes": 919,
+      "sha256": "c6ed5a0e9cd40ed208b7d369e389312eb0ee74bd2e69959db6c1be861546d45b"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\prepare_launcher_v3.py",
+      "bytes": 1600,
+      "sha256": "4136a34eee84f30f1ae116f7cfcb29ca63e8a8dec6d9b56d854c1280dbad2fb8"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\prepare_script_v2.py",
+      "bytes": 971,
+      "sha256": "5d76398813247279ed3e624bf51a61b0223c659bfdbe2e7259b8cc5556463a6f"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\qq-both-directions-stdout.log",
+      "bytes": 372,
+      "sha256": "a8a723a3b977b19b377ef2a31e134bf8cf49332f8bad4192cb1ec2cc6994e7ec"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\qq-transition-stdout.log",
+      "bytes": 356,
+      "sha256": "259c74bd01ec5212d95bbe1509957ff12b241ba2782b7b0292d5725dd4948973"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\round2-report.md",
+      "bytes": 16774,
+      "sha256": "b9f9574e5949109d81a6b0b175a487f911d2096eda9e1fea51c3ac2d35cb4038"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\router-evidence.jsonl",
+      "bytes": 106787,
+      "sha256": "353fb8227394b8e41bd5db021ce13c9d323d55cc2071c514b8be463500a1608a"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\router-mock-events.json",
+      "bytes": 57230,
+      "sha256": "9017b7b146779a135fc8cfc10720c692ad3abad0cd9bd2dbe2e53870625b371d"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\router-results.json",
+      "bytes": 153667,
+      "sha256": "87dfc826d7fbd3ed4de547092339d5fdf4db4b4d604832ab67fe9812f3be6623"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\router_harness.py",
+      "bytes": 15760,
+      "sha256": "1701323b1196c32cf7c21a41c2857128c778482e51535b2ce8719fde8ef98844"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\routing-stdout.log",
+      "bytes": 8687,
+      "sha256": "4a92d71d7f04e313042b16242edda28400b0aa5ba5487bb5b0af61ee607352aa"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\run-bot-fake-output.log",
+      "bytes": 70,
+      "sha256": "f0b935a9f901f351f484d98c4607b2de5da744b03ab30e7ae1565e2f5ac3b5bb"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\run-fake-output.log",
+      "bytes": 70,
+      "sha256": "1e61a7c499b805b9bfc04adae0ce84ff46bbc900ef4897556e629c179e5760b7"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\score.json",
+      "bytes": 398332,
+      "sha256": "0df1378fed831790072e93096dcbe5099b6d9c9e3e9bcd6afe11b1ab752f8816"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\script-evidence.jsonl",
+      "bytes": 8155,
+      "sha256": "a94b10e8a0a37318405e0dd8deeab5fc4972d97205d0ad1e5585cbb2a05c6955"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\script-results.json",
+      "bytes": 9472,
+      "sha256": "d232e422352f15485f5172a168dd07fb8fe9d2736302bae69bf68ed39b926de3"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\script-v2-evidence.jsonl",
+      "bytes": 122334,
+      "sha256": "e3b05c22c45d3f36b49b31bde821b3f607a790a8a8ed6071a14463eda576fd89"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\script-v2-results.json",
+      "bytes": 128509,
+      "sha256": "e4c0fc21a82a260aa4e463d46cb2fe5d38fdbd8a8e9da59925c9e6111e606c7e"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\script_harness.py",
+      "bytes": 10903,
+      "sha256": "2f9b582bcc5e5b205b1dd2fc8fb1a3e47cd5e96fa6dd125244f19a2fd4ebbc7e"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\script_harness_v2.py",
+      "bytes": 11041,
+      "sha256": "c2e2d8029d7d2db0b2b4b99be102fecd7b04d74119e8c2444f01aa8761cd517c"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\script_library.ps1",
+      "bytes": 6435,
+      "sha256": "d36760b16e4891b199348c286ea0f704f0ab0f09c92d2eb3471d86d57f6610e3"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scripts-router-output.log",
+      "bytes": 567,
+      "sha256": "1aa1ae85c2f19edccea73458abfd2f360dfda3c75c87cf83668daf78296b6717"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\v3-run-bot-fake-output.log",
+      "bytes": 35,
+      "sha256": "27125c0bae045bb0cb8fbc4712e247a0cc1684786536a289b93267c26a1234f0"
+    },
+    {
+      "path": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\v3-run-fake-output.log",
+      "bytes": 35,
+      "sha256": "8c58dd64ba7d4ab506188c0000cf7c464eaa925d930e61a0cdc26c0cb09acd60"
+    }
+  ],
+  "sourceOnlyAllowedInputs": [
+    "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\acceptance-spec.md",
+    "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\acceptance-spec.lock",
+    "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\artifact-manifest.json",
+    "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate",
+    "C:/temp/stub-rewrite.py",
+    "production four approved targets; in-memory router keys; GET whitelist; own round2 artifacts"
+  ],
+  "finalSpecRecheck": {
+    "spec": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b"
+  }
+}

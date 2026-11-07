@@ -13,6 +13,7 @@ import com.kaoyan.wordhelper.data.dao.EarlyReviewDao
 import com.kaoyan.wordhelper.data.dao.ForecastCacheDao
 import com.kaoyan.wordhelper.data.dao.NewWordRefDao
 import com.kaoyan.wordhelper.data.dao.ProgressDao
+import com.kaoyan.wordhelper.data.dao.RewriteQueueDao
 import com.kaoyan.wordhelper.data.dao.StudyLogDao
 import com.kaoyan.wordhelper.data.dao.WordDao
 import com.kaoyan.wordhelper.data.dao.WordMemoryDao
@@ -32,6 +33,7 @@ import com.kaoyan.wordhelper.data.entity.EarlyReviewRef
 import com.kaoyan.wordhelper.data.entity.ForecastCache
 import com.kaoyan.wordhelper.data.entity.NewWordRef
 import com.kaoyan.wordhelper.data.entity.Progress
+import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
 import com.kaoyan.wordhelper.data.entity.StudyLog
 import com.kaoyan.wordhelper.data.model.PresetBookCatalog
 import com.kaoyan.wordhelper.data.model.WordDraft
@@ -55,9 +57,10 @@ import kotlinx.coroutines.launch
         MLModelState::class,
         TrainingSample::class,
         WordMLStats::class,
-        WordMemory::class
+        WordMemory::class,
+        RewriteQueueItem::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -75,6 +78,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun trainingSampleDao(): TrainingSampleDao
     abstract fun wordMLStatsDao(): WordMLStatsDao
     abstract fun wordMemoryDao(): WordMemoryDao
+    abstract fun rewriteQueueDao(): RewriteQueueDao
 
     companion object {
         @Volatile
@@ -105,7 +109,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_10_11,
                     MIGRATION_11_12,
                     MIGRATION_12_13,
-                    MIGRATION_13_14
+                    MIGRATION_13_14,
+                    MIGRATION_14_15
                 )
                 .build()
         }
@@ -648,6 +653,38 @@ abstract class AppDatabase : RoomDatabase() {
                         FOREIGN KEY(word_id) REFERENCES tb_word(id) ON UPDATE NO ACTION ON DELETE CASCADE
                     )
                     """.trimIndent()
+                )
+            }
+        }
+
+        /**
+         * 1.4.3：记忆思路支持「来源 / 版本 / 上一版」，并新增重写标记队列。
+         * 老数据全部视为 seed，rev=0，没有可撤销版本。
+         */
+        @VisibleForTesting
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureColumnExists(db, "tb_word_memory", "source", "TEXT NOT NULL DEFAULT 'seed'")
+                ensureColumnExists(db, "tb_word_memory", "rev", "INTEGER NOT NULL DEFAULT 0")
+                ensureColumnExists(db, "tb_word_memory", "prev_approach", "TEXT")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS tb_rewrite_queue (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        word_id INTEGER NOT NULL,
+                        word TEXT NOT NULL,
+                        instruction TEXT NOT NULL,
+                        model TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        error TEXT,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_tb_rewrite_queue_word_id " +
+                        "ON tb_rewrite_queue (word_id)"
                 )
             }
         }

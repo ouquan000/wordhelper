@@ -74,6 +74,7 @@ fun ProfileScreen(
     val stats by viewModel.stats.collectAsStateWithLifecycle()
     val aiLabSummary by viewModel.aiLabSummary.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val rewritePendingCount by viewModel.rewritePendingCount.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var statsVisible by remember { mutableStateOf(false) }
     var dataVisible by remember { mutableStateOf(false) }
@@ -200,6 +201,7 @@ fun ProfileScreen(
                         darkMode = settings.darkMode,
                         plannedNewWordsEnabled = settings.plannedNewWordsEnabled,
                         cardBackUrl = settings.cardBackUrl,
+                        rewritePendingCount = rewritePendingCount,
                         onNewWordsLimitChange = viewModel::updateNewWordsLimit,
                         onFontScaleChange = viewModel::updateFontScale,
                         onDarkModeChange = viewModel::updateDarkMode,
@@ -362,6 +364,7 @@ private fun SettingsCard(
     darkMode: DarkMode,
     plannedNewWordsEnabled: Boolean,
     cardBackUrl: String,
+    rewritePendingCount: Int,
     onNewWordsLimitChange: (Int) -> Unit,
     onFontScaleChange: (Float) -> Unit,
     onDarkModeChange: (DarkMode) -> Unit,
@@ -469,6 +472,13 @@ private fun SettingsCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (rewritePendingCount > 0) {
+                    Text(
+                        text = "还有 $rewritePendingCount 条重写思路在等电脑处理",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }

@@ -1,0 +1,12 @@
+﻿{
+    "root":  "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452",
+    "before":  {
+                   "ProcessId":  33156,
+                   "ParentProcessId":  44788,
+                   "ExecutablePath":  "C:\\Windows\\system32\\wscript.exe",
+                   "CommandLine":  "\"C:\\Windows\\system32\\wscript.exe\" //B \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover\\run\\start-silent.vbs\" ",
+                   "CreationDate":  "\/Date(1794024432119)\/"
+               },
+    "action":  "stopped-only-own-confirmed-wscript",
+    "afterPresent":  false
+}

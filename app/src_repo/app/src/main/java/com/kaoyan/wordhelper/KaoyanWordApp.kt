@@ -8,6 +8,7 @@ import com.kaoyan.wordhelper.data.repository.AIRepository
 import com.kaoyan.wordhelper.data.repository.CardBackRepository
 import com.kaoyan.wordhelper.data.repository.ForecastRepository
 import com.kaoyan.wordhelper.data.repository.PronunciationRepository
+import com.kaoyan.wordhelper.data.repository.RewriteRepository
 import com.kaoyan.wordhelper.data.repository.SettingsRepository
 import com.kaoyan.wordhelper.data.repository.WordRepository
 import com.kaoyan.wordhelper.ml.core.PersonalRetentionPredictor
@@ -43,6 +44,16 @@ class KaoyanWordApp : Application() {
     /** 卡背结构清单（1.4.2）：只读文件 + 网络，不碰数据库。 */
     val cardBackRepository: CardBackRepository by lazy {
         CardBackRepository(this, settingsRepository)
+    }
+
+    /** 重写记忆思路（1.4.3）：本地标记队列 + 电脑端同步，绝不直接调模型。 */
+    val rewriteRepository: RewriteRepository by lazy {
+        RewriteRepository(
+            settingsRepository = settingsRepository,
+            wordDao = database.wordDao(),
+            wordMemoryDao = database.wordMemoryDao(),
+            queueDao = database.rewriteQueueDao()
+        )
     }
 
     val aiConfigRepository: AIConfigRepository by lazy {
@@ -98,6 +109,24 @@ class KaoyanWordApp : Application() {
             if (!presetSeeds.isNullOrEmpty()) {
                 repository.ensurePresetBooks(presetSeeds)
             }
+            // 1.4.3.2：一次性清空学习记录（进度/复习/新词引用/统计/日志/ML 样本/生词本），
+            // 只在升级后第一次启动执行一次，之后正常背词不会被清。
+            if (!settingsRepository.cleanup132Done()) {
+                repository.resetStudyRecords()
+                settingsRepository.clearTodayNewWordsPlan()
+                settingsRepository.markCleanup132Done()
+            }
+            // 1.4.3.2：20 词测试书，只建书不切换；导入过一次就不再自动建（删了也不复活）。
+            val testSeed = CardSeedLoader.loadTest(this@KaoyanWordApp)
+            if (testSeed != null && testSeed.version > settingsRepository.testDeckVersion()) {
+                val testBookId = repository.ensureTestDeck(testSeed)
+                if (testBookId > 0L) {
+                    settingsRepository.updateTestDeckVersion(testSeed.version)
+                }
+            }
+            // 重写思路：等种子导完再拉结果。换机/清数据后本地没有任何标记，
+            // 靠这一步把电脑端的历史改写恢复回来（查不到词的条目会留到下次同步）。
+            runCatching { rewriteRepository.sync() }
             // ML模型初始化
             if (settings.mlAdaptiveEnabled) {
                 initializeMLEngine()

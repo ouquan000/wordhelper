@@ -1,0 +1,147 @@
+{
+  "startedAt": "2026-11-07T11:49:28.324709+08:00",
+  "tester": "independent-round1",
+  "productionRequests": [],
+  "adapters": [
+    "CMD powershell.exe PATH adapter preserves helper arguments and remaps only ports; hardcoded sanitizer call is recorded with simulated return codes, never executed on production paths.",
+    "Full guard uses exact frozen guard plus exact helper imported through high-port definitions and WaitSeconds trace adapter. Native Get-NetTCPConnection, Get-CimInstance, HTTP, WScript starters remain real."
+  ],
+  "hashesBegin": {
+    "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+    "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+    "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+    "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+  },
+  "fatal": {
+    "type": "RuntimeError",
+    "message": "independent library tests failed"
+  },
+  "hashesEnd": {
+    "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+    "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+    "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+    "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+  },
+  "endedAt": "2026-11-07T11:49:29.240574+08:00",
+  "cases": [
+    {
+      "name": "G34-begin-freeze-hashes",
+      "group": "freeze",
+      "passed": true,
+      "detail": {
+        "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+        "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+        "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+        "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+        "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+        "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+      }
+    },
+    {
+      "name": "native-fixture-compile",
+      "group": "harness",
+      "passed": true,
+      "detail": {
+        "exitCode": 0,
+        "output": ""
+      }
+    },
+    {
+      "name": "library-native-WinPS51-run",
+      "group": "harness",
+      "passed": false,
+      "detail": {
+        "exitCode": 1,
+        "output": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\g34-library-independent.ps1 : �޷���֤��\r\n��������Ϊֵ fake ���Ǳ��� Service ����Чֵ��\r\n    + CategoryInfo          : MetadataError: (:) [g34-library-independent.ps1], ValidationMetadataException\r\n    + FullyQualifiedErrorId : ValidateSetFailure,g34-library-independent.ps1\r\n \r\n"
+      }
+    },
+    {
+      "name": "harness-completed",
+      "group": "harness",
+      "passed": false,
+      "detail": {
+        "type": "RuntimeError",
+        "message": "independent library tests failed"
+      }
+    },
+    {
+      "name": "G34-end-freeze-hashes",
+      "group": "freeze",
+      "passed": true,
+      "detail": {
+        "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+        "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+        "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+        "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+        "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+        "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+      }
+    },
+    {
+      "name": "G34-all-isolated-fixture-ports-closed",
+      "group": "cleanup",
+      "passed": true,
+      "detail": {
+        "ports": []
+      }
+    },
+    {
+      "name": "G34-owned-process-handles-exited",
+      "group": "cleanup",
+      "passed": true,
+      "detail": []
+    },
+    {
+      "name": "G34-temporary-runtime-removed",
+      "group": "cleanup",
+      "passed": true,
+      "detail": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-38024"
+    }
+  ],
+  "commands": [
+    {
+      "label": "compile-independent-native-fixture",
+      "argv": [
+        "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe",
+        "/nologo",
+        "/target:exe",
+        "/r:System.Web.Extensions.dll",
+        "/out:D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-38024\\fixture.exe",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\IndependentWbFixture.cs"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish",
+      "exitCode": 0,
+      "elapsedMs": 235,
+      "output": ""
+    },
+    {
+      "label": "independent-library-matrix",
+      "argv": [
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\g34-library-independent.ps1",
+        "-CandidateDir",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate",
+        "-Scratch",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-38024\\library-cases",
+        "-Evidence",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\g34-library-evidence.json"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish",
+      "exitCode": 1,
+      "elapsedMs": 672,
+      "output": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\g34-library-independent.ps1 : �޷���֤��\r\n��������Ϊֵ fake ���Ǳ��� Service ����Чֵ��\r\n    + CategoryInfo          : MetadataError: (:) [g34-library-independent.ps1], ValidationMetadataException\r\n    + FullyQualifiedErrorId : ValidateSetFailure,g34-library-independent.ps1\r\n \r\n"
+    }
+  ],
+  "cleanup": [],
+  "ownedProcesses": [],
+  "scenarioPorts": {}
+}

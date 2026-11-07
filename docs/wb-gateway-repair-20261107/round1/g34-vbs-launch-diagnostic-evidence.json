@@ -1,0 +1,43 @@
+{
+  "hashesBegin": {
+    "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+    "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+    "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+    "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+  },
+  "vbsSource": "Option Explicit\r\nDim shell\r\nSet shell = CreateObject(\"WScript.Shell\")\r\nshell.Run \"\"\"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-41772\\vbs-launch-diagnostic\\run\\wb2api.exe\"\" -config \"\"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-41772\\vbs-launch-diagnostic\\run\\config.json\"\"\", 0, False\r\n",
+  "vbsHex": "4f7074696f6e204578706c696369740d0a44696d207368656c6c0d0a536574207368656c6c203d204372656174654f626a6563742822575363726970742e5368656c6c22290d0a7368656c6c2e52756e20222222443a5c646565707365656b206861726e6573735c776f726b5f616e6b695f656e6c69676973685c646f63735c77622d676174657761792d7265706169722d32303236313130375c726f756e64315c2e72756e74696d652d6733342d34313737325c7662732d6c61756e63682d646961676e6f737469635c72756e5c7762326170692e6578652222202d636f6e666967202222443a5c646565707365656b206861726e6573735c776f726b5f616e6b695f656e6c69676973685c646f63735c77622d676174657761792d7265706169722d32303236313130375c726f756e64315c2e72756e74696d652d6733342d34313737325c7662732d6c61756e63682d646961676e6f737469635c72756e5c636f6e6669672e6a736f6e2222222c20302c2046616c73650d0a",
+  "error": {
+    "type": "TimeoutExpired",
+    "message": "Command '['C:\\\\Windows\\\\System32\\\\cscript.exe', '//nologo', 'D:\\\\deepseek harness\\\\work_anki_enligish\\\\docs\\\\wb-gateway-repair-20261107\\\\round1\\\\.runtime-g34-41772\\\\vbs-launch-diagnostic\\\\run\\\\start-silent.vbs']' timed out after 8 seconds"
+  },
+  "commands": [
+    {
+      "label": "command",
+      "argv": [
+        "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe",
+        "/nologo",
+        "/target:exe",
+        "/r:System.Web.Extensions.dll",
+        "/out:D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-41772\\fixture.exe",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\IndependentWbFixture.cs"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish",
+      "exitCode": 0,
+      "elapsedMs": 156,
+      "output": ""
+    }
+  ],
+  "cleanup": [],
+  "hashesEnd": {
+    "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+    "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+    "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+    "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+  },
+  "scratchRemoved": true
+}

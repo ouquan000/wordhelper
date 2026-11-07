@@ -1,0 +1,607 @@
+{
+  "startedAt": "2026-11-07T12:12:06.015599+08:00",
+  "checks": [
+    {
+      "name": "begin-spec-lock-exact",
+      "passed": true,
+      "detail": {
+        "spec": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+        "lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+        "candidates": {
+          "start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+          "wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+          "wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+          "wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512"
+        }
+      }
+    },
+    {
+      "name": "main-entry-health-8790",
+      "passed": true,
+      "detail": {
+        "method": "GET",
+        "port": 8790,
+        "path": "/healthz",
+        "authenticated": false,
+        "status": 200,
+        "bytes": 92,
+        "bodySha256": "57a1ad524a8fc17ae954ee615c3a9eaa2fa993fddd33b10f14fc1d899899d33f",
+        "elapsedMs": 15,
+        "json": {
+          "healthy": 7,
+          "realm_servable": {
+            "cn": true,
+            "global": true
+          },
+          "service": "workbuddy2api",
+          "total": 7
+        }
+      }
+    },
+    {
+      "name": "main-entry-health-8788",
+      "passed": true,
+      "detail": {
+        "method": "GET",
+        "port": 8788,
+        "path": "/healthz",
+        "authenticated": false,
+        "status": 200,
+        "bytes": 92,
+        "bodySha256": "57a1ad524a8fc17ae954ee615c3a9eaa2fa993fddd33b10f14fc1d899899d33f",
+        "elapsedMs": 0,
+        "json": {
+          "healthy": 7,
+          "realm_servable": {
+            "cn": true,
+            "global": true
+          },
+          "service": "workbuddy2api",
+          "total": 7
+        }
+      }
+    },
+    {
+      "name": "aux-health-original-one",
+      "passed": true,
+      "detail": {
+        "method": "GET",
+        "port": 8789,
+        "path": "/healthz",
+        "authenticated": false,
+        "status": 200,
+        "bytes": 93,
+        "bodySha256": "04991bec9809a61fb8036f4734ac07e6f4e2335c1897085e96f51215f029c734",
+        "elapsedMs": 16,
+        "json": {
+          "healthy": 1,
+          "realm_servable": {
+            "cn": true,
+            "global": false
+          },
+          "service": "workbuddy2api",
+          "total": 1
+        }
+      }
+    },
+    {
+      "name": "authenticated-model-ID-sets-equal",
+      "passed": true,
+      "detail": {
+        "mainCount": 75,
+        "entryCount": 75,
+        "countIsObservation": true,
+        "onlyMain": [],
+        "onlyEntry": []
+      }
+    },
+    {
+      "name": "entry-panel-200",
+      "passed": true,
+      "detail": {
+        "method": "GET",
+        "port": 8788,
+        "path": "/panel/",
+        "authenticated": false,
+        "status": 200,
+        "bytes": 109357,
+        "bodySha256": "73bc98ea8d216566537042abf901f439ab6015aadc717b605e0238cfb592dc40",
+        "elapsedMs": 16,
+        "contentType": "text/html; charset=utf-8"
+      }
+    },
+    {
+      "name": "entry-status-200",
+      "passed": true,
+      "detail": {
+        "method": "GET",
+        "port": 8788,
+        "path": "/_router/status",
+        "authenticated": false,
+        "status": 200,
+        "bytes": 687,
+        "bodySha256": "e0e30581fe58c8ccd619234f9b0b63267789a6bce639d9148691539e4bd3dcb2",
+        "elapsedMs": 15,
+        "topLevelFields": [
+          "aux",
+          "changedAt",
+          "counters",
+          "hold",
+          "main",
+          "qq",
+          "state",
+          "stateMeaning",
+          "weight"
+        ]
+      }
+    },
+    {
+      "name": "original-pool-identity-preserved-8790",
+      "passed": true,
+      "detail": {
+        "baseline": {
+          "port": 8790,
+          "address": "::",
+          "pid": 38084,
+          "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+          "created": "2026-11-07T11:10:53.3877780+08:00",
+          "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json "
+        },
+        "final": {
+          "port": 8790,
+          "pid": 38084,
+          "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+          "created": "2026-11-07T11:10:53.3877780+08:00",
+          "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json "
+        }
+      }
+    },
+    {
+      "name": "original-pool-identity-preserved-8789",
+      "passed": true,
+      "detail": {
+        "baseline": {
+          "port": 8789,
+          "address": "::",
+          "pid": 29624,
+          "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+          "created": "2026-11-06T16:57:05.1653160+08:00",
+          "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json "
+        },
+        "final": {
+          "port": 8789,
+          "pid": 29624,
+          "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+          "created": "2026-11-06T16:57:05.1653160+08:00",
+          "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json "
+        }
+      }
+    },
+    {
+      "name": "read-window-entry-identity-stable",
+      "passed": true,
+      "detail": {
+        "before": [
+          {
+            "port": 8790,
+            "pid": 38084,
+            "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+            "created": "2026-11-07T11:10:53.3877780+08:00",
+            "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json "
+          },
+          {
+            "port": 8789,
+            "pid": 29624,
+            "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+            "created": "2026-11-06T16:57:05.1653160+08:00",
+            "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json "
+          },
+          {
+            "port": 8788,
+            "pid": 10576,
+            "exe": "C:\\Program Files\\nodejs\\node.exe",
+            "created": "2026-11-06T16:54:20.7556520+08:00",
+            "commandLine": "\"C:\\Program Files\\nodejs\\node.exe\"  \"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js\" "
+          }
+        ],
+        "after": [
+          {
+            "port": 8790,
+            "pid": 38084,
+            "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+            "created": "2026-11-07T11:10:53.3877780+08:00",
+            "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json "
+          },
+          {
+            "port": 8789,
+            "pid": 29624,
+            "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+            "created": "2026-11-06T16:57:05.1653160+08:00",
+            "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json "
+          },
+          {
+            "port": 8788,
+            "pid": 10576,
+            "exe": "C:\\Program Files\\nodejs\\node.exe",
+            "created": "2026-11-06T16:54:20.7556520+08:00",
+            "commandLine": "\"C:\\Program Files\\nodejs\\node.exe\"  \"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js\" "
+          }
+        ]
+      }
+    },
+    {
+      "name": "no-owned-isolated-fixture-processes",
+      "passed": true,
+      "detail": []
+    },
+    {
+      "name": "read-only-router-config-unchanged",
+      "passed": true,
+      "detail": {
+        "sha256": "21216097818995b03baf7945bb4ff0507422ae1c8275e5bc4f9a0b38692f1cd2"
+      }
+    },
+    {
+      "name": "end-spec-lock-candidates-exact",
+      "passed": true,
+      "detail": {
+        "spec": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+        "lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+        "candidates": {
+          "start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+          "wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+          "wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+          "wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512"
+        }
+      }
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "port": 8790,
+      "path": "/healthz",
+      "authenticated": false,
+      "status": 200,
+      "bytes": 92,
+      "bodySha256": "57a1ad524a8fc17ae954ee615c3a9eaa2fa993fddd33b10f14fc1d899899d33f",
+      "elapsedMs": 15,
+      "json": {
+        "healthy": 7,
+        "realm_servable": {
+          "cn": true,
+          "global": true
+        },
+        "service": "workbuddy2api",
+        "total": 7
+      }
+    },
+    {
+      "method": "GET",
+      "port": 8788,
+      "path": "/healthz",
+      "authenticated": false,
+      "status": 200,
+      "bytes": 92,
+      "bodySha256": "57a1ad524a8fc17ae954ee615c3a9eaa2fa993fddd33b10f14fc1d899899d33f",
+      "elapsedMs": 0,
+      "json": {
+        "healthy": 7,
+        "realm_servable": {
+          "cn": true,
+          "global": true
+        },
+        "service": "workbuddy2api",
+        "total": 7
+      }
+    },
+    {
+      "method": "GET",
+      "port": 8789,
+      "path": "/healthz",
+      "authenticated": false,
+      "status": 200,
+      "bytes": 93,
+      "bodySha256": "04991bec9809a61fb8036f4734ac07e6f4e2335c1897085e96f51215f029c734",
+      "elapsedMs": 16,
+      "json": {
+        "healthy": 1,
+        "realm_servable": {
+          "cn": true,
+          "global": false
+        },
+        "service": "workbuddy2api",
+        "total": 1
+      }
+    },
+    {
+      "method": "GET",
+      "port": 8790,
+      "path": "/v1/models",
+      "authenticated": true,
+      "status": 200,
+      "bytes": 34124,
+      "bodySha256": "817187dbc84862d9a815a74631049b17cb68161e7e115bdbab5c10b895d79c06",
+      "elapsedMs": 719,
+      "modelIds": [
+        "cn:auto",
+        "cn:balanced-model",
+        "cn:deep-model",
+        "cn:deepseek-r1-0528",
+        "cn:deepseek-r1-0528-lkeap",
+        "cn:deepseek-v3-0324",
+        "cn:deepseek-v3-0324-lkeap",
+        "cn:deepseek-v3-1",
+        "cn:deepseek-v3-1-lkeap",
+        "cn:deepseek-v3-1-volc",
+        "cn:deepseek-v3-2-volc",
+        "cn:deepseek-v4-flash",
+        "cn:deepseek-v4-pro",
+        "cn:deepseek-v4.1-flash",
+        "cn:default-1.1",
+        "cn:default-1.2",
+        "cn:fast-model",
+        "cn:glm-4.6",
+        "cn:glm-4.6v",
+        "cn:glm-5.0-turbo",
+        "cn:glm-5.2",
+        "cn:glm-5.3",
+        "cn:glm-5.3-flash",
+        "cn:hunyuan-2.0-instruct",
+        "cn:hunyuan-chat",
+        "cn:hunyuan-image-alpha",
+        "cn:hunyuan-image-alpha-edit",
+        "cn:hy3",
+        "cn:hy3-b",
+        "cn:hy3-c",
+        "cn:hy3-x",
+        "cn:hy4-preview-ctrl",
+        "cn:hy4-preview-exp",
+        "cn:hy4-preview-f",
+        "cn:hy4-preview-x",
+        "cn:hy4free",
+        "cn:hy4preview-exp1",
+        "cn:hy4preview-exp2",
+        "cn:hy4std",
+        "cn:kimi-k2-instruct-taiji",
+        "cn:kimi-k2-thinking",
+        "cn:kimi-k2.5",
+        "cn:kimi-k2.8-preview",
+        "cn:kimi-k3-1",
+        "cn:kimi-k3.1-pro",
+        "cn:mimo-v2.6-pro",
+        "cn:minimax-m2.5",
+        "cn:minimax-m2.7",
+        "cn:minimax-m3.1-flash",
+        "cn:space-bunny",
+        "cn:step-5-preview",
+        "cn:wb-lite",
+        "global:deepseek-v4.1-flash-sg",
+        "global:default-model",
+        "global:gemini-3.8-flash",
+        "global:glm-5.3",
+        "global:glm-5.3-flash",
+        "global:gpt-5.6-luna",
+        "global:gpt-5.6-sol",
+        "global:gpt-5.6-terra",
+        "global:gpt-6-astra",
+        "global:gpt-6-luna",
+        "global:gpt-6-sol",
+        "global:gpt-6.1-sol",
+        "global:grok-4.7",
+        "global:hy-image-3.5",
+        "global:hy3",
+        "global:hy4-preview-f",
+        "global:hy4free",
+        "global:hy4std",
+        "global:kimi-k3",
+        "global:kimi-k3.1-pro",
+        "global:kimi-k3.1-pro-highspeed",
+        "global:max-model",
+        "global:minimax-m3.1-flash"
+      ],
+      "count": 75,
+      "valid": true
+    },
+    {
+      "method": "GET",
+      "port": 8788,
+      "path": "/v1/models",
+      "authenticated": true,
+      "status": 200,
+      "bytes": 34124,
+      "bodySha256": "817187dbc84862d9a815a74631049b17cb68161e7e115bdbab5c10b895d79c06",
+      "elapsedMs": 31,
+      "modelIds": [
+        "cn:auto",
+        "cn:balanced-model",
+        "cn:deep-model",
+        "cn:deepseek-r1-0528",
+        "cn:deepseek-r1-0528-lkeap",
+        "cn:deepseek-v3-0324",
+        "cn:deepseek-v3-0324-lkeap",
+        "cn:deepseek-v3-1",
+        "cn:deepseek-v3-1-lkeap",
+        "cn:deepseek-v3-1-volc",
+        "cn:deepseek-v3-2-volc",
+        "cn:deepseek-v4-flash",
+        "cn:deepseek-v4-pro",
+        "cn:deepseek-v4.1-flash",
+        "cn:default-1.1",
+        "cn:default-1.2",
+        "cn:fast-model",
+        "cn:glm-4.6",
+        "cn:glm-4.6v",
+        "cn:glm-5.0-turbo",
+        "cn:glm-5.2",
+        "cn:glm-5.3",
+        "cn:glm-5.3-flash",
+        "cn:hunyuan-2.0-instruct",
+        "cn:hunyuan-chat",
+        "cn:hunyuan-image-alpha",
+        "cn:hunyuan-image-alpha-edit",
+        "cn:hy3",
+        "cn:hy3-b",
+        "cn:hy3-c",
+        "cn:hy3-x",
+        "cn:hy4-preview-ctrl",
+        "cn:hy4-preview-exp",
+        "cn:hy4-preview-f",
+        "cn:hy4-preview-x",
+        "cn:hy4free",
+        "cn:hy4preview-exp1",
+        "cn:hy4preview-exp2",
+        "cn:hy4std",
+        "cn:kimi-k2-instruct-taiji",
+        "cn:kimi-k2-thinking",
+        "cn:kimi-k2.5",
+        "cn:kimi-k2.8-preview",
+        "cn:kimi-k3-1",
+        "cn:kimi-k3.1-pro",
+        "cn:mimo-v2.6-pro",
+        "cn:minimax-m2.5",
+        "cn:minimax-m2.7",
+        "cn:minimax-m3.1-flash",
+        "cn:space-bunny",
+        "cn:step-5-preview",
+        "cn:wb-lite",
+        "global:deepseek-v4.1-flash-sg",
+        "global:default-model",
+        "global:gemini-3.8-flash",
+        "global:glm-5.3",
+        "global:glm-5.3-flash",
+        "global:gpt-5.6-luna",
+        "global:gpt-5.6-sol",
+        "global:gpt-5.6-terra",
+        "global:gpt-6-astra",
+        "global:gpt-6-luna",
+        "global:gpt-6-sol",
+        "global:gpt-6.1-sol",
+        "global:grok-4.7",
+        "global:hy-image-3.5",
+        "global:hy3",
+        "global:hy4-preview-f",
+        "global:hy4free",
+        "global:hy4std",
+        "global:kimi-k3",
+        "global:kimi-k3.1-pro",
+        "global:kimi-k3.1-pro-highspeed",
+        "global:max-model",
+        "global:minimax-m3.1-flash"
+      ],
+      "count": 75,
+      "valid": true
+    },
+    {
+      "method": "GET",
+      "port": 8788,
+      "path": "/panel/",
+      "authenticated": false,
+      "status": 200,
+      "bytes": 109357,
+      "bodySha256": "73bc98ea8d216566537042abf901f439ab6015aadc717b605e0238cfb592dc40",
+      "elapsedMs": 16,
+      "contentType": "text/html; charset=utf-8"
+    },
+    {
+      "method": "GET",
+      "port": 8788,
+      "path": "/_router/status",
+      "authenticated": false,
+      "status": 200,
+      "bytes": 687,
+      "bodySha256": "e0e30581fe58c8ccd619234f9b0b63267789a6bce639d9148691539e4bd3dcb2",
+      "elapsedMs": 15,
+      "topLevelFields": [
+        "aux",
+        "changedAt",
+        "counters",
+        "hold",
+        "main",
+        "qq",
+        "state",
+        "stateMeaning",
+        "weight"
+      ]
+    }
+  ],
+  "productionPosts": 0,
+  "processStops": 0,
+  "hashesBegin": {
+    "spec": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "candidates": {
+      "start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+      "wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+      "wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+      "wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512"
+    }
+  },
+  "nativeBefore": {
+    "listeners": [
+      {
+        "port": 8790,
+        "pid": 38084,
+        "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+        "created": "2026-11-07T11:10:53.3877780+08:00",
+        "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json "
+      },
+      {
+        "port": 8789,
+        "pid": 29624,
+        "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+        "created": "2026-11-06T16:57:05.1653160+08:00",
+        "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json "
+      },
+      {
+        "port": 8788,
+        "pid": 10576,
+        "exe": "C:\\Program Files\\nodejs\\node.exe",
+        "created": "2026-11-06T16:54:20.7556520+08:00",
+        "commandLine": "\"C:\\Program Files\\nodejs\\node.exe\"  \"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js\" "
+      }
+    ],
+    "isolatedFixtures": []
+  },
+  "nativeAfter": {
+    "listeners": [
+      {
+        "port": 8790,
+        "pid": 38084,
+        "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+        "created": "2026-11-07T11:10:53.3877780+08:00",
+        "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json "
+      },
+      {
+        "port": 8789,
+        "pid": 29624,
+        "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+        "created": "2026-11-06T16:57:05.1653160+08:00",
+        "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json "
+      },
+      {
+        "port": 8788,
+        "pid": 10576,
+        "exe": "C:\\Program Files\\nodejs\\node.exe",
+        "created": "2026-11-06T16:54:20.7556520+08:00",
+        "commandLine": "\"C:\\Program Files\\nodejs\\node.exe\"  \"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js\" "
+      }
+    ],
+    "isolatedFixtures": []
+  },
+  "observedFormalHelper": {
+    "exists": true,
+    "sha256": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512"
+  },
+  "hashesEnd": {
+    "spec": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "candidates": {
+      "start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+      "wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+      "wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+      "wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512"
+    }
+  },
+  "endedAt": "2026-11-07T12:12:19.608201+08:00"
+}

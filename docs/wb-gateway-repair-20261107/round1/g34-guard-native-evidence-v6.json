@@ -1,0 +1,223 @@
+{
+  "hashesBegin": {
+    "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+    "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+    "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+    "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+  },
+  "scope": "Full frozen guard plus original helper; native listener/CIM/HTTP and isolated real WScript recovery; only port definitions and wait trace adapted",
+  "fatal": {
+    "type": "PermissionError",
+    "message": "[WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'D:\\\\deepseek harness\\\\work_anki_enligish\\\\docs\\\\wb-gateway-repair-20261107\\\\round1\\\\.runtime-g34-37452\\\\guard-main-missing-recover\\\\run'"
+  },
+  "hashesEnd": {
+    "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+    "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+    "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+    "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+  },
+  "cases": [
+    {
+      "name": "guard-native-batch-completed",
+      "group": "harness",
+      "passed": false,
+      "detail": {
+        "type": "PermissionError",
+        "message": "[WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'D:\\\\deepseek harness\\\\work_anki_enligish\\\\docs\\\\wb-gateway-repair-20261107\\\\round1\\\\.runtime-g34-37452\\\\guard-main-missing-recover\\\\run'"
+      }
+    },
+    {
+      "name": "guard-native-all-owned-ports-closed",
+      "group": "cleanup",
+      "passed": true,
+      "detail": {
+        "ports": [
+          54184,
+          54185,
+          54186
+        ]
+      }
+    },
+    {
+      "name": "guard-native-owned-handles-exited",
+      "group": "cleanup",
+      "passed": true,
+      "detail": [
+        {
+          "kind": "watch-fixture",
+          "pid": 30740,
+          "argv": [
+            "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\independent-watch.ps1"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "v6-guard-main-missing-recover",
+          "name": "aux",
+          "pid": 44284,
+          "argv": [
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover\\run-bot\\wb2api.exe",
+            "-config",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover\\run-bot\\config.json"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "v6-guard-main-missing-recover",
+          "name": "router",
+          "pid": 24456,
+          "argv": [
+            "C:\\Program Files\\nodejs\\node.EXE",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover\\run\\wb-router.js"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "guard-native-temporary-runtime-removed",
+      "group": "cleanup",
+      "passed": false,
+      "detail": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452"
+    },
+    {
+      "name": "guard-native-spec-and-candidates-unchanged",
+      "group": "freeze",
+      "passed": true,
+      "detail": {
+        "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+        "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+        "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+        "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+        "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+        "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+      }
+    }
+  ],
+  "commands": [
+    {
+      "label": "native-guard-compile",
+      "argv": [
+        "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe",
+        "/nologo",
+        "/target:exe",
+        "/r:System.Web.Extensions.dll",
+        "/out:D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\fixture.exe",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\IndependentWbFixture.cs"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish",
+      "exitCode": 0,
+      "elapsedMs": 218,
+      "output": ""
+    },
+    {
+      "label": "guard-v6-guard-main-missing-recover",
+      "argv": [
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate\\wb-gateway-guard.ps1",
+        "-PanelRoot",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover",
+        "-HelperPath",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover\\guard-bridge.ps1",
+        "-LogPath",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover\\guard.log",
+        "-WatchScript",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\independent-watch.ps1",
+        "-WatchPidFile",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\watch.pid",
+        "-StartWaitSeconds",
+        "2"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish",
+      "exitCode": 10,
+      "elapsedMs": 34890,
+      "output": "2026-11-07 12:07:01 [guard] HEALED config.json.bak refreshed: D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover\\run\\config.json.bak\n2026-11-07 12:07:01 [guard] HEALED config.json.bak refreshed: D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover\\run-bot\\config.json.bak\n2026-11-07 12:07:07 [guard] MISSING  main:54184 reason=no-listener pids=\n2026-11-07 12:07:11 [guard] RECOVER missing main via start-silent.vbs\n2026-11-07 12:07:16 [guard] MISSING after-recovery main:54184 reason=no-listener pids=\n2026-11-07 12:07:25 [guard] HEALTHY  aux:54185 reason=workbuddy2api-healthy pids=44284\n2026-11-07 12:07:34 [guard] HEALTHY  router:54186 reason=router-status-healthy pids=24456\n2026-11-07 12:07:35 [guard] HEALTHY wb-bom-watch pid=30740\n\r\nName    Port State   Config         Action          ExitCode\r\n----    ---- -----   ------         ------          --------\r\nmain   54184 missing ok             recovery-failed       10\r\naux    54185 healthy ok             none                   0\r\nrouter 54186 healthy not-applicable none                   0\r\n\r\n\r\n\r\n"
+    }
+  ],
+  "cleanup": [
+    {
+      "scenario": "v6-guard-main-missing-recover",
+      "name": "aux",
+      "pid": 44284,
+      "method": "owned fixture GET self-stop",
+      "port": 54185,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "v6-guard-main-missing-recover",
+      "name": "router",
+      "pid": 24456,
+      "method": "owned fixture GET self-stop",
+      "port": 54186,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "v6-guard-main-missing-recover",
+      "error": "[WinError 32] 另一个程序正在使用此文件，进程无法访问。: 'D:\\\\deepseek harness\\\\work_anki_enligish\\\\docs\\\\wb-gateway-repair-20261107\\\\round1\\\\.runtime-g34-37452\\\\guard-main-missing-recover\\\\run'"
+    },
+    {
+      "name": "watch",
+      "pid": 30740,
+      "exitCode": 0
+    }
+  ],
+  "ownedProcesses": [
+    {
+      "kind": "watch-fixture",
+      "pid": 30740,
+      "argv": [
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\independent-watch.ps1"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "v6-guard-main-missing-recover",
+      "name": "aux",
+      "pid": 44284,
+      "argv": [
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover\\run-bot\\wb2api.exe",
+        "-config",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover\\run-bot\\config.json"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "v6-guard-main-missing-recover",
+      "name": "router",
+      "pid": 24456,
+      "argv": [
+        "C:\\Program Files\\nodejs\\node.EXE",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover\\run\\wb-router.js"
+      ]
+    }
+  ],
+  "scenarioPorts": {
+    "v6-guard-main-missing-recover": {
+      "main": 54184,
+      "aux": 54185,
+      "router": 54186
+    }
+  }
+}

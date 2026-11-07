@@ -33,6 +33,9 @@ object CardSeedLoader {
     const val ASSET_NAME = "cet6_cards.json"
     const val DEFAULT_BOOK_NAME = "六级记忆卡"
 
+    /** 1.4.3.2 的 20 词测试书，只从这里读 assets，不读外部覆盖文件。 */
+    const val TEST_ASSET_NAME = "test20_cards.json"
+
     private val gson = Gson()
 
     /** 读种子文件；没有或解析失败返回 null。 */
@@ -42,6 +45,13 @@ object CardSeedLoader {
         }
         return parse {
             context.assets.open(ASSET_NAME).bufferedReader().use { it.readText() }
+        }?.takeIf { it.words.isNotEmpty() }
+    }
+
+    /** 读 20 词测试书；只认 assets，不允许外部文件覆盖。 */
+    fun loadTest(context: Context): CardSeedPayload? {
+        return parse {
+            context.assets.open(TEST_ASSET_NAME).bufferedReader().use { it.readText() }
         }?.takeIf { it.words.isNotEmpty() }
     }
 

@@ -36,8 +36,7 @@ object CardBackDefaults {
     { "id": "example",      "type": "EXAMPLE",      "visible": true },
     { "id": "phrases",      "type": "PHRASES",      "visible": true },
     { "id": "synonyms",     "type": "SYNONYMS",     "visible": true },
-    { "id": "rel-words",    "type": "REL_WORDS",    "visible": true },
-    { "id": "ef-stats",     "type": "EF_STATS",     "visible": true }
+    { "id": "rel-words",    "type": "REL_WORDS",    "visible": true }
   ]
 }
 """

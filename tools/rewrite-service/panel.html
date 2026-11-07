@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>卡背重写服务</title>
+<style>
+  :root {
+    --surface: #ffffff;
+    --surface-2: #eef2fc;
+    --app-bg: #f4f7ff;
+    --primary: #2e5ccb;
+    --accent: #4aa978;
+    --muted: #6d7895;
+    --line: #bac6e3;
+    --text: #1f2a44;
+    --warn: #e55a5a;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 20px 64px;
+    background: var(--app-bg); color: var(--text);
+    font: 13px/1.65 var(--mono);
+  }
+  h1 { font-size: 15px; letter-spacing: .04em; margin: 0 0 4px; font-weight: 600; }
+  h2 { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 28px 0 8px; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  .cards { display: flex; flex-wrap: wrap; gap: 10px; }
+  .card {
+    flex: 1 1 120px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 12px;
+  }
+  .card .k { color: var(--muted); font-size: 11px; letter-spacing: .08em; }
+  .card .v { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .v.ok { color: var(--accent); }
+  .v.bad { color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--surface-2); vertical-align: top; }
+  th { font-size: 11px; letter-spacing: .08em; color: var(--muted); font-weight: 600; background: var(--surface-2); }
+  tr:last-child td { border-bottom: 0; }
+  td.w { font-weight: 600; }
+  .tag { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11px; border: 1px solid var(--line); color: var(--muted); }
+  .tag.pending { color: var(--muted); }
+  .tag.running { color: var(--primary); border-color: var(--primary); }
+  .tag.done { color: var(--accent); border-color: var(--accent); }
+  .tag.failed { color: var(--warn); border-color: var(--warn); }
+  .err { color: var(--warn); font-size: 12px; word-break: break-word; }
+  .dim { color: var(--muted); font-size: 12px; }
+  .lines { margin: 0; padding: 0; list-style: none; }
+  .lines li { padding: 1px 0; }
+  button {
+    font: inherit; font-size: 11px; padding: 1px 8px; border-radius: 5px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--surface); color: var(--primary);
+  }
+  button:hover { background: var(--surface-2); }
+  button:disabled { color: var(--muted); cursor: default; }
+  .empty { padding: 14px; color: var(--muted); font-size: 12px; text-align: center; }
+  .foot { margin-top: 22px; color: var(--muted); font-size: 11px; line-height: 1.9; }
+  .pulse { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>卡背重写服务</h1>
+  <div class="sub" id="meta">连接中…</div>
+
+  <div class="cards" id="counters"></div>
+
+  <h2>队列</h2>
+  <table>
+    <thead><tr><th style="width:22%">词</th><th style="width:15%">模型</th><th style="width:12%">状态</th><th>说明</th><th style="width:17%">更新</th><th style="width:8%"></th></tr></thead>
+    <tbody id="queue"><tr><td colspan="6" class="empty">…</td></tr></tbody>
+  </table>
+
+  <h2>最近结果</h2>
+  <table>
+    <thead><tr><th style="width:22%">词</th><th style="width:10%">版本</th><th>三行思路</th><th style="width:17%">生成时间</th></tr></thead>
+    <tbody id="recent"><tr><td colspan="4" class="empty">…</td></tr></tbody>
+  </table>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var BASE = "/rewrite";
+  var TAG = { pending: "待跑", running: "进行中", done: "完成", failed: "失败" };
+
+  function esc(text) {
+    return String(text == null ? "" : text).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function when(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return esc(iso);
+    return d.toLocaleString("zh-CN", { hour12: false });
+  }
+
+  function getJSON(url, options) {
+    return fetch(url, options).then(function (resp) {
+      return resp.json().then(function (data) {
+        if (!resp.ok) throw new Error((data && data.error) || ("HTTP " + resp.status));
+        return data;
+      });
+    });
+  }
+
+  function counters(data) {
+    var rows = [
+      ["待跑", data.pending, ""],
+      ["进行中", data.running, data.running ? "running pulse" : ""],
+      ["今日完成", data.todayDone, "ok"],
+      ["今日失败", data.todayFailed, "bad"]
+    ];
+    document.getElementById("counters").innerHTML = rows.map(function (row) {
+      return '<div class="card"><div class="k">' + row[0] + '</div><div class="v ' + row[2] + '">' + row[1] + "</div></div>";
+    }).join("");
+  }
+
+  function queue(data) {
+    var body = document.getElementById("queue");
+    if (!data.items || !data.items.length) {
+      body.innerHTML = '<tr><td colspan="6" class="empty">队列是空的 —— 手机上标记一个词就会出现在这里</td></tr>';
+      return;
+    }
+    body.innerHTML = data.items.map(function (item) {
+      var state = item.state || "pending";
+      var action = state === "failed"
+        ? '<button data-retry="' + esc(item.word) + '">重试</button>'
+        : "";
+      return "<tr>" +
+        '<td class="w">' + esc(item.word) + "</td>" +
+        '<td class="dim">' + esc(item.model) + "</td>" +
+        '<td><span class="tag ' + esc(state) + '">' + (TAG[state] || esc(state)) + "</span></td>" +
+        '<td class="err">' + esc(item.error) + "</td>" +
+        '<td class="dim">' + when(item.updatedAt) + "</td>" +
+        "<td>" + action + "</td></tr>";
+    }).join("");
+  }
+
+  function recent(data) {
+    var body = document.getElementById("recent");
+    if (!data.recent || !data.recent.length) {
+      body.innerHTML = '<tr><td colspan="4" class="empty">还没有成品</td></tr>';
+      return;
+    }
+    body.innerHTML = data.recent.map(function (entry) {
+      var lines = entry.approach && entry.approach.length
+        ? '<ul class="lines">' + entry.approach.map(function (l) { return "<li>" + esc(l) + "</li>"; }).join("") + "</ul>"
+        : '<span class="err">failed</span> <span class="dim">' + esc(entry.model || "") + "</span>";
+      return "<tr>" +
+        '<td class="w">' + esc(entry.word) + "</td>" +
+        '<td class="dim">v' + esc(entry.rev) + " · #" + esc(entry.seq) + "</td>" +
+        "<td>" + lines + "</td>" +
+        '<td class="dim">' + when(entry.updatedAt) + "</td></tr>";
+    }).join("");
+  }
+
+  function render(data) {
+    counters(data);
+    queue(data);
+    recent(data);
+    document.getElementById("meta").textContent =
+      "并发 " + data.concurrency + " · 评分 " + data.judge + " · seq " + data.seq;
+    document.getElementById("foot").innerHTML =
+      "启动于 " + when(data.startedAt) + "<br>" +
+      "标记接口 POST " + BASE + "/marks · 结果增量 GET " + BASE + "/results?since=0&amp;limit=50<br>" +
+      "数据落在 tools/rewrite-service/data/ —— 服务重启会接着跑";
+  }
+
+  function tick() {
+    getJSON(BASE + "/status").then(render).catch(function (err) {
+      document.getElementById("meta").textContent = "连不上服务：" + err.message;
+    });
+  }
+
+  document.addEventListener("click", function (event) {
+    var word = event.target.getAttribute && event.target.getAttribute("data-retry");
+    if (!word) return;
+    event.target.disabled = true;
+    getJSON(BASE + "/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ word: word })
+    }).then(tick).catch(function (err) {
+      event.target.disabled = false;
+      alert("重试失败：" + err.message);
+    });
+  });
+
+  tick();
+  setInterval(tick, 4000);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,2508 @@
+{
+  "startedAt": "2026-11-07T11:53:33.844211+08:00",
+  "tester": "independent-round1",
+  "productionRequests": [],
+  "adapters": [
+    "CMD powershell.exe PATH adapter preserves helper arguments and remaps only ports; hardcoded sanitizer call is recorded with simulated return codes, never executed on production paths.",
+    "Full guard uses exact frozen guard plus exact helper imported through high-port definitions and WaitSeconds trace adapter. Native Get-NetTCPConnection, Get-CimInstance, HTTP, WScript starters remain real."
+  ],
+  "hashesBegin": {
+    "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+    "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+    "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+    "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+  },
+  "library": {
+    "version": "5.1.26100.9711",
+    "cases": [
+      {
+        "name": "definitions-cover-three-distinct-services",
+        "passed": true,
+        "detail": [
+          {
+            "Name": "main",
+            "Port": 8790,
+            "Dir": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\mock panel with spaces\\run",
+            "Executable": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\mock panel with spaces\\run\\wb2api.exe",
+            "Script": "",
+            "Endpoint": "/healthz",
+            "Starter": "start-silent.vbs",
+            "NeedsConfig": true,
+            "MainPort": 8790,
+            "AuxPort": 8789
+          },
+          {
+            "Name": "aux",
+            "Port": 8789,
+            "Dir": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\mock panel with spaces\\run-bot",
+            "Executable": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\mock panel with spaces\\run-bot\\wb2api.exe",
+            "Script": "",
+            "Endpoint": "/healthz",
+            "Starter": "start-bot.vbs",
+            "NeedsConfig": true,
+            "MainPort": 8790,
+            "AuxPort": 8789
+          },
+          {
+            "Name": "router",
+            "Port": 8788,
+            "Dir": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\mock panel with spaces\\run",
+            "Executable": "node.exe",
+            "Script": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\mock panel with spaces\\run\\wb-router.js",
+            "Endpoint": "/_router/status",
+            "Starter": "start-router.vbs",
+            "NeedsConfig": false,
+            "MainPort": 8790,
+            "AuxPort": 8789
+          }
+        ]
+      },
+      {
+        "name": "resolve-main-healthy",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "healthy",
+          "Reason": "workbuddy2api-healthy",
+          "ExitCode": 0,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "guard-main-healthy-no-start-or-wait",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "healthy",
+          "Reason": "workbuddy2api-healthy",
+          "Config": "ok",
+          "Action": "none",
+          "Up": true,
+          "ExitCode": 0
+        }
+      },
+      {
+        "name": "resolve-main-unhealthy",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "unhealthy",
+          "Reason": "http-404",
+          "ExitCode": 30,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "guard-main-unhealthy-no-start-or-wait",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "unhealthy",
+          "Reason": "http-404",
+          "Config": "ok",
+          "Action": "none",
+          "Up": false,
+          "ExitCode": 30
+        }
+      },
+      {
+        "name": "resolve-main-foreign",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "foreign",
+          "Reason": "CONFLICT-listener-owner-identity-mismatch",
+          "ExitCode": 20,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "guard-main-foreign-no-start-or-wait",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "foreign",
+          "Reason": "CONFLICT-listener-owner-identity-mismatch",
+          "Config": "ok",
+          "Action": "none",
+          "Up": false,
+          "ExitCode": 20
+        }
+      },
+      {
+        "name": "guard-main-foreign-explicit-conflict",
+        "passed": true,
+        "detail": [
+          "HEALTHY  main:8790 reason=workbuddy2api-healthy pids=81234",
+          "WARN UNHEALTHY  main:8790 reason=http-404 pids=81234",
+          "CONFLICT  main:8790 reason=CONFLICT-listener-owner-identity-mismatch pids=81234"
+        ]
+      },
+      {
+        "name": "resolve-main-missing",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "missing",
+          "Reason": "no-listener",
+          "ExitCode": 10,
+          "OwnerPids": []
+        }
+      },
+      {
+        "name": "guard-main-missing-NoRestart",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "missing",
+          "Reason": "no-listener",
+          "Config": "ok",
+          "Action": "no-restart",
+          "Up": false,
+          "ExitCode": 10
+        }
+      },
+      {
+        "name": "guard-main-missing-hold",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "missing",
+          "Reason": "no-listener",
+          "Config": "ok",
+          "Action": "held",
+          "Up": false,
+          "ExitCode": 10
+        }
+      },
+      {
+        "name": "guard-main-missing-bad-config-blocked",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "missing",
+          "Reason": "no-listener",
+          "Config": "broken",
+          "Action": "config-blocked",
+          "Up": false,
+          "ExitCode": 40
+        }
+      },
+      {
+        "name": "guard-main-missing-to-foreign-race",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "foreign",
+          "Reason": "CONFLICT-listener-owner-identity-mismatch",
+          "Config": "ok",
+          "Action": "changed-before-start",
+          "Up": false,
+          "ExitCode": 20
+        }
+      },
+      {
+        "name": "guard-main-missing-recovered",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "healthy",
+          "Reason": "independent-recovered",
+          "Config": "ok",
+          "Action": "recovered",
+          "Up": true,
+          "ExitCode": 0
+        }
+      },
+      {
+        "name": "guard-main-start-failure-nonzero",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "missing",
+          "Reason": "no-listener",
+          "Config": "ok",
+          "Action": "start-failed",
+          "Up": false,
+          "ExitCode": 40
+        }
+      },
+      {
+        "name": "resolve-main-error",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "error",
+          "Reason": "listener-or-process-inspection-failed",
+          "ExitCode": 40,
+          "OwnerPids": []
+        }
+      },
+      {
+        "name": "guard-main-error-no-start-or-wait",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "error",
+          "Reason": "listener-or-process-inspection-failed",
+          "Config": "ok",
+          "Action": "none",
+          "Up": false,
+          "ExitCode": 40
+        }
+      },
+      {
+        "name": "service-main-two-snapshots-one-http",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "healthy",
+          "Reason": "workbuddy2api-healthy",
+          "ExitCode": 0,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "service-main-same-pid-owner-stamp-change-fails",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "error",
+          "Reason": "listener-owner-changed-during-http-check",
+          "ExitCode": 40,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "service-main-foreign-never-http-probed",
+        "passed": true,
+        "detail": {
+          "Name": "main",
+          "Port": 8790,
+          "State": "foreign",
+          "Reason": "CONFLICT-listener-owner-identity-mismatch",
+          "ExitCode": 20,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "resolve-aux-healthy",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "healthy",
+          "Reason": "workbuddy2api-healthy",
+          "ExitCode": 0,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "guard-aux-healthy-no-start-or-wait",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "healthy",
+          "Reason": "workbuddy2api-healthy",
+          "Config": "ok",
+          "Action": "none",
+          "Up": true,
+          "ExitCode": 0
+        }
+      },
+      {
+        "name": "resolve-aux-unhealthy",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "unhealthy",
+          "Reason": "http-404",
+          "ExitCode": 30,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "guard-aux-unhealthy-no-start-or-wait",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "unhealthy",
+          "Reason": "http-404",
+          "Config": "ok",
+          "Action": "none",
+          "Up": false,
+          "ExitCode": 30
+        }
+      },
+      {
+        "name": "resolve-aux-foreign",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "foreign",
+          "Reason": "CONFLICT-listener-owner-identity-mismatch",
+          "ExitCode": 20,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "guard-aux-foreign-no-start-or-wait",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "foreign",
+          "Reason": "CONFLICT-listener-owner-identity-mismatch",
+          "Config": "ok",
+          "Action": "none",
+          "Up": false,
+          "ExitCode": 20
+        }
+      },
+      {
+        "name": "guard-aux-foreign-explicit-conflict",
+        "passed": true,
+        "detail": [
+          "HEALTHY  main:8790 reason=workbuddy2api-healthy pids=81234",
+          "WARN UNHEALTHY  main:8790 reason=http-404 pids=81234",
+          "CONFLICT  main:8790 reason=CONFLICT-listener-owner-identity-mismatch pids=81234",
+          "MISSING  main:8790 reason=no-listener pids=",
+          "NO_RESTART main; missing listener left unchanged",
+          "MISSING  main:8790 reason=no-listener pids=",
+          "HOLD main; .hold-restart prevents recovery",
+          "MISSING  main:8790 reason=no-listener pids=",
+          "MISSING  main:8790 reason=no-listener pids=",
+          "CONFLICT before-start main:8790 reason=CONFLICT-listener-owner-identity-mismatch pids=81234",
+          "MISSING  main:8790 reason=no-listener pids=",
+          "RECOVER missing main via start-silent.vbs",
+          "HEALTHY after-recovery main:8790 reason=independent-recovered pids=81234",
+          "MISSING  main:8790 reason=no-listener pids=",
+          "RECOVER missing main via start-silent.vbs",
+          "ERROR starter failed for main",
+          "ERROR INSPECTION  main:8790 reason=listener-or-process-inspection-failed pids=",
+          "HEALTHY  aux:8789 reason=workbuddy2api-healthy pids=81234",
+          "WARN UNHEALTHY  aux:8789 reason=http-404 pids=81234",
+          "CONFLICT  aux:8789 reason=CONFLICT-listener-owner-identity-mismatch pids=81234"
+        ]
+      },
+      {
+        "name": "resolve-aux-missing",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "missing",
+          "Reason": "no-listener",
+          "ExitCode": 10,
+          "OwnerPids": []
+        }
+      },
+      {
+        "name": "guard-aux-missing-NoRestart",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "missing",
+          "Reason": "no-listener",
+          "Config": "ok",
+          "Action": "no-restart",
+          "Up": false,
+          "ExitCode": 10
+        }
+      },
+      {
+        "name": "guard-aux-missing-hold",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "missing",
+          "Reason": "no-listener",
+          "Config": "ok",
+          "Action": "held",
+          "Up": false,
+          "ExitCode": 10
+        }
+      },
+      {
+        "name": "guard-aux-missing-bad-config-blocked",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "missing",
+          "Reason": "no-listener",
+          "Config": "broken",
+          "Action": "config-blocked",
+          "Up": false,
+          "ExitCode": 40
+        }
+      },
+      {
+        "name": "guard-aux-missing-to-foreign-race",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "foreign",
+          "Reason": "CONFLICT-listener-owner-identity-mismatch",
+          "Config": "ok",
+          "Action": "changed-before-start",
+          "Up": false,
+          "ExitCode": 20
+        }
+      },
+      {
+        "name": "guard-aux-missing-recovered",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "healthy",
+          "Reason": "independent-recovered",
+          "Config": "ok",
+          "Action": "recovered",
+          "Up": true,
+          "ExitCode": 0
+        }
+      },
+      {
+        "name": "guard-aux-start-failure-nonzero",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "missing",
+          "Reason": "no-listener",
+          "Config": "ok",
+          "Action": "start-failed",
+          "Up": false,
+          "ExitCode": 40
+        }
+      },
+      {
+        "name": "resolve-aux-error",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "error",
+          "Reason": "listener-or-process-inspection-failed",
+          "ExitCode": 40,
+          "OwnerPids": []
+        }
+      },
+      {
+        "name": "guard-aux-error-no-start-or-wait",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "error",
+          "Reason": "listener-or-process-inspection-failed",
+          "Config": "ok",
+          "Action": "none",
+          "Up": false,
+          "ExitCode": 40
+        }
+      },
+      {
+        "name": "service-aux-two-snapshots-one-http",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "healthy",
+          "Reason": "workbuddy2api-healthy",
+          "ExitCode": 0,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "service-aux-same-pid-owner-stamp-change-fails",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "error",
+          "Reason": "listener-owner-changed-during-http-check",
+          "ExitCode": 40,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "service-aux-foreign-never-http-probed",
+        "passed": true,
+        "detail": {
+          "Name": "aux",
+          "Port": 8789,
+          "State": "foreign",
+          "Reason": "CONFLICT-listener-owner-identity-mismatch",
+          "ExitCode": 20,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "resolve-router-healthy",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "healthy",
+          "Reason": "router-status-healthy",
+          "ExitCode": 0,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "guard-router-healthy-no-start-or-wait",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "healthy",
+          "Reason": "router-status-healthy",
+          "Config": "ok",
+          "Action": "none",
+          "Up": true,
+          "ExitCode": 0
+        }
+      },
+      {
+        "name": "resolve-router-unhealthy",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "unhealthy",
+          "Reason": "http-404",
+          "ExitCode": 30,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "guard-router-unhealthy-no-start-or-wait",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "unhealthy",
+          "Reason": "http-404",
+          "Config": "ok",
+          "Action": "none",
+          "Up": false,
+          "ExitCode": 30
+        }
+      },
+      {
+        "name": "resolve-router-foreign",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "foreign",
+          "Reason": "CONFLICT-listener-owner-identity-mismatch",
+          "ExitCode": 20,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "guard-router-foreign-no-start-or-wait",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "foreign",
+          "Reason": "CONFLICT-listener-owner-identity-mismatch",
+          "Config": "ok",
+          "Action": "none",
+          "Up": false,
+          "ExitCode": 20
+        }
+      },
+      {
+        "name": "guard-router-foreign-explicit-conflict",
+        "passed": true,
+        "detail": [
+          "HEALTHY  main:8790 reason=workbuddy2api-healthy pids=81234",
+          "WARN UNHEALTHY  main:8790 reason=http-404 pids=81234",
+          "CONFLICT  main:8790 reason=CONFLICT-listener-owner-identity-mismatch pids=81234",
+          "MISSING  main:8790 reason=no-listener pids=",
+          "NO_RESTART main; missing listener left unchanged",
+          "MISSING  main:8790 reason=no-listener pids=",
+          "HOLD main; .hold-restart prevents recovery",
+          "MISSING  main:8790 reason=no-listener pids=",
+          "MISSING  main:8790 reason=no-listener pids=",
+          "CONFLICT before-start main:8790 reason=CONFLICT-listener-owner-identity-mismatch pids=81234",
+          "MISSING  main:8790 reason=no-listener pids=",
+          "RECOVER missing main via start-silent.vbs",
+          "HEALTHY after-recovery main:8790 reason=independent-recovered pids=81234",
+          "MISSING  main:8790 reason=no-listener pids=",
+          "RECOVER missing main via start-silent.vbs",
+          "ERROR starter failed for main",
+          "ERROR INSPECTION  main:8790 reason=listener-or-process-inspection-failed pids=",
+          "HEALTHY  aux:8789 reason=workbuddy2api-healthy pids=81234",
+          "WARN UNHEALTHY  aux:8789 reason=http-404 pids=81234",
+          "CONFLICT  aux:8789 reason=CONFLICT-listener-owner-identity-mismatch pids=81234",
+          "MISSING  aux:8789 reason=no-listener pids=",
+          "NO_RESTART aux; missing listener left unchanged",
+          "MISSING  aux:8789 reason=no-listener pids=",
+          "HOLD aux; .hold-restart prevents recovery",
+          "MISSING  aux:8789 reason=no-listener pids=",
+          "MISSING  aux:8789 reason=no-listener pids=",
+          "CONFLICT before-start aux:8789 reason=CONFLICT-listener-owner-identity-mismatch pids=81234",
+          "MISSING  aux:8789 reason=no-listener pids=",
+          "RECOVER missing aux via start-bot.vbs",
+          "HEALTHY after-recovery aux:8789 reason=independent-recovered pids=81234",
+          "MISSING  aux:8789 reason=no-listener pids=",
+          "RECOVER missing aux via start-bot.vbs",
+          "ERROR starter failed for aux",
+          "ERROR INSPECTION  aux:8789 reason=listener-or-process-inspection-failed pids=",
+          "HEALTHY  router:8788 reason=router-status-healthy pids=81234",
+          "WARN UNHEALTHY  router:8788 reason=http-404 pids=81234",
+          "CONFLICT  router:8788 reason=CONFLICT-listener-owner-identity-mismatch pids=81234"
+        ]
+      },
+      {
+        "name": "resolve-router-missing",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "missing",
+          "Reason": "no-listener",
+          "ExitCode": 10,
+          "OwnerPids": []
+        }
+      },
+      {
+        "name": "guard-router-missing-NoRestart",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "missing",
+          "Reason": "no-listener",
+          "Config": "ok",
+          "Action": "no-restart",
+          "Up": false,
+          "ExitCode": 10
+        }
+      },
+      {
+        "name": "guard-router-missing-hold",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "missing",
+          "Reason": "no-listener",
+          "Config": "ok",
+          "Action": "held",
+          "Up": false,
+          "ExitCode": 10
+        }
+      },
+      {
+        "name": "guard-router-missing-bad-config-blocked",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "missing",
+          "Reason": "no-listener",
+          "Config": "broken",
+          "Action": "config-blocked",
+          "Up": false,
+          "ExitCode": 40
+        }
+      },
+      {
+        "name": "guard-router-missing-to-foreign-race",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "foreign",
+          "Reason": "CONFLICT-listener-owner-identity-mismatch",
+          "Config": "ok",
+          "Action": "changed-before-start",
+          "Up": false,
+          "ExitCode": 20
+        }
+      },
+      {
+        "name": "guard-router-missing-recovered",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "healthy",
+          "Reason": "independent-recovered",
+          "Config": "ok",
+          "Action": "recovered",
+          "Up": true,
+          "ExitCode": 0
+        }
+      },
+      {
+        "name": "guard-router-start-failure-nonzero",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "missing",
+          "Reason": "no-listener",
+          "Config": "ok",
+          "Action": "start-failed",
+          "Up": false,
+          "ExitCode": 40
+        }
+      },
+      {
+        "name": "resolve-router-error",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "error",
+          "Reason": "listener-or-process-inspection-failed",
+          "ExitCode": 40,
+          "OwnerPids": []
+        }
+      },
+      {
+        "name": "guard-router-error-no-start-or-wait",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "error",
+          "Reason": "listener-or-process-inspection-failed",
+          "Config": "ok",
+          "Action": "none",
+          "Up": false,
+          "ExitCode": 40
+        }
+      },
+      {
+        "name": "service-router-two-snapshots-one-http",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "healthy",
+          "Reason": "router-status-healthy",
+          "ExitCode": 0,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "service-router-same-pid-owner-stamp-change-fails",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "error",
+          "Reason": "listener-owner-changed-during-http-check",
+          "ExitCode": 40,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "service-router-foreign-never-http-probed",
+        "passed": true,
+        "detail": {
+          "Name": "router",
+          "Port": 8788,
+          "State": "foreign",
+          "Reason": "CONFLICT-listener-owner-identity-mismatch",
+          "ExitCode": 20,
+          "OwnerPids": [
+            81234
+          ]
+        }
+      },
+      {
+        "name": "health-reject-Int32-0",
+        "passed": true,
+        "detail": {
+          "Ok": false,
+          "Reason": "health-healthy-count-not-positive-integer"
+        }
+      },
+      {
+        "name": "health-reject-Int32--1",
+        "passed": true,
+        "detail": {
+          "Ok": false,
+          "Reason": "health-healthy-count-not-positive-integer"
+        }
+      },
+      {
+        "name": "health-reject-Double-1.5",
+        "passed": true,
+        "detail": {
+          "Ok": false,
+          "Reason": "health-healthy-count-not-positive-integer"
+        }
+      },
+      {
+        "name": "health-reject-String-7",
+        "passed": true,
+        "detail": {
+          "Ok": false,
+          "Reason": "health-healthy-count-not-positive-integer"
+        }
+      },
+      {
+        "name": "health-reject-Boolean-True",
+        "passed": true,
+        "detail": {
+          "Ok": false,
+          "Reason": "health-healthy-count-not-positive-integer"
+        }
+      },
+      {
+        "name": "health-reject-Boolean-False",
+        "passed": true,
+        "detail": {
+          "Ok": false,
+          "Reason": "health-healthy-count-not-positive-integer"
+        }
+      },
+      {
+        "name": "health-reject-null",
+        "passed": true,
+        "detail": {
+          "Ok": false,
+          "Reason": "health-healthy-count-not-positive-integer"
+        }
+      },
+      {
+        "name": "health-reject-service-fake",
+        "passed": true,
+        "detail": {
+          "Ok": false,
+          "Reason": "health-service-identity-mismatch"
+        }
+      },
+      {
+        "name": "health-reject-service-WorkBuddy2API",
+        "passed": true,
+        "detail": {
+          "Ok": false,
+          "Reason": "health-service-identity-mismatch"
+        }
+      },
+      {
+        "name": "health-reject-service-workbuddy2api ",
+        "passed": true,
+        "detail": {
+          "Ok": false,
+          "Reason": "health-service-identity-mismatch"
+        }
+      },
+      {
+        "name": "health-valid-positive-service",
+        "passed": true,
+        "detail": {
+          "Ok": true,
+          "Reason": "workbuddy2api-healthy"
+        }
+      },
+      {
+        "name": "router-exact-owner-with-space-path",
+        "passed": true,
+        "detail": {
+          "ProcessId": 99,
+          "ExecutablePath": "C:\\Program Files\\nodejs\\node.exe",
+          "CommandLine": "\"C:\\Program Files\\nodejs\\node.exe\" \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\mock panel with spaces\\run\\wb-router.js\"",
+          "CreationDate": "a"
+        }
+      },
+      {
+        "name": "router-reject-commandline-spoof",
+        "passed": true,
+        "detail": {
+          "ProcessId": 99,
+          "ExecutablePath": "C:\\Program Files\\nodejs\\node.exe",
+          "CommandLine": "\"C:\\Program Files\\nodejs\\node.exe\" -e \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\mock panel with spaces\\run\\wb-router.js\"",
+          "CreationDate": "a"
+        }
+      },
+      {
+        "name": "router-reject-commandline-spoof",
+        "passed": true,
+        "detail": {
+          "ProcessId": 99,
+          "ExecutablePath": "C:\\Program Files\\nodejs\\node.exe",
+          "CommandLine": "\"C:\\Program Files\\nodejs\\node.exe\" \"C:\\foreign\\entry.js\" \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\mock panel with spaces\\run\\wb-router.js\"",
+          "CreationDate": "a"
+        }
+      },
+      {
+        "name": "router-reject-commandline-spoof",
+        "passed": true,
+        "detail": {
+          "ProcessId": 99,
+          "ExecutablePath": "C:\\Program Files\\nodejs\\node.exe",
+          "CommandLine": "\"C:\\Program Files\\nodejs\\node.exe\" \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\mock panel with spaces\\run\\wb-router.js.evil\"",
+          "CreationDate": "a"
+        }
+      },
+      {
+        "name": "router-reject-commandline-spoof",
+        "passed": true,
+        "detail": {
+          "ProcessId": 99,
+          "ExecutablePath": "C:\\Program Files\\nodejs\\node.exe",
+          "CommandLine": "\"C:\\Program Files\\nodejs\\node.exe\" \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\mock panel with spaces\\run\\wb-router.js",
+          "CreationDate": "a"
+        }
+      },
+      {
+        "name": "watcher-exact-file-owner",
+        "passed": true,
+        "detail": {
+          "ProcessId": 13,
+          "ExecutablePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "CommandLine": "powershell.exe -NoProfile -File \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\watcher with spaces.ps1\""
+        }
+      },
+      {
+        "name": "watcher-reject-eval--Command",
+        "passed": true,
+        "detail": {
+          "ProcessId": 13,
+          "ExecutablePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "CommandLine": "powershell.exe -Command \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\watcher with spaces.ps1\""
+        }
+      },
+      {
+        "name": "watcher-reject-eval--EncodedCommand",
+        "passed": true,
+        "detail": {
+          "ProcessId": 13,
+          "ExecutablePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "CommandLine": "powershell.exe -EncodedCommand \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\watcher with spaces.ps1\""
+        }
+      },
+      {
+        "name": "watcher-reject-eval--c",
+        "passed": true,
+        "detail": {
+          "ProcessId": 13,
+          "ExecutablePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "CommandLine": "powershell.exe -c \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\watcher with spaces.ps1\""
+        }
+      },
+      {
+        "name": "watcher-reject-eval--e",
+        "passed": true,
+        "detail": {
+          "ProcessId": 13,
+          "ExecutablePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "CommandLine": "powershell.exe -e \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\watcher with spaces.ps1\""
+        }
+      },
+      {
+        "name": "watcher-reject-eval--ec",
+        "passed": true,
+        "detail": {
+          "ProcessId": 13,
+          "ExecutablePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "CommandLine": "powershell.exe -ec \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\watcher with spaces.ps1\""
+        }
+      },
+      {
+        "name": "watch-NoRestart-no-launch",
+        "passed": true,
+        "detail": 0
+      },
+      {
+        "name": "watch-healthy-no-launch",
+        "passed": true,
+        "detail": 0
+      },
+      {
+        "name": "watch-inspection-error-no-launch",
+        "passed": true,
+        "detail": 0
+      },
+      {
+        "name": "watch-missing-launch-once",
+        "passed": true,
+        "detail": 1
+      },
+      {
+        "name": "config-BOM-stripped-with-exact-original-snapshot-and-good-backup",
+        "passed": true,
+        "detail": {
+          "snapshots": 1,
+          "status": "ok",
+          "cleanBytes": 40,
+          "originalBytes": 43
+        }
+      },
+      {
+        "name": "config-broken-JSON-preserves-original-and-last-good-backup",
+        "passed": true,
+        "detail": {
+          "status": "broken",
+          "backupUnchanged": true
+        }
+      },
+      {
+        "name": "config-reject-non-object-[]",
+        "passed": true,
+        "detail": "broken"
+      },
+      {
+        "name": "config-reject-non-object-null",
+        "passed": true,
+        "detail": "broken"
+      },
+      {
+        "name": "config-reject-non-object-17",
+        "passed": true,
+        "detail": "broken"
+      }
+    ],
+    "logs": [
+      "HEALTHY  main:8790 reason=workbuddy2api-healthy pids=81234",
+      "WARN UNHEALTHY  main:8790 reason=http-404 pids=81234",
+      "CONFLICT  main:8790 reason=CONFLICT-listener-owner-identity-mismatch pids=81234",
+      "MISSING  main:8790 reason=no-listener pids=",
+      "NO_RESTART main; missing listener left unchanged",
+      "MISSING  main:8790 reason=no-listener pids=",
+      "HOLD main; .hold-restart prevents recovery",
+      "MISSING  main:8790 reason=no-listener pids=",
+      "MISSING  main:8790 reason=no-listener pids=",
+      "CONFLICT before-start main:8790 reason=CONFLICT-listener-owner-identity-mismatch pids=81234",
+      "MISSING  main:8790 reason=no-listener pids=",
+      "RECOVER missing main via start-silent.vbs",
+      "HEALTHY after-recovery main:8790 reason=independent-recovered pids=81234",
+      "MISSING  main:8790 reason=no-listener pids=",
+      "RECOVER missing main via start-silent.vbs",
+      "ERROR starter failed for main",
+      "ERROR INSPECTION  main:8790 reason=listener-or-process-inspection-failed pids=",
+      "HEALTHY  aux:8789 reason=workbuddy2api-healthy pids=81234",
+      "WARN UNHEALTHY  aux:8789 reason=http-404 pids=81234",
+      "CONFLICT  aux:8789 reason=CONFLICT-listener-owner-identity-mismatch pids=81234",
+      "MISSING  aux:8789 reason=no-listener pids=",
+      "NO_RESTART aux; missing listener left unchanged",
+      "MISSING  aux:8789 reason=no-listener pids=",
+      "HOLD aux; .hold-restart prevents recovery",
+      "MISSING  aux:8789 reason=no-listener pids=",
+      "MISSING  aux:8789 reason=no-listener pids=",
+      "CONFLICT before-start aux:8789 reason=CONFLICT-listener-owner-identity-mismatch pids=81234",
+      "MISSING  aux:8789 reason=no-listener pids=",
+      "RECOVER missing aux via start-bot.vbs",
+      "HEALTHY after-recovery aux:8789 reason=independent-recovered pids=81234",
+      "MISSING  aux:8789 reason=no-listener pids=",
+      "RECOVER missing aux via start-bot.vbs",
+      "ERROR starter failed for aux",
+      "ERROR INSPECTION  aux:8789 reason=listener-or-process-inspection-failed pids=",
+      "HEALTHY  router:8788 reason=router-status-healthy pids=81234",
+      "WARN UNHEALTHY  router:8788 reason=http-404 pids=81234",
+      "CONFLICT  router:8788 reason=CONFLICT-listener-owner-identity-mismatch pids=81234",
+      "MISSING  router:8788 reason=no-listener pids=",
+      "NO_RESTART router; missing listener left unchanged",
+      "MISSING  router:8788 reason=no-listener pids=",
+      "HOLD router; .hold-restart prevents recovery",
+      "MISSING  router:8788 reason=no-listener pids=",
+      "MISSING  router:8788 reason=no-listener pids=",
+      "CONFLICT before-start router:8788 reason=CONFLICT-listener-owner-identity-mismatch pids=81234",
+      "MISSING  router:8788 reason=no-listener pids=",
+      "RECOVER missing router via start-router.vbs",
+      "HEALTHY after-recovery router:8788 reason=independent-recovered pids=81234",
+      "MISSING  router:8788 reason=no-listener pids=",
+      "RECOVER missing router via start-router.vbs",
+      "ERROR starter failed for router",
+      "ERROR INSPECTION  router:8788 reason=listener-or-process-inspection-failed pids=",
+      "NO_RESTART wb-bom-watch missing; no launch",
+      "HEALTHY wb-bom-watch pid=13",
+      "ERROR wb-bom-watch inspection failed; no launch",
+      "WATCHDOG wb-bom-watch missing; original watcher launched",
+      "HEALED BOM stripped: D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\bom-config\\config.json",
+      "HEALED config.json.bak refreshed: D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\bom-config\\config.json.bak",
+      "BROKEN JSON config D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\bom-config\\config.json; no repair performed",
+      "BROKEN JSON config D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\bom-config\\config.json; no repair performed",
+      "BROKEN JSON config D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\bom-config\\config.json; no repair performed",
+      "BROKEN JSON config D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases\\bom-config\\config.json; no repair performed"
+    ]
+  },
+  "fatal": {
+    "type": "RuntimeError",
+    "message": "fixture readiness deadline startup-main-missing/main"
+  },
+  "hashesEnd": {
+    "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+    "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+    "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+    "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+  },
+  "endedAt": "2026-11-07T11:55:38.080958+08:00",
+  "cases": [
+    {
+      "name": "G34-begin-freeze-hashes",
+      "group": "freeze",
+      "passed": true,
+      "detail": {
+        "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+        "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+        "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+        "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+        "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+        "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+      }
+    },
+    {
+      "name": "native-fixture-compile",
+      "group": "harness",
+      "passed": true,
+      "detail": {
+        "exitCode": 0,
+        "output": ""
+      }
+    },
+    {
+      "name": "library-native-WinPS51-run",
+      "group": "harness",
+      "passed": true,
+      "detail": {
+        "exitCode": 0,
+        "output": "INDEPENDENT_MOCK_CASES total=89 passed=89 failed=0\r\n"
+      }
+    },
+    {
+      "name": "startup-healthy-exit",
+      "group": "G3",
+      "passed": false,
+      "detail": {
+        "expected": 0,
+        "actual": 40,
+        "output": "WB_CHECK name=main port=62837 state=healthy reason=workbuddy2api-healthy pids=20716\r\nWB_CHECK name=router port=62839 state=error reason=listener-or-process-inspection-failed pids=\r\nWB_START ERROR router inspection code=40; owner or HTTP conflict requires attention. \r\n"
+      }
+    },
+    {
+      "name": "startup-healthy-launch-counts",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "before": {
+          "main": 1,
+          "aux": 0,
+          "router": 1
+        },
+        "after": {
+          "main": 1,
+          "aux": 0,
+          "router": 1
+        }
+      }
+    },
+    {
+      "name": "startup-healthy-sanitizer-original-call-recorded",
+      "group": "G3",
+      "passed": true,
+      "detail": [
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek_v4.1flash1017\\thebigfish\\tools\\wb-config-sanitize.ps1",
+            "-Dir",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run\\.",
+            "-LogPath",
+            "D:\\Apps\\Bot\\health\\wb-guard.log",
+            "-Quiet"
+          ]
+        },
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run\\wb-service-check.ps1",
+            "-Service",
+            "main",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run\\.."
+          ]
+        },
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run\\wb-service-check.ps1",
+            "-Service",
+            "router",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run\\.."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "startup-main-foreign-exit",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "expected": 20,
+        "actual": 20,
+        "output": "WB_CHECK name=main port=50984 state=foreign reason=CONFLICT-listener-owner-identity-mismatch pids=31772\r\nWB_START ERROR main inspection code=20; no duplicate process will be started. \r\n"
+      }
+    },
+    {
+      "name": "startup-main-foreign-launch-counts",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "before": {
+          "main": 1,
+          "aux": 0,
+          "router": 0
+        },
+        "after": {
+          "main": 1,
+          "aux": 0,
+          "router": 0
+        }
+      }
+    },
+    {
+      "name": "startup-main-foreign-explicit-conflict",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "output": "WB_CHECK name=main port=50984 state=foreign reason=CONFLICT-listener-owner-identity-mismatch pids=31772\r\nWB_START ERROR main inspection code=20; no duplicate process will be started. \r\n"
+      }
+    },
+    {
+      "name": "startup-main-foreign-sanitizer-original-call-recorded",
+      "group": "G3",
+      "passed": true,
+      "detail": [
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek_v4.1flash1017\\thebigfish\\tools\\wb-config-sanitize.ps1",
+            "-Dir",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-foreign\\run\\.",
+            "-LogPath",
+            "D:\\Apps\\Bot\\health\\wb-guard.log",
+            "-Quiet"
+          ]
+        },
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-foreign\\run\\wb-service-check.ps1",
+            "-Service",
+            "main",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-foreign\\run\\.."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "startup-main-unhealthy-exit",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "expected": 30,
+        "actual": 30,
+        "output": "WB_CHECK name=main port=52056 state=unhealthy reason=health-healthy-count-not-positive-integer pids=2924\r\nWB_START ERROR main inspection code=30; no duplicate process will be started. \r\n"
+      }
+    },
+    {
+      "name": "startup-main-unhealthy-launch-counts",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "before": {
+          "main": 1,
+          "aux": 0,
+          "router": 0
+        },
+        "after": {
+          "main": 1,
+          "aux": 0,
+          "router": 0
+        }
+      }
+    },
+    {
+      "name": "startup-main-unhealthy-explicit",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "output": "WB_CHECK name=main port=52056 state=unhealthy reason=health-healthy-count-not-positive-integer pids=2924\r\nWB_START ERROR main inspection code=30; no duplicate process will be started. \r\n"
+      }
+    },
+    {
+      "name": "startup-main-unhealthy-sanitizer-original-call-recorded",
+      "group": "G3",
+      "passed": true,
+      "detail": [
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek_v4.1flash1017\\thebigfish\\tools\\wb-config-sanitize.ps1",
+            "-Dir",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-unhealthy\\run\\.",
+            "-LogPath",
+            "D:\\Apps\\Bot\\health\\wb-guard.log",
+            "-Quiet"
+          ]
+        },
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-unhealthy\\run\\wb-service-check.ps1",
+            "-Service",
+            "main",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-unhealthy\\run\\.."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "startup-router-foreign-exit",
+      "group": "G3",
+      "passed": false,
+      "detail": {
+        "expected": 20,
+        "actual": 40,
+        "output": "WB_CHECK name=main port=63573 state=healthy reason=workbuddy2api-healthy pids=20548\r\nWB_CHECK name=router port=63575 state=error reason=listener-or-process-inspection-failed pids=\r\nWB_START ERROR router inspection code=40; owner or HTTP conflict requires attention. \r\n"
+      }
+    },
+    {
+      "name": "startup-router-foreign-launch-counts",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "before": {
+          "main": 1,
+          "aux": 0,
+          "router": 1
+        },
+        "after": {
+          "main": 1,
+          "aux": 0,
+          "router": 1
+        }
+      }
+    },
+    {
+      "name": "startup-router-foreign-explicit-conflict",
+      "group": "G3",
+      "passed": false,
+      "detail": {
+        "output": "WB_CHECK name=main port=63573 state=healthy reason=workbuddy2api-healthy pids=20548\r\nWB_CHECK name=router port=63575 state=error reason=listener-or-process-inspection-failed pids=\r\nWB_START ERROR router inspection code=40; owner or HTTP conflict requires attention. \r\n"
+      }
+    },
+    {
+      "name": "startup-router-foreign-sanitizer-original-call-recorded",
+      "group": "G3",
+      "passed": true,
+      "detail": [
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek_v4.1flash1017\\thebigfish\\tools\\wb-config-sanitize.ps1",
+            "-Dir",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\run\\.",
+            "-LogPath",
+            "D:\\Apps\\Bot\\health\\wb-guard.log",
+            "-Quiet"
+          ]
+        },
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\run\\wb-service-check.ps1",
+            "-Service",
+            "main",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\run\\.."
+          ]
+        },
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\run\\wb-service-check.ps1",
+            "-Service",
+            "router",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\run\\.."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "startup-sanitize-one-exit",
+      "group": "G3",
+      "passed": false,
+      "detail": {
+        "expected": 0,
+        "actual": 40,
+        "output": "WB_CHECK name=main port=64357 state=healthy reason=workbuddy2api-healthy pids=25536\r\nWB_CHECK name=router port=64359 state=error reason=listener-or-process-inspection-failed pids=\r\nWB_START ERROR router inspection code=40; owner or HTTP conflict requires attention. \r\n"
+      }
+    },
+    {
+      "name": "startup-sanitize-one-launch-counts",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "before": {
+          "main": 1,
+          "aux": 0,
+          "router": 1
+        },
+        "after": {
+          "main": 1,
+          "aux": 0,
+          "router": 1
+        }
+      }
+    },
+    {
+      "name": "startup-sanitize-one-sanitizer-original-call-recorded",
+      "group": "G3",
+      "passed": true,
+      "detail": [
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek_v4.1flash1017\\thebigfish\\tools\\wb-config-sanitize.ps1",
+            "-Dir",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run\\.",
+            "-LogPath",
+            "D:\\Apps\\Bot\\health\\wb-guard.log",
+            "-Quiet"
+          ]
+        },
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run\\wb-service-check.ps1",
+            "-Service",
+            "main",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run\\.."
+          ]
+        },
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run\\wb-service-check.ps1",
+            "-Service",
+            "router",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run\\.."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "startup-sanitize-fail-exit",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "expected": 40,
+        "actual": 40,
+        "output": "WB_START ERROR config sanitation failed code=2 \r\n"
+      }
+    },
+    {
+      "name": "startup-sanitize-fail-launch-counts",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "before": {
+          "main": 1,
+          "aux": 0,
+          "router": 0
+        },
+        "after": {
+          "main": 1,
+          "aux": 0,
+          "router": 0
+        }
+      }
+    },
+    {
+      "name": "startup-sanitize-fail-sanitizer-original-call-recorded",
+      "group": "G3",
+      "passed": true,
+      "detail": [
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek_v4.1flash1017\\thebigfish\\tools\\wb-config-sanitize.ps1",
+            "-Dir",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-fail\\run\\.",
+            "-LogPath",
+            "D:\\Apps\\Bot\\health\\wb-guard.log",
+            "-Quiet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "startup-hold-main-missing-exit",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "expected": 10,
+        "actual": 10,
+        "output": "WB_CHECK name=main port=57944 state=missing reason=no-listener pids=\r\nWB_START HOLD .hold-restart prevents a missing service from starting. \r\n"
+      }
+    },
+    {
+      "name": "startup-hold-main-missing-launch-counts",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "before": {
+          "main": 0,
+          "aux": 0,
+          "router": 0
+        },
+        "after": {
+          "main": 0,
+          "aux": 0,
+          "router": 0
+        }
+      }
+    },
+    {
+      "name": "startup-hold-main-missing-sanitizer-original-call-recorded",
+      "group": "G3",
+      "passed": true,
+      "detail": [
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek_v4.1flash1017\\thebigfish\\tools\\wb-config-sanitize.ps1",
+            "-Dir",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-hold-main-missing\\run\\.",
+            "-LogPath",
+            "D:\\Apps\\Bot\\health\\wb-guard.log",
+            "-Quiet"
+          ]
+        },
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-hold-main-missing\\run\\wb-service-check.ps1",
+            "-Service",
+            "main",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-hold-main-missing\\run\\.."
+          ]
+        }
+      ]
+    },
+    {
+      "name": "startup-router-missing-wscript-exit",
+      "group": "G3",
+      "passed": false,
+      "detail": {
+        "expected": 0,
+        "actual": 40,
+        "output": "WB_CHECK name=main port=57959 state=healthy reason=workbuddy2api-healthy pids=44512\r\nWB_CHECK name=router port=57961 state=missing reason=no-listener pids=\r\nWB_CHECK name=router port=57961 state=error reason=listener-or-process-inspection-failed pids=\r\nWB_START ERROR router failed identity/HTTP recheck code=40. \r\n"
+      }
+    },
+    {
+      "name": "startup-router-missing-wscript-launch-counts",
+      "group": "G3",
+      "passed": true,
+      "detail": {
+        "before": {
+          "main": 1,
+          "aux": 0,
+          "router": 0
+        },
+        "after": {
+          "main": 1,
+          "aux": 0,
+          "router": 1
+        }
+      }
+    },
+    {
+      "name": "startup-router-missing-wscript-sanitizer-original-call-recorded",
+      "group": "G3",
+      "passed": true,
+      "detail": [
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek_v4.1flash1017\\thebigfish\\tools\\wb-config-sanitize.ps1",
+            "-Dir",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\.",
+            "-LogPath",
+            "D:\\Apps\\Bot\\health\\wb-guard.log",
+            "-Quiet"
+          ]
+        },
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\wb-service-check.ps1",
+            "-Service",
+            "main",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\.."
+          ]
+        },
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\wb-service-check.ps1",
+            "-Service",
+            "router",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\.."
+          ]
+        },
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\wb-service-check.ps1",
+            "-Service",
+            "router",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\..",
+            "-WaitSeconds",
+            "20"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "startup-router-missing-real-wscript-and-wait20",
+      "group": "G3",
+      "passed": true,
+      "detail": [
+        {
+          "kind": "powershell",
+          "argv": [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\wb-service-check.ps1",
+            "-Service",
+            "router",
+            "-PanelRoot",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\..",
+            "-WaitSeconds",
+            "20"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "harness-completed",
+      "group": "harness",
+      "passed": false,
+      "detail": {
+        "type": "RuntimeError",
+        "message": "fixture readiness deadline startup-main-missing/main"
+      }
+    },
+    {
+      "name": "G34-end-freeze-hashes",
+      "group": "freeze",
+      "passed": true,
+      "detail": {
+        "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+        "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+        "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+        "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+        "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+        "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+      }
+    },
+    {
+      "name": "G34-all-isolated-fixture-ports-closed",
+      "group": "cleanup",
+      "passed": true,
+      "detail": {
+        "ports": [
+          62837,
+          62838,
+          62839,
+          50984,
+          50985,
+          50986,
+          52056,
+          52057,
+          52058,
+          63573,
+          63574,
+          63575,
+          64357,
+          64358,
+          64359,
+          58848,
+          58849,
+          58850,
+          57944,
+          57945,
+          57946,
+          57959,
+          57960,
+          57961,
+          61608,
+          61609,
+          61610
+        ]
+      }
+    },
+    {
+      "name": "G34-owned-process-handles-exited",
+      "group": "cleanup",
+      "passed": true,
+      "detail": [
+        {
+          "kind": "watch-fixture",
+          "pid": 34400,
+          "argv": [
+            "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\independent-watch.ps1"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "startup-healthy",
+          "name": "main",
+          "pid": 20716,
+          "argv": [
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run\\wb2api.exe",
+            "-config",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run\\config.json"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "startup-healthy",
+          "name": "router",
+          "pid": 34496,
+          "argv": [
+            "C:\\Program Files\\nodejs\\node.EXE",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run\\wb-router.js"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "startup-main-foreign",
+          "name": "main",
+          "pid": 31772,
+          "argv": [
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-foreign\\foreign\\wb2api.exe",
+            "-config",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-foreign\\run\\config.json"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "startup-main-unhealthy",
+          "name": "main",
+          "pid": 2924,
+          "argv": [
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-unhealthy\\run\\wb2api.exe",
+            "-config",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-unhealthy\\run\\config.json"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "startup-router-foreign",
+          "name": "main",
+          "pid": 20548,
+          "argv": [
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\run\\wb2api.exe",
+            "-config",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\run\\config.json"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "startup-router-foreign",
+          "name": "router",
+          "pid": 11892,
+          "argv": [
+            "C:\\Program Files\\nodejs\\node.EXE",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\foreign\\foreign-router.js"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "startup-sanitize-one",
+          "name": "main",
+          "pid": 25536,
+          "argv": [
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run\\wb2api.exe",
+            "-config",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run\\config.json"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "startup-sanitize-one",
+          "name": "router",
+          "pid": 43156,
+          "argv": [
+            "C:\\Program Files\\nodejs\\node.EXE",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run\\wb-router.js"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "startup-sanitize-fail",
+          "name": "main",
+          "pid": 44504,
+          "argv": [
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-fail\\run\\wb2api.exe",
+            "-config",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-fail\\run\\config.json"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "startup-router-missing-wscript",
+          "name": "main",
+          "pid": 44512,
+          "argv": [
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\wb2api.exe",
+            "-config",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\config.json"
+          ]
+        },
+        {
+          "kind": "fixture",
+          "scenario": "startup-main-missing",
+          "name": "router",
+          "pid": 35036,
+          "argv": [
+            "C:\\Program Files\\nodejs\\node.EXE",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-missing\\run\\wb-router.js"
+          ]
+        },
+        {
+          "kind": "startup-cmd",
+          "pid": 37992,
+          "argv": [
+            "C:\\Windows\\System32\\cmd.exe",
+            "/d",
+            "/c",
+            "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-missing\\run\\start-silent.cmd"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "G34-temporary-runtime-removed",
+      "group": "cleanup",
+      "passed": true,
+      "detail": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996"
+    }
+  ],
+  "commands": [
+    {
+      "label": "compile-independent-native-fixture",
+      "argv": [
+        "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe",
+        "/nologo",
+        "/target:exe",
+        "/r:System.Web.Extensions.dll",
+        "/out:D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\fixture.exe",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\IndependentWbFixture.cs"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish",
+      "exitCode": 0,
+      "elapsedMs": 156,
+      "output": ""
+    },
+    {
+      "label": "independent-library-matrix",
+      "argv": [
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\g34-library-independent.ps1",
+        "-CandidateDir",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate",
+        "-Scratch",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\library-cases",
+        "-Evidence",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\g34-library-evidence-v4.json"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish",
+      "exitCode": 0,
+      "elapsedMs": 688,
+      "output": "INDEPENDENT_MOCK_CASES total=89 passed=89 failed=0\r\n"
+    },
+    {
+      "label": "startup-startup-healthy",
+      "argv": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "/d",
+        "/c",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run\\start-silent.cmd"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run",
+      "exitCode": 40,
+      "elapsedMs": 12500,
+      "output": "WB_CHECK name=main port=62837 state=healthy reason=workbuddy2api-healthy pids=20716\r\nWB_CHECK name=router port=62839 state=error reason=listener-or-process-inspection-failed pids=\r\nWB_START ERROR router inspection code=40; owner or HTTP conflict requires attention. \r\n"
+    },
+    {
+      "label": "startup-startup-main-foreign",
+      "argv": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "/d",
+        "/c",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-foreign\\run\\start-silent.cmd"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-foreign\\run",
+      "exitCode": 20,
+      "elapsedMs": 4547,
+      "output": "WB_CHECK name=main port=50984 state=foreign reason=CONFLICT-listener-owner-identity-mismatch pids=31772\r\nWB_START ERROR main inspection code=20; no duplicate process will be started. \r\n"
+    },
+    {
+      "label": "startup-startup-main-unhealthy",
+      "argv": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "/d",
+        "/c",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-unhealthy\\run\\start-silent.cmd"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-unhealthy\\run",
+      "exitCode": 30,
+      "elapsedMs": 8140,
+      "output": "WB_CHECK name=main port=52056 state=unhealthy reason=health-healthy-count-not-positive-integer pids=2924\r\nWB_START ERROR main inspection code=30; no duplicate process will be started. \r\n"
+    },
+    {
+      "label": "startup-startup-router-foreign",
+      "argv": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "/d",
+        "/c",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\run\\start-silent.cmd"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\run",
+      "exitCode": 40,
+      "elapsedMs": 12453,
+      "output": "WB_CHECK name=main port=63573 state=healthy reason=workbuddy2api-healthy pids=20548\r\nWB_CHECK name=router port=63575 state=error reason=listener-or-process-inspection-failed pids=\r\nWB_START ERROR router inspection code=40; owner or HTTP conflict requires attention. \r\n"
+    },
+    {
+      "label": "startup-startup-sanitize-one",
+      "argv": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "/d",
+        "/c",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run\\start-silent.cmd"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run",
+      "exitCode": 40,
+      "elapsedMs": 11344,
+      "output": "WB_CHECK name=main port=64357 state=healthy reason=workbuddy2api-healthy pids=25536\r\nWB_CHECK name=router port=64359 state=error reason=listener-or-process-inspection-failed pids=\r\nWB_START ERROR router inspection code=40; owner or HTTP conflict requires attention. \r\n"
+    },
+    {
+      "label": "startup-startup-sanitize-fail",
+      "argv": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "/d",
+        "/c",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-fail\\run\\start-silent.cmd"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-fail\\run",
+      "exitCode": 40,
+      "elapsedMs": 141,
+      "output": "WB_START ERROR config sanitation failed code=2 \r\n"
+    },
+    {
+      "label": "startup-startup-hold-main-missing",
+      "argv": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "/d",
+        "/c",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-hold-main-missing\\run\\start-silent.cmd"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-hold-main-missing\\run",
+      "exitCode": 10,
+      "elapsedMs": 3937,
+      "output": "WB_CHECK name=main port=57944 state=missing reason=no-listener pids=\r\nWB_START HOLD .hold-restart prevents a missing service from starting. \r\n"
+    },
+    {
+      "label": "startup-startup-router-missing-wscript",
+      "argv": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "/d",
+        "/c",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\start-silent.cmd"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run",
+      "exitCode": 40,
+      "elapsedMs": 14469,
+      "output": "WB_CHECK name=main port=57959 state=healthy reason=workbuddy2api-healthy pids=44512\r\nWB_CHECK name=router port=57961 state=missing reason=no-listener pids=\r\nWB_CHECK name=router port=57961 state=error reason=listener-or-process-inspection-failed pids=\r\nWB_START ERROR router failed identity/HTTP recheck code=40. \r\n"
+    }
+  ],
+  "cleanup": [
+    {
+      "scenario": "startup-healthy",
+      "name": "main",
+      "pid": 20716,
+      "method": "owned fixture GET self-stop",
+      "port": 62837,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "startup-healthy",
+      "name": "router",
+      "pid": 34496,
+      "method": "owned fixture GET self-stop",
+      "port": 62839,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "startup-main-foreign",
+      "name": "main",
+      "pid": 31772,
+      "method": "owned fixture GET self-stop",
+      "port": 50984,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "startup-main-unhealthy",
+      "name": "main",
+      "pid": 2924,
+      "method": "owned fixture GET self-stop",
+      "port": 52056,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "startup-router-foreign",
+      "name": "main",
+      "pid": 20548,
+      "method": "owned fixture GET self-stop",
+      "port": 63573,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "startup-router-foreign",
+      "name": "router",
+      "pid": 11892,
+      "method": "owned fixture GET self-stop",
+      "port": 63575,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "startup-sanitize-one",
+      "name": "main",
+      "pid": 25536,
+      "method": "owned fixture GET self-stop",
+      "port": 64357,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "startup-sanitize-one",
+      "name": "router",
+      "pid": 43156,
+      "method": "owned fixture GET self-stop",
+      "port": 64359,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "startup-sanitize-fail",
+      "name": "main",
+      "pid": 44504,
+      "method": "owned fixture GET self-stop",
+      "port": 58848,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "startup-router-missing-wscript",
+      "name": "main",
+      "pid": 44512,
+      "method": "owned fixture GET self-stop",
+      "port": 57959,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "startup-router-missing-wscript",
+      "name": "router",
+      "pid": 34812,
+      "method": "owned fixture GET self-stop",
+      "port": 57961,
+      "portClosed": true,
+      "handleExitCode": null
+    },
+    {
+      "scenario": "startup-main-missing",
+      "name": "router",
+      "pid": 35036,
+      "method": "owned fixture GET self-stop",
+      "port": 61610,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "name": "independent-watch",
+      "pid": 34400,
+      "method": "owned stop file",
+      "exitCode": 0
+    }
+  ],
+  "ownedProcesses": [
+    {
+      "kind": "watch-fixture",
+      "pid": 34400,
+      "argv": [
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\independent-watch.ps1"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "startup-healthy",
+      "name": "main",
+      "pid": 20716,
+      "argv": [
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run\\wb2api.exe",
+        "-config",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run\\config.json"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "startup-healthy",
+      "name": "router",
+      "pid": 34496,
+      "argv": [
+        "C:\\Program Files\\nodejs\\node.EXE",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-healthy\\run\\wb-router.js"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "startup-main-foreign",
+      "name": "main",
+      "pid": 31772,
+      "argv": [
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-foreign\\foreign\\wb2api.exe",
+        "-config",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-foreign\\run\\config.json"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "startup-main-unhealthy",
+      "name": "main",
+      "pid": 2924,
+      "argv": [
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-unhealthy\\run\\wb2api.exe",
+        "-config",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-unhealthy\\run\\config.json"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "startup-router-foreign",
+      "name": "main",
+      "pid": 20548,
+      "argv": [
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\run\\wb2api.exe",
+        "-config",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\run\\config.json"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "startup-router-foreign",
+      "name": "router",
+      "pid": 11892,
+      "argv": [
+        "C:\\Program Files\\nodejs\\node.EXE",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-foreign\\foreign\\foreign-router.js"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "startup-sanitize-one",
+      "name": "main",
+      "pid": 25536,
+      "argv": [
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run\\wb2api.exe",
+        "-config",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run\\config.json"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "startup-sanitize-one",
+      "name": "router",
+      "pid": 43156,
+      "argv": [
+        "C:\\Program Files\\nodejs\\node.EXE",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-one\\run\\wb-router.js"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "startup-sanitize-fail",
+      "name": "main",
+      "pid": 44504,
+      "argv": [
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-fail\\run\\wb2api.exe",
+        "-config",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-fail\\run\\config.json"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "startup-router-missing-wscript",
+      "name": "main",
+      "pid": 44512,
+      "argv": [
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\wb2api.exe",
+        "-config",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-router-missing-wscript\\run\\config.json"
+      ]
+    },
+    {
+      "kind": "fixture",
+      "scenario": "startup-main-missing",
+      "name": "router",
+      "pid": 35036,
+      "argv": [
+        "C:\\Program Files\\nodejs\\node.EXE",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-missing\\run\\wb-router.js"
+      ]
+    },
+    {
+      "kind": "startup-cmd",
+      "pid": 37992,
+      "argv": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "/d",
+        "/c",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-main-missing\\run\\start-silent.cmd"
+      ]
+    }
+  ],
+  "scenarioPorts": {
+    "startup-healthy": {
+      "main": 62837,
+      "aux": 62838,
+      "router": 62839
+    },
+    "startup-main-foreign": {
+      "main": 50984,
+      "aux": 50985,
+      "router": 50986
+    },
+    "startup-main-unhealthy": {
+      "main": 52056,
+      "aux": 52057,
+      "router": 52058
+    },
+    "startup-router-foreign": {
+      "main": 63573,
+      "aux": 63574,
+      "router": 63575
+    },
+    "startup-sanitize-one": {
+      "main": 64357,
+      "aux": 64358,
+      "router": 64359
+    },
+    "startup-sanitize-fail": {
+      "main": 58848,
+      "aux": 58849,
+      "router": 58850
+    },
+    "startup-hold-main-missing": {
+      "main": 57944,
+      "aux": 57945,
+      "router": 57946
+    },
+    "startup-router-missing-wscript": {
+      "main": 57959,
+      "aux": 57960,
+      "router": 57961
+    },
+    "startup-main-missing": {
+      "main": 61608,
+      "aux": 61609,
+      "router": 61610
+    }
+  }
+}

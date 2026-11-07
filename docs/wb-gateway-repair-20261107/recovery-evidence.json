@@ -1,0 +1,36 @@
+﻿{
+    "before":  {
+                   "at":  "2026-11-07T11:10:52.5714862+08:00",
+                   "stubPid":  32508,
+                   "stubCreatedMs":  1793990543821,
+                   "command":  "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe C:/temp/stub-rewrite.py",
+                   "temporaryState":  {
+                                          "queued":  0,
+                                          "done":  0,
+                                          "failed":  0
+                                      },
+                   "action":  "stop verified empty test stub only"
+               },
+    "after":  {
+                  "at":  "2026-11-07T11:10:57.0861948+08:00",
+                  "health":  {
+                                 "healthy":  7,
+                                 "realm_servable":  {
+                                                        "cn":  true,
+                                                        "global":  true
+                                                    },
+                                 "service":  "workbuddy2api",
+                                 "total":  7
+                             },
+                  "owners":  [
+                                 {
+                                     "ProcessId":  38084,
+                                     "ExecutablePath":  "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+                                     "CreationDate":  "\/Date(1794021053387)\/"
+                                 }
+                             ],
+                  "originalStubStopped":  true,
+                  "stubDefaultPort":  18791,
+                  "stubRestarted":  false
+              }
+}

@@ -1,0 +1,145 @@
+{
+    "startedAt":  "2026-11-07T12:28:04.0472914+08:00",
+    "execute":  true,
+    "productionInferenceRequests":  0,
+    "oldRouterPid":  10576,
+    "stoppedRouter":  true,
+    "observations":  [
+                         {
+                             "At":  "2026-11-07T12:28:11.7897514+08:00",
+                             "Pools":  [
+                                           {
+                                               "Port":  8790,
+                                               "Healthy":  7,
+                                               "InFlight":  0,
+                                               "Accounts":  7
+                                           },
+                                           {
+                                               "Port":  8789,
+                                               "Healthy":  1,
+                                               "InFlight":  0,
+                                               "Accounts":  1
+                                           }
+                                       ]
+                         },
+                         {
+                             "At":  "2026-11-07T12:28:13.3262050+08:00",
+                             "Pools":  [
+                                           {
+                                               "Port":  8790,
+                                               "Healthy":  7,
+                                               "InFlight":  0,
+                                               "Accounts":  7
+                                           },
+                                           {
+                                               "Port":  8789,
+                                               "Healthy":  1,
+                                               "InFlight":  0,
+                                               "Accounts":  1
+                                           }
+                                       ]
+                         },
+                         {
+                             "At":  "2026-11-07T12:28:13.9378053+08:00",
+                             "Pools":  [
+                                           {
+                                               "Port":  8790,
+                                               "Healthy":  7,
+                                               "InFlight":  0,
+                                               "Accounts":  7
+                                           },
+                                           {
+                                               "Port":  8789,
+                                               "Healthy":  1,
+                                               "InFlight":  0,
+                                               "Accounts":  1
+                                           }
+                                       ],
+                             "FinalCheck":  true
+                         }
+                     ],
+    "protectedPoolsBefore":  [
+                                 {
+                                     "Pid":  29624,
+                                     "Created":  "2026-11-06T08:57:05.1653160Z",
+                                     "Path":  "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe"
+                                 },
+                                 {
+                                     "Pid":  38084,
+                                     "Created":  "2026-11-07T03:10:53.3877780Z",
+                                     "Path":  "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe"
+                                 }
+                             ],
+    "stopRequestedAt":  "2026-11-07T12:28:13.9449011+08:00",
+    "stoppedAt":  "2026-11-07T12:28:13.9661473+08:00",
+    "readyAt":  "2026-11-07T12:28:14.7411670+08:00",
+    "routerStatus":  {
+                         "state":  "offline",
+                         "stateMeaning":  "QQ 离线：主实例 + 年糕实例按权重合力",
+                         "changedAt":  "2026-11-03T11:11:06.593Z",
+                         "qq":  {
+                                    "raw":  false,
+                                    "rawHeldMs":  107,
+                                    "lastProbeAt":  "2026-11-07T04:28:14.622Z",
+                                    "lastProbeErr":  ""
+                                },
+                         "aux":  {
+                                     "target":  "127.0.0.1:8789",
+                                     "healthy":  true,
+                                     "reason":  "ok",
+                                     "service":  "workbuddy2api",
+                                     "healthyCount":  1,
+                                     "checkedAt":  "2026-11-07T04:28:14.564Z",
+                                     "ttlMs":  15000,
+                                     "ageMs":  165,
+                                     "remainingTtlMs":  14835,
+                                     "expiresAt":  "2026-11-07T04:28:29.564Z",
+                                     "probing":  false,
+                                     "paused":  false,
+                                     "pauseUntil":  "2026-11-05T19:14:25+08:00"
+                                 },
+                         "main":  {
+                                      "target":  "127.0.0.1:8790",
+                                      "healthy":  true,
+                                      "reason":  "ok",
+                                      "service":  "workbuddy2api",
+                                      "healthyCount":  7,
+                                      "checkedAt":  "2026-11-07T04:28:14.562Z",
+                                      "ttlMs":  15000,
+                                      "ageMs":  167,
+                                      "remainingTtlMs":  14833,
+                                      "expiresAt":  "2026-11-07T04:28:29.562Z",
+                                      "probing":  false
+                                  },
+                         "hold":  {
+                                      "onlineMs":  180000,
+                                      "offlineMs":  300000
+                                  },
+                         "weight":  {
+                                        "main":  5,
+                                        "aux":  3
+                                    },
+                         "counters":  {
+                                          "requests":  0,
+                                          "toMain":  0,
+                                          "toAux":  0,
+                                          "auxFail":  0,
+                                          "upstream5xx":  0
+                                      }
+                     },
+    "protectedPoolsAfter":  [
+                                {
+                                    "Pid":  29624,
+                                    "Created":  "2026-11-06T08:57:05.1653160Z",
+                                    "Path":  "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe"
+                                },
+                                {
+                                    "Pid":  38084,
+                                    "Created":  "2026-11-07T03:10:53.3877780Z",
+                                    "Path":  "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe"
+                                }
+                            ],
+    "newRouterPid":  44332,
+    "success":  true,
+    "finishedAt":  "2026-11-07T12:28:20.7572859+08:00"
+}

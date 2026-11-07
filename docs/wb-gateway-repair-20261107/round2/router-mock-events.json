@@ -1,0 +1,2470 @@
+[
+  {
+    "at": 70222.468,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.468,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.484,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/responses",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.484,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.484,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/images/generations",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.484,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.484,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/images/edits",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.484,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.484,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/embeddings",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.484,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.515,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/messages",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.515,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.531,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/messages",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.531,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.531,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/search",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.531,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.546,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/fetch",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.546,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.578,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v2/chat/busy",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.578,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.593,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.593,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.609,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/responses",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.609,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.625,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/images/generations",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.625,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.64,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/images/edits",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.64,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.656,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/embeddings",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.656,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.656,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/messages",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.656,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.671,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/messages",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.671,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.671,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/search",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.671,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.687,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/fetch",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.687,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.687,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v2/chat/busy",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.687,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.718,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.718,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.734,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/responses",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.734,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.75,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/images/generations",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.75,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.765,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/images/edits",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.765,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.781,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/embeddings",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.781,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.812,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/messages",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.812,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.828,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/messages",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.828,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.843,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/search",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.843,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.843,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/fetch",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.843,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.859,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v2/chat/busy",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.859,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.875,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.875,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.906,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/responses",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.906,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.921,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/images/generations",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.921,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.937,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/images/edits",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.937,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.953,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/embeddings",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.953,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70222.968,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/messages",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70222.968,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.0,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/messages",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.0,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.015,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/search",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.015,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.031,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/fetch",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.031,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.046,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v2/chat/busy",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.046,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.078,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.078,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.093,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/responses",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.093,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.109,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/images/generations",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.109,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.125,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/images/edits",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.125,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.14,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/embeddings",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.14,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.171,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/messages",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.171,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.187,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/messages",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.187,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.203,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/search",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.203,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.218,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/fetch",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.218,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.234,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v2/chat/busy",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.234,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.25,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.25,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.281,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/responses",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.281,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.296,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/images/generations",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.296,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.312,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/images/edits",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.312,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.328,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/embeddings",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.328,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.343,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/messages",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.343,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.375,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/messages",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.375,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.39,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/search",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.39,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.406,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/fetch",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.406,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.421,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v2/chat/busy",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.421,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.421,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.421,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.453,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/responses",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.453,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.468,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/images/generations",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.468,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.468,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/images/edits",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.468,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.484,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/embeddings",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.484,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.5,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/messages",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.5,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.515,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/messages",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.515,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.546,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/search",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.546,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.546,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/fetch",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.546,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.562,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v2/chat/busy",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.562,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.578,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.578,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.593,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/responses",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.593,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.609,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/images/generations",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.609,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.64,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/images/edits",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.64,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.656,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/embeddings",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.656,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.671,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/messages",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.671,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.687,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/messages",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.687,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.718,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/search",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.718,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.734,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/fetch",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.734,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.75,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v2/chat/busy",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.75,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.843,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.843,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.875,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.875,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.921,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.921,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.937,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.937,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.953,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.953,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70223.984,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70223.984,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.0,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.0,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.031,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.031,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.046,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.046,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.093,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.093,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.125,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.125,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.296,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.296,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.343,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.343,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.375,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.375,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.39,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.39,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.406,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.406,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.421,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.421,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.453,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.453,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.468,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.468,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.5,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.5,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.531,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.531,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.562,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70224.562,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70224.921,
+    "kind": "GET",
+    "pool": "main",
+    "path": "/v1/models"
+  },
+  {
+    "at": 70224.921,
+    "kind": "GET",
+    "pool": "main",
+    "path": "/panel/"
+  },
+  {
+    "at": 70224.921,
+    "kind": "GET",
+    "pool": "main",
+    "path": "/status"
+  },
+  {
+    "at": 70225.546,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70225.546,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70225.562,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70225.562,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70225.562,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70225.562,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70225.578,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70225.578,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70225.593,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70225.593,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70225.609,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70225.609,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70225.609,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70225.609,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70225.64,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70225.64,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70226.406,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70226.406,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70226.406,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70226.406,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70226.406,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70226.406,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70226.437,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70226.437,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70226.437,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70226.437,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70226.453,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70226.453,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70226.468,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70226.468,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70226.484,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70226.484,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "ok",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70228.125,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "404",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70228.125,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "404",
+    "declaredBytes": 31,
+    "actualBytes": 31,
+    "sha256": "b04c176ebdeec45badd52fdb0fcd7a97187f4f8692fa29d699326c19ce5b64d0"
+  },
+  {
+    "at": 70228.281,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "429",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70228.281,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "429",
+    "declaredBytes": 31,
+    "actualBytes": 31,
+    "sha256": "b04c176ebdeec45badd52fdb0fcd7a97187f4f8692fa29d699326c19ce5b64d0"
+  },
+  {
+    "at": 70228.437,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/chat/completions",
+    "mode": "reset",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70228.437,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "reset",
+    "declaredBytes": 31,
+    "actualBytes": 31,
+    "sha256": "b04c176ebdeec45badd52fdb0fcd7a97187f4f8692fa29d699326c19ce5b64d0"
+  },
+  {
+    "at": 70228.593,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "partial",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70228.593,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "partial",
+    "declaredBytes": 31,
+    "actualBytes": 31,
+    "sha256": "b04c176ebdeec45badd52fdb0fcd7a97187f4f8692fa29d699326c19ce5b64d0"
+  },
+  {
+    "at": 70228.765,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/responses",
+    "mode": "sse",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70228.765,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "sse",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70228.765,
+    "kind": "SSE_WRITE",
+    "pool": "main",
+    "mode": "sse",
+    "i": 0,
+    "hex": "646174613a207b22776f7264223a2268656c"
+  },
+  {
+    "at": 70228.89,
+    "kind": "SSE_WRITE",
+    "pool": "main",
+    "mode": "sse",
+    "i": 1,
+    "hex": "6c6f222c2275746638223a22"
+  },
+  {
+    "at": 70229.015,
+    "kind": "SSE_WRITE",
+    "pool": "main",
+    "mode": "sse",
+    "i": 2,
+    "hex": "e6b5"
+  },
+  {
+    "at": 70229.125,
+    "kind": "SSE_WRITE",
+    "pool": "main",
+    "mode": "sse",
+    "i": 3,
+    "hex": "8b"
+  },
+  {
+    "at": 70229.25,
+    "kind": "SSE_WRITE",
+    "pool": "main",
+    "mode": "sse",
+    "i": 4,
+    "hex": "227d0a0a"
+  },
+  {
+    "at": 70229.375,
+    "kind": "SSE_WRITE",
+    "pool": "main",
+    "mode": "sse",
+    "i": 5,
+    "hex": "646174613a205b444f4e455d0a0a"
+  },
+  {
+    "at": 70229.5,
+    "kind": "POST_BEGIN",
+    "pool": "main",
+    "path": "/v1/responses",
+    "mode": "cancel",
+    "x-router": "main",
+    "authIsAuxSynthetic": false,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70229.5,
+    "kind": "POST_BODY",
+    "pool": "main",
+    "mode": "cancel",
+    "declaredBytes": 2,
+    "actualBytes": 2,
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "at": 70229.5,
+    "kind": "SSE_WRITE",
+    "pool": "main",
+    "mode": "cancel",
+    "i": 0,
+    "hex": "646174613a207469636b0a0a"
+  },
+  {
+    "at": 70229.562,
+    "kind": "SSE_WRITE",
+    "pool": "main",
+    "mode": "cancel",
+    "i": 1,
+    "hex": "646174613a207469636b0a0a"
+  },
+  {
+    "at": 70229.625,
+    "kind": "SSE_CANCELLED",
+    "pool": "main",
+    "mode": "cancel"
+  },
+  {
+    "at": 70229.656,
+    "kind": "POST_BEGIN",
+    "pool": "aux",
+    "path": "/v1/chat/completions",
+    "mode": "ok",
+    "x-router": "aux",
+    "authIsAuxSynthetic": true,
+    "hasXApiKey": false
+  },
+  {
+    "at": 70229.734,
+    "kind": "POST_BODY",
+    "pool": "aux",
+    "mode": "ok",
+    "declaredBytes": 50000,
+    "actualBytes": 64,
+    "sha256": "7ce100971f64e7001e8fe5a51973ecdfe1ced42befe7ee8d5fd6219506b5393c"
+  },
+  {
+    "at": 70229.734,
+    "kind": "UPLOAD_CANCEL",
+    "pool": "aux"
+  }
+]

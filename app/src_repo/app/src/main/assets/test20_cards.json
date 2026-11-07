@@ -1,0 +1,330 @@
+{
+ "version": 1,
+ "book": "测试·20词",
+ "count": 20,
+ "words": [
+  {
+   "word": "pesticide",
+   "phonetic": "/ˈpestɪsaɪd/",
+   "meaning": "n. 农药；杀虫剂",
+   "example": "Farmers are encouraged to use less pesticide to protect the soil and water.\n农民们少用点农药吧，土壤和水源都护着。",
+   "approach": [
+    "① 先看词头 pest：它是考纲内的老面孔，本义就是「害虫、瘟疫」，一读到它脑子里立刻浮出庄稼叶子上密密麻麻啃食的虫子，这就是这个词要对付的对象。",
+    "② 再看词尾 -cide：这是一个真实且高频的后缀，来自拉丁语「切、杀」。已经背过的 suicide＝sui(自己)+cide＝自杀，homicide＝homi(人)+cide＝杀人，所以只要看到 -cide 就锁定「杀」这个动作。",
+    "③ 中间那根细小的 i 只是把两头焊起来的拼写接缝，不用赋予额外含义。把两截合起来：杀 pests 的东西，也就是用来杀死害虫的药剂 ——> pesticide 农药、杀虫剂。",
+    "④ 顺带记一条同根家族链：pest(害虫) + cide(杀) 是「杀虫子」，那么 herbi(草)+cide 就是除草剂，insecti(昆虫)+cide 就是杀虫剂，一串词一起拿下。"
+   ],
+   "collocations": [
+    "spray pesticide —— 喷药，往叶背洒",
+    "pesticide residue —— 农药残留，果子上的",
+    "a chemical pesticide —— 化学合成的那种药"
+   ]
+  },
+  {
+   "word": "evaporate",
+   "phonetic": "/ɪˈvæpəreɪt/",
+   "meaning": "v. 蒸发；使蒸发；消失",
+   "example": "The puddle on the road evaporated quickly under the hot sun.\n路上的水洼，烈日一晒就蒸发了。",
+   "approach": [
+    "① 先看词头 e-，它是 ex- 的变形，含义是「往外、离开原处」，水离开水面就是往天上跑。",
+    "② 再看中间 vapor，它就是「蒸汽」本身，和名词 vapour 一模一样，正是水变成的那团白气。",
+    "③ 最后 -ate 是动词后缀，表示「使成为某种状态」，合起来就是「使变成蒸汽往外走」——> 蒸发。"
+   ],
+   "collocations": [
+    "evaporate into —— 蒸发成…",
+    "water evaporates —— 水分蒸发",
+    "evaporate from —— 从…中蒸发"
+   ]
+  },
+  {
+   "word": "equate",
+   "phonetic": "/ɪˈkweɪt/",
+   "meaning": "v. 等同；把…等同于",
+   "example": "Many people equate happiness with wealth, but the two are not the same.\n很多人把幸福和财富划上等号，可这两样东西真不是一回事。",
+   "approach": [
+    "① 先看词根 equ-：equal、equality、equivalent 里都藏着它，意思是「相等、一样」，这是你已经背过的老朋友。",
+    "② 再看后缀 -ate：它把形容词性的「相等」变成一个动作，表示「使…」，于是整词就是「使两样东西相等」。",
+    "③ 合起来：使 A 和 B 相等，就是在心里把二者画上等号、当成同一回事 ——> equate 等同；把…等同于。"
+   ],
+   "collocations": [
+    "equate A with B —— 把 A 和 B 划等号",
+    "be equated to —— 被人拿来跟…划等号",
+    "equate success with money —— 拿钱当成功的尺子"
+   ]
+  },
+  {
+   "word": "marble",
+   "phonetic": "/ˈmɑːrbl/",
+   "meaning": "n. 大理石",
+   "example": "The palace floor was laid with polished white marble.\n宫殿的地面，铺的就是打磨过的白色大理石。",
+   "approach": [
+    "① 先看读音：marble 读 /ˈmɑːrbl/，第一个音节 /mɑːr/ 与中文「妈」的声母韵母都接近，可以借「妈」来记。",
+    "② 再看第二个音节 /bl/，爆破音 /b/ 加上轻化的 /l/，听起来像「不了」，于是整个词在耳朵里变成「妈不了」——妈妈搬不动的那块东西。",
+    "③ 把声音和意思接上：妈妈使尽力气也「搬不了」的那块石头，一定又硬又白又沉，正是宫殿地面和雕塑用的那种石头 ——> 大理石。"
+   ],
+   "collocations": [
+    "a marble floor —— 大理石地面，踩着都显贵",
+    "a marble statue —— 大理石雕像，站着不动也体面",
+    "carved from marble —— 从大理石里雕出来的，料子比手艺还硬"
+   ]
+  },
+  {
+   "word": "squad",
+   "phonetic": "/skwɒd/",
+   "meaning": "n. 班，小组；（军队的）班",
+   "example": "A squad of soldiers marched across the yard in step.\n一队士兵踏着整齐的步子穿过院子。",
+   "approach": [
+    "① 先看读音：squad /skwɒd/，四个音一口气压成一个短促的方块音，重音落在后面，听着像一群人同时落脚的一声「跨·蹬」。",
+    "② 再看画面：一队士兵排成一块方阵，同一秒抬腿、同一秒踩下，鞋底同时砸地，扬起一团灰，旁边的人被震得缩脖子。",
+    "③ 合起来：一个人迈步是散的，一群人同时落脚才砸出这一声「跨·蹬」——> squad 就是被编在一起、步调统一的那一小队人，班、小组。"
+   ],
+   "collocations": [
+    "a squad of soldiers —— 一个班的大兵，齐齐整整",
+    "rescue squad —— 救援小组，出事就往里冲的那种",
+    "squad leader —— 班长，管这伙人的头"
+   ]
+  },
+  {
+   "word": "system",
+   "phonetic": "/ˈsɪstəm/",
+   "meaning": "n. 系统；体系；（身体等的）系统",
+   "example": "The new computer system links every office in the building.\n楼里每间办公室，都接进了新的计算机系统。",
+   "approach": [
+    "① 先看 sys：三个字母两头都是 s、中间是 y，念起来像一条从这头通到那头的管道，中间的 y 像一个三通接头，把两段接成一条路。",
+    "② 再看 tem：它像一根线串起许多小段，任何一段都不能单独成路，必须全部接上、按顺序贯通。",
+    "③ 合起来：一条主管道加许多支管被接头串成一张贯通的网，水从任何一端进去都能流到另一端，少了任何一段整条路就断了 ——> 这就是 system：多个部分按规则连成、彼此配合才能运转的整体，即「系统、体系」。"
+   ],
+   "collocations": [
+    "the solar system —— 太阳系，天上就这一套",
+    "a computer system —— 一整套计算机系统",
+    "the education system —— 教育这套体系",
+    "the immune system —— 身体里的免疫系统"
+   ]
+  },
+  {
+   "word": "draw",
+   "phonetic": "/drɔː/",
+   "meaning": "v. 画；绘制；拉；拖；吸引；抽取",
+   "example": "She drew a straight line across the middle of the page.\n她在纸的正中间，拉了一条笔直的线。",
+   "approach": [
+    "① 先看 draw 的基本动作：手握住笔，在纸面上往后一拉——笔尖走过的地方就留下一道线。",
+    "② 「拉」是这个词所有义项的共同祖先：拉笔成线=画；拉门帘=拉；拉观众的注意力=吸引；从牌堆里拉出一张=抽取。",
+    "③ 于是从「拉出一道线」这个动作，自然长出了「画画」这个最常考的义项 ——> draw 画；绘制。"
+   ],
+   "collocations": [
+    "draw a picture —— 随手画一张",
+    "draw a line —— 划一条线，别越界",
+    "draw attention —— 把目光拉过来",
+    "draw a conclusion —— 得出个结论"
+   ]
+  },
+  {
+   "word": "suppose",
+   "phonetic": "/səˈpoʊz/",
+   "meaning": "v. 假设；认为；猜想",
+   "example": "Suppose you had one million dollars—what would you do first?\n假设你有一百万美元——你先干什么？",
+   "approach": [
+    "① 先看 sup-：它是 sub- 在 p 前的变体，意思就是「在下、在底下」，submarine 潜艇、subway 地铁都是这个「下」。",
+    "② 再看 -pose：这是「放、置」的词根，pose 摆姿势、position 位置、propose 往前放＝提议，全是「放」。",
+    "③ 合起来 sup + pose 就是「放在底下垫着」：真正要用的东西还没摆上台面，先在底下垫一个东西撑着——那个垫底的、还没被证实的东西，就是「假设」。说话时先垫一个假设当底座，后面的话才立得住 ——> 假设、猜想。"
+   ],
+   "collocations": [
+    "be supposed to do —— 本来该做却没做",
+    "I suppose so —— 我想是吧",
+    "suppose that —— 假设…",
+    "supposing (that) —— 假如说…"
+   ]
+  },
+  {
+   "word": "sector",
+   "phonetic": "/ˈsektə(r)/",
+   "meaning": "n. 部分；扇区；部门",
+   "example": "The government is investing heavily in the public sector.\n政府正往公共部门砸大钱。",
+   "approach": [
+    "① 先看词根 sect-：它来自拉丁语 secare，意思是「切、割」，同族词 section 是「切开的部分」，insect 是「身体被切成一段段的虫」，一看到 sect 就该想到「切」这个动作。",
+    "② 再看后缀 -or：它把动作落成一个名词，表示「切出来的那一块东西」，所以 sect + or 字面上就是「被切出来的一块」。",
+    "③ 合起来：一整块圆盘被切了一刀，切下来的那一块就是 sector——> 圆盘上的一个「扇区」，放大到城市、经济里就是整体的一个「部分、部门」。"
+   ],
+   "collocations": [
+    "the public sector —— 公共部门",
+    "a sector of the economy —— 经济里的一个板块",
+    "in the private sector —— 在私营那边"
+   ]
+  },
+  {
+   "word": "chair",
+   "phonetic": "/tʃeə(r)/",
+   "meaning": "n. 椅子；主席",
+   "example": "She pulled up a chair and sat down by the dry well.\n她拉过一把椅子，在枯井边坐下。",
+   "approach": [
+    "① 先看这个单词：chair 只有五个字母，拆不出真实的前缀或词根，和同考纲其他词也没有真实的高频易混关系，所以不走 contrast，也不编词根。",
+    "② 于是走含义联想：椅子最核心的画面，是一把四条腿稳稳撑住的坐具，空着摆在院子中央等一个人来坐。",
+    "③ 再把这个画面推到一个反常的静止瞬间——四条腿朝上，整把椅子像在等一位看不见的主席——> 椅子；又因为「正中央空着等一个人来坐」的意象，自然延伸到「主席」这个坐在这把椅子上的人。"
+   ],
+   "collocations": [
+    "chair a meeting —— 主持一场会",
+    "the chair of the committee —— 委员会那位主席"
+   ]
+  },
+  {
+   "word": "ingredient",
+   "phonetic": "/ɪnˈɡriːdiənt/",
+   "meaning": "n. 成分；原料；（成功的）要素",
+   "example": "Flour is the main ingredient of bread.\n面粉是面包的主要原料。",
+   "approach": [
+    "① 先看 ingredient 的骨架：in- 是「往里」，gred 与 progress、grade 同源，本义是「走、迈步」，-ient 是「正在……的东西」，所以字面就是「一个正往里走的东西」。",
+    "② 为什么挑 root 这一招：progress、grade、congress 里的 gred/grad 学习者早就背熟了，都是「走」，in- 又是最熟的前缀，把这两个已掌握的零件拼在一起，整词不用硬记。",
+    "③ 合起来想象一锅汤：锅里咕嘟咕嘟冒着泡，一根胡萝卜、一块土豆、一片牛肉排着队，一个接一个「迈步走进锅里」，每走进去一样，汤就变一个味道——那些「走进来的东西」就是这道汤的成分。——> ingredient 成分、原料，引申为一件事成功所必需的要素。"
+   ],
+   "collocations": [
+    "the ingredients of the soup —— 汤里搁的那些料",
+    "a key ingredient —— 缺了它就不成的关键一味",
+    "active ingredient —— 真正起效的那个成分"
+   ]
+  },
+  {
+   "word": "joint",
+   "phonetic": "/dʒɔɪnt/",
+   "meaning": "n. 关节；接头，接缝；adj. 共同的，共有的",
+   "example": "The two pieces of wood are joined at a tight joint.\n两块木头，就靠这道严实的接缝拼在一起。",
+   "approach": [
+    "① 先看词义：joint 的核心画面是两块东西在一个点上对接到一起——骨头在关节处相接，木料在接缝处对齐。",
+    "② 这个画面里最关键的可见关系是「两块物体在一个接触面上整面咬合，接点被一条缝隙标记出来」。",
+    "③ 两根木条在同一个平面上端对端对齐，接缝是一条清晰的竖线；旁边的人不碰它与它互动，只作为尺度参照说明这条接缝的真实大小——> joint 关节；接头，接缝；共同的（共有的那条接缝把两边连成一体）。"
+   ],
+   "collocations": [
+    "knee joint —— 膝盖上那个关节",
+    "joint effort —— 一起使劲，共同努力",
+    "joint account —— 联名账户，两人共用一个"
+   ]
+  },
+  {
+   "word": "mount",
+   "phonetic": "/maʊnt/",
+   "meaning": "n. 山（Mount + 专有名词：…山）；v. 攀登；骑上；增加",
+   "example": "The path mounts steeply toward the summit of the mountain.\n这条小路一路陡着往上走，直通山顶。",
+   "approach": [
+    "① 先看词义：mount 作名词直接就是「山」，但它的动词义「攀登、登上」才是词义核心——山就是让人往上爬的隆起物，两者共享同一个「向上」的画面。",
+    "② 于是选 meaning 法：不拆字母、不硬拉形近词，直接把「向上攀登」画成一个具体动作——一个平整的隆起物，两个人正把它往高处托、往坡上送。",
+    "③ 托举方向朝上、物体是一整块隆起物 ——> 正是「山 / 登上去」的意象，mount 的「山」义和「攀登」义从同一个动作里长出来。"
+   ],
+   "collocations": [
+    "Mount Tai —— 泰山",
+    "mount a horse —— 骑上马",
+    "mount a campaign —— 发起一场运动"
+   ]
+  },
+  {
+   "word": "split",
+   "phonetic": "/splɪt/",
+   "meaning": "v. 分开；划分；裂开",
+   "example": "The teacher split the class into two groups for the game.\n老师把班级分成两组，来做这个游戏。",
+   "approach": [
+    "① 先看 split 这个词的拼写，开头的字母 s 弯弯曲曲，像一道把东西一分为二的裂缝。",
+    "② 再看中间的 pl，它是 pull（拉）的开头，拉拽会扯断物体，暗含“分开”的力。",
+    "③ 最后末尾的 it 指代那个被分开的“它”。合起来：用力拉它（pull it），裂缝（s）就把整根木头从中间劈成两半 ——> split 分开、划分。"
+   ],
+   "collocations": [
+    "split into —— 拆成几份",
+    "split up —— 散伙；分手",
+    "split the bill —— 账单大家分摊"
+   ]
+  },
+  {
+   "word": "pipe",
+   "phonetic": "/paɪp/",
+   "meaning": "n. 管子；烟斗",
+   "example": "He filled the pipe with tobacco and lit it.\n他把烟丝填进烟斗，压实，然后点着了。",
+   "approach": [
+    "① 先看 pipe 这个词本身：它短得不能再短，拆不出前缀词根，考纲里也没有和它长得像、真正容易混的词，所以 contrast 和 root 都用不上。",
+    "② 于是走含义联想：pipe 的核心意象就是“一截中空的管子”，水管是它，烟斗也是它 —— 烟斗不过是一根弯过来、把烟丝塞进一头的短管子。",
+    "③ 把“管子”这个意象放大成一个能画出来的场景：院子里一圈又一圈的粗管子盘绕满整根木桩，管子一圈圈缠上去、贴着木桩绕满 —— 管子就是 pipe，而烟斗正是同一种东西的缩小版，——> pipe 管子；烟斗。"
+   ],
+   "collocations": [
+    "a water pipe —— 水管，家里走水那一根",
+    "smoke a pipe —— 抽一斗烟",
+    "pipe down —— 小点声，收一收"
+   ]
+  },
+  {
+   "word": "accent",
+   "phonetic": "/ˈæksənt/",
+   "meaning": "n. 口音；重音；（事物的）特色，强调",
+   "example": "She spoke English with a soft French accent that everyone recognized instantly.\n她说英语带点法国腔，软软的，谁一听就认出来。",
+   "approach": [
+    "① 先看词形：ac- 在最前面，两个字母并排像一张侧脸的张口剪影，气流从喉咙里往外冲——这是『说话/发声』的图像线索。",
+    "② 再看结尾 -cent，读音 /sənt/，汉语里最近的声音是『森』；说话时飘出来的东西像一层小森林般浓密，声音连成一片森林就是腔调。",
+    "③ 合起来：张开的嘴 + 飘出的声音森林 ——> 一个人一开口就带出的那层东西，就是口音 accent；口音重就成了重音、腔调。"
+   ],
+   "collocations": [
+    "with a strong accent —— 一口浓重口音",
+    "a British accent —— 英国腔",
+    "put the accent on —— 把重音压在…上",
+    "a regional accent —— 地方口音，一开口就露底"
+   ]
+  },
+  {
+   "word": "donkey",
+   "phonetic": "/ˈdɒŋki/",
+   "meaning": "n. 驴；愚蠢固执的人",
+   "example": "The donkey stood still in the middle of the path and refused to move.\n那头驴就杵在小路正中间，一动不动，怎么都不肯挪一步。",
+   "approach": [
+    "① 先听读音 /ˈdɒŋki/，前半段 /dɒŋ/ 与汉语「挡」的声母、韵母都对得上，联想驴子横在路中央一挡，谁推都不挪窝。",
+    "② 再看后半段 /kiː/，与「踢」几乎同音，联想驴被惹恼后抬起后腿狠狠一踢，尾巴一甩，尘土飞扬。",
+    "③ 把「挡」和「踢」两个动作放进同一个画面：两个光脚的孩子想去牵它，它先用身体一挡，再抬腿一踢——> 这头又倔又横的家伙就是 donkey 驴；引申为「愚蠢固执的人」。"
+   ],
+   "collocations": [
+    "donkey work 苦差事，累死累活的活儿",
+    "as stubborn as a donkey 倔得跟头驴一样",
+    "donkey's years 猴年马月，好长时间"
+   ]
+  },
+  {
+   "word": "biotechnology",
+   "phonetic": "/ˌbaɪoʊtekˈnɑːlədʒi/",
+   "meaning": "n. 生物技术；生物工艺学",
+   "example": "Biotechnology has revolutionized the way we develop new medicines.\n生物技术彻底换了我们研发新药的路子。",
+   "approach": [
+    "① 先看开头 bio-，这是希腊词根，意思是“生命、生物”，同族词有 biology（生物学）、biography（传记），所以 bio 一出现就锁定“生物”这条线索。",
+    "② 再看中间 techno-，同样来自希腊词根 techne，意思是“技艺、技术”，同族词有 technique、technology，所以 techno 直接给出“技术”这个含义。",
+    "③ 最后看结尾 -logy，这是学科后缀，表示“……学”，如 biology、geology，所以整个词就是“关于生物的技术学科”。——> 生物技术。"
+   ],
+   "collocations": [
+    "biotechnology industry —— 生物技术这行当",
+    "modern biotechnology —— 现代生物技术这一套",
+    "agricultural biotechnology —— 农业上那套生物技术"
+   ]
+  },
+  {
+   "word": "customs",
+   "phonetic": "/ˈkʌstəmz/",
+   "meaning": "n. 海关；关税；习俗（custom 的复数）",
+   "example": "All passengers must go through customs before leaving the airport.\n不管你是谁，离开机场前都得先走一趟海关。",
+   "approach": [
+    "① 先看 custom：它本来指「习惯、惯例」，是很多人反复做、从不改变的一套做法。",
+    "② 再看结尾的 -s：复数说明这里不是一件事，而是一整套程序——查验证件、清点行李、征税放行，一样都省不掉。",
+    "③ 合起来想：一个过境的人被这套雷打不动的流程拦下来，站定、等待、被逐个检查，所有人到了这里都得照做——> 这套固定程序就是「海关」，customs。"
+   ],
+   "collocations": [
+    "go through customs —— 过海关，谁都躲不掉",
+    "customs officer —— 海关那位，问话的",
+    "customs duty —— 关税，该掏的那一笔"
+   ]
+  },
+  {
+   "word": "mow",
+   "phonetic": "/moʊ/",
+   "meaning": "刈草；割草",
+   "example": "He mows the tall grass on the hillside every spring.\n每年一开春，他去山坡上刈那片高草。",
+   "approach": [
+    "mow 的核心画面是草被整片割下、贴地断开",
+    "割下的草不再直立，地面留下整齐的短茬，动作结果清晰可见",
+    "由割草动作联想到维护草坪的日常劳作，最终落到“刈草；割草”的词义 ——> 词义"
+   ],
+   "collocations": [
+    "mow the grass —— 把这片草割掉",
+    "mow the lawn —— 修剪草坪，剪齐整"
+   ]
+  }
+ ]
+}

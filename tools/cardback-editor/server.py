@@ -678,7 +678,7 @@ class CardbackServer(ThreadingHTTPServer):
 class Handler(BaseHTTPRequestHandler):
     server_version = "CardbackEditor/1.4.2"
     # 关掉 keep-alive：本地小工具不需要，省得连接复用时一个异常把后面全带崩
-    protocol_version = "HTTP/1.0"
+    protocol_version = "HTTP/1.1"
 
     # ------------------------------------------------------------ 入口
 
@@ -723,12 +723,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._fail(405, "%s 只接受 POST" % path)
         if path == "/favicon.ico":
             return self._send_bytes(b"", "image/x-icon", status=204)
+        if path.startswith("/rewrite") or path == "/models":
+            return self._rewrite_passthrough("GET")
         static = self._read_static(path)
         if static is not None:
             return self._send_bytes(static[0], static[1])
         return self._fail(404, "没有这个路径：%s" % path)
 
     def _route_post(self, path, body):
+        if path.startswith("/rewrite"):
+            return self._rewrite_passthrough("POST", body)
         if path == "/api/publish":
             return self._api_publish(body)
         if path == "/api/rollback":
@@ -801,6 +805,15 @@ class Handler(BaseHTTPRequestHandler):
                 _placeholder_page().encode("utf-8"), "text/html; charset=utf-8"
             )
         self._send_bytes(data, "text/html; charset=utf-8")
+
+    def _rewrite_passthrough(self, method, body=b""):
+        """路径拼错时按 404 回，别让它掉进静态文件兜底。"""
+        try:
+            if _serve_rewrite(self, method, body):
+                return
+        except Exception as exc:  # noqa: BLE001 - 重写服务坏了不能连带编辑器一起挂
+            return self._fail(500, "重写服务出错：%s" % exc)
+        return self._fail(404, "没有这个路径：%s" % self.path)
 
     # ------------------------------------------------------------ 静态文件
     # 编辑器前端会拆成 index.html / app.js / styles.css 三个文件，
@@ -973,6 +986,55 @@ def _pause_if_frozen():
         pass
 
 
+# ---------------------------------------------------------------- 重写服务挂载
+# 1.4.3 的卡背重写服务单独放在 tools/rewrite-service/，这里只负责把它的路由
+# 接到同一个端口上（手机和编辑器同源，不用再开一个口子）。懒加载 + try/except：
+# 重写服务出问题绝不能让编辑器本身起不来。
+
+_REWRITE = {"module": None}
+
+# 源码运行：tools/cardback-editor/../rewrite-service；打包 exe：exe 旁边的 rewrite-service
+_REWRITE_DIRS = (
+    os.path.join(BASE_DIR, "rewrite-service"),
+    os.path.join(BASE_DIR, "..", "rewrite-service"),
+)
+
+
+def _rewrite_module():
+    if _REWRITE["module"] is None:
+        for path in _REWRITE_DIRS:
+            if not os.path.isfile(os.path.join(path, "service.py")):
+                continue
+            path = os.path.abspath(path)
+            if path not in sys.path:
+                sys.path.insert(0, path)
+            import service as rewrite_service  # noqa: PLC0415 - 懒加载，编辑器不依赖它
+
+            _REWRITE["module"] = rewrite_service
+            break
+        else:
+            raise RuntimeError("找不到 tools/rewrite-service/service.py")
+    return _REWRITE["module"]
+
+
+def _serve_rewrite(handler, method, body=b""):
+    """接得住就回包返回 True，不是重写服务的路径返回 False。"""
+    result = _rewrite_module().respond(method, handler.path, body)
+    if result is None:
+        return False
+    status, content_type, payload = result
+    handler._send_bytes(payload, content_type, status=status)
+    return True
+
+
+def _start_rewrite():
+    try:
+        _rewrite_module().startup()
+        print("  重写面板：http://127.0.0.1:%d/rewrite/" % PORT, flush=True)
+    except Exception as exc:  # noqa: BLE001 - 重写服务坏了也要让编辑器起来
+        print("  重写服务没起来（编辑器照常可用）：%r" % exc, flush=True)
+
+
 def main(argv=None):
     global LAN_URL, PORT
 
@@ -1027,6 +1089,7 @@ def main(argv=None):
     local_url = "http://127.0.0.1:%d/" % PORT
     print("卡背编辑器已启动", flush=True)
     print("  浏览器打开：%s" % local_url, flush=True)
+    _start_rewrite()
     if primary:
         print("  手机填这个地址：%s" % LAN_URL, flush=True)
     else:

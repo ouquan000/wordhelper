@@ -1,0 +1,501 @@
+{
+  "at": "2026-11-07T04:39:24.118092+00:00",
+  "ownCleanupReceipts": [
+    {
+      "file": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\g1-results.json",
+      "case": "cleanup_g1",
+      "command": "finally: terminate only own Popen handles; remove only round2/scratch-g1",
+      "raw": {
+        "processes": [
+          {
+            "pid": 4968,
+            "exit": 1,
+            "running": false
+          },
+          {
+            "pid": 20104,
+            "exit": 1,
+            "running": false
+          }
+        ],
+        "scratchRemoved": true,
+        "noPostSent": true
+      },
+      "pass": true
+    },
+    {
+      "file": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\router-results.json",
+      "case": "cleanup_router",
+      "command": "python round2/router_harness.py --case cleanup_router (internal integration step)",
+      "raw": {
+        "processes": [
+          {
+            "pid": 8984,
+            "exit": 1,
+            "running": false
+          },
+          {
+            "pid": 38056,
+            "exit": 1,
+            "running": false
+          },
+          {
+            "pid": 44936,
+            "exit": 1,
+            "running": false
+          },
+          {
+            "pid": 22656,
+            "exit": 1,
+            "running": false
+          }
+        ],
+        "scratchRemoved": true,
+        "portsClosed": [
+          {
+            "port": 49196,
+            "accepting": false
+          },
+          {
+            "port": 49197,
+            "accepting": false
+          }
+        ]
+      },
+      "pass": true
+    },
+    {
+      "file": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\health-supplement-results.json",
+      "case": "cleanup_supplement",
+      "command": "python round2/health_supplement.py (internal case cleanup_supplement)",
+      "raw": {
+        "processes": [
+          {
+            "pid": 8784,
+            "exit": 1,
+            "running": false
+          },
+          {
+            "pid": 21028,
+            "exit": 1,
+            "running": false
+          }
+        ],
+        "scratchRemoved": true,
+        "poolPorts": [
+          {
+            "port": 64982,
+            "accepting": false
+          },
+          {
+            "port": 64983,
+            "accepting": false
+          }
+        ]
+      },
+      "pass": true
+    },
+    {
+      "file": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\script-results.json",
+      "case": "cleanup_scripts",
+      "command": "python round2/script_harness.py (case cleanup_scripts)",
+      "raw": {
+        "processes": [
+          {
+            "pid": 34752,
+            "exit": 1,
+            "running": false
+          },
+          {
+            "pid": 25732,
+            "exit": 1,
+            "running": false
+          },
+          {
+            "pid": 44000,
+            "exit": 1,
+            "running": false
+          }
+        ],
+        "ports": [
+          {
+            "port": 51519,
+            "accepting": false
+          },
+          {
+            "port": 51520,
+            "accepting": false
+          },
+          {
+            "port": 51521,
+            "accepting": false
+          }
+        ],
+        "scratchRemoved": true
+      },
+      "pass": true
+    },
+    {
+      "file": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\script-v2-results.json",
+      "case": "cleanup_scripts",
+      "command": "python round2/script_harness.py (case cleanup_scripts)",
+      "raw": {
+        "processes": [
+          {
+            "pid": 38568,
+            "exit": 1,
+            "running": false
+          },
+          {
+            "pid": 35440,
+            "exit": 1,
+            "running": false
+          },
+          {
+            "pid": 11504,
+            "exit": 1,
+            "running": false
+          }
+        ],
+        "ports": [
+          {
+            "port": 63745,
+            "accepting": false
+          },
+          {
+            "port": 63746,
+            "accepting": false
+          },
+          {
+            "port": 63747,
+            "accepting": false
+          }
+        ],
+        "scratchRemoved": true
+      },
+      "pass": true
+    },
+    {
+      "file": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\launcher-v3-results.json",
+      "case": "cleanup_scripts",
+      "command": "python round2/launcher_v3.py (case cleanup_scripts)",
+      "raw": {
+        "processes": [
+          {
+            "pid": 2504,
+            "exit": 1,
+            "running": false
+          },
+          {
+            "pid": 16848,
+            "exit": 1,
+            "running": false
+          },
+          {
+            "pid": 31792,
+            "exit": 1,
+            "running": false
+          }
+        ],
+        "ports": [
+          {
+            "port": 60129,
+            "accepting": false
+          },
+          {
+            "port": 60130,
+            "accepting": false
+          },
+          {
+            "port": 60131,
+            "accepting": false
+          }
+        ],
+        "scratchRemoved": true
+      },
+      "pass": true
+    }
+  ],
+  "ownedPids": [
+    2504,
+    4968,
+    8784,
+    8984,
+    11228,
+    11504,
+    16848,
+    20104,
+    21028,
+    22656,
+    25732,
+    31792,
+    34752,
+    35440,
+    38056,
+    38568,
+    44000,
+    44936
+  ],
+  "ownedPorts": [
+    {
+      "port": 18791,
+      "accepting": false
+    },
+    {
+      "port": 49196,
+      "accepting": false
+    },
+    {
+      "port": 49197,
+      "accepting": false
+    },
+    {
+      "port": 49198,
+      "accepting": false
+    },
+    {
+      "port": 49724,
+      "accepting": false
+    },
+    {
+      "port": 49808,
+      "accepting": false
+    },
+    {
+      "port": 51519,
+      "accepting": false
+    },
+    {
+      "port": 51520,
+      "accepting": false
+    },
+    {
+      "port": 51521,
+      "accepting": false
+    },
+    {
+      "port": 54549,
+      "accepting": false
+    },
+    {
+      "port": 60129,
+      "accepting": false
+    },
+    {
+      "port": 60130,
+      "accepting": false
+    },
+    {
+      "port": 60131,
+      "accepting": false
+    },
+    {
+      "port": 63745,
+      "accepting": false
+    },
+    {
+      "port": 63746,
+      "accepting": false
+    },
+    {
+      "port": 63747,
+      "accepting": false
+    },
+    {
+      "port": 64506,
+      "accepting": false
+    },
+    {
+      "port": 64982,
+      "accepting": false
+    },
+    {
+      "port": 64983,
+      "accepting": false
+    },
+    {
+      "port": 64984,
+      "accepting": false
+    },
+    {
+      "port": 65234,
+      "accepting": false
+    }
+  ],
+  "remainingScratchDirectories": [],
+  "cimCommand": {
+    "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\final_inventory.ps1\" -R2Root \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\" -R2PidCsv 2504,4968,8784,8984,11228,11504,16848,20104,21028,22656,25732,31792,34752,35440,38056,38568,44000,44936 -R2PortCsv 18791,49196,49197,49198,49724,49808,51519,51520,51521,54549,60129,60130,60131,63745,63746,63747,64506,64982,64983,64984,65234",
+    "exit": 0,
+    "stdout": "{\r\n    \"Timestamp\":  \"2026-11-07T12:39:15.1872399+08:00\",\r\n    \"RequestedOwnedPids\":  [\r\n                               2504,\r\n                               4968,\r\n                               8784,\r\n                               8984,\r\n                               11228,\r\n                               11504,\r\n                               16848,\r\n                               20104,\r\n                               21028,\r\n                               22656,\r\n                               25732,\r\n                               31792,\r\n                               34752,\r\n                               35440,\r\n                               38056,\r\n                               38568,\r\n                               44000,\r\n                               44936\r\n                           ],\r\n    \"RequestedOwnedPorts\":  [\r\n                                18791,\r\n                                49196,\r\n                                49197,\r\n                                49198,\r\n                                49724,\r\n                                49808,\r\n                                51519,\r\n                                51520,\r\n                                51521,\r\n                                54549,\r\n                                60129,\r\n                                60130,\r\n                                60131,\r\n                                63745,\r\n                                63746,\r\n                                63747,\r\n                                64506,\r\n                                64982,\r\n                                64983,\r\n                                64984,\r\n                                65234\r\n                            ],\r\n    \"StillPresentRequestedPids\":  [\r\n\r\n                                  ],\r\n    \"RuntimeOwners\":  [\r\n                          {\r\n                              \"ProcessId\":  34232,\r\n                              \"ParentProcessId\":  46768,\r\n                              \"ExecutablePath\":  \"C:\\\\Users\\\\ouquan\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe\",\r\n                              \"CommandLine\":  \"C:\\\\Users\\\\ouquan\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe \\\"D:/deepseek harness/work_anki_enligish/docs/wb-gateway-repair-20261107/round2/finalize_round2.py\\\"\",\r\n                              \"CreationDate\":  \"11/07/2026 12:39:00\",\r\n                              \"AllowedAuditor\":  true\r\n                          },\r\n                          {\r\n                              \"ProcessId\":  43432,\r\n                              \"ParentProcessId\":  34232,\r\n                              \"ExecutablePath\":  \"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\",\r\n                              \"CommandLine\":  \"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File \\\"D:\\\\deepseek harness\\\\work_anki_enligish\\\\docs\\\\wb-gateway-repair-20261107\\\\round2\\\\final_inventory.ps1\\\" -R2Root \\\"D:\\\\deepseek harness\\\\work_anki_enligish\\\\docs\\\\wb-gateway-repair-20261107\\\\round2\\\" -R2PidCsv 2504,4968,8784,8984,11228,11504,16848,20104,21028,22656,25732,31792,34752,35440,38056,38568,44000,44936 -R2PortCsv 18791,49196,49197,49198,49724,49808,51519,51520,51521,54549,60129,60130,60131,63745,63746,63747,64506,64982,64983,64984,65234\",\r\n                              \"CreationDate\":  \"11/07/2026 12:39:00\",\r\n                              \"AllowedAuditor\":  true\r\n                          }\r\n                      ],\r\n    \"OwnPortListeners\":  [\r\n\r\n                         ],\r\n    \"Mutation\":  \"none: read-only CIM and TCP inventory\"\r\n}\r\n",
+    "stderr": ""
+  },
+  "cim": {
+    "Timestamp": "2026-11-07T12:39:15.1872399+08:00",
+    "RequestedOwnedPids": [
+      2504,
+      4968,
+      8784,
+      8984,
+      11228,
+      11504,
+      16848,
+      20104,
+      21028,
+      22656,
+      25732,
+      31792,
+      34752,
+      35440,
+      38056,
+      38568,
+      44000,
+      44936
+    ],
+    "RequestedOwnedPorts": [
+      18791,
+      49196,
+      49197,
+      49198,
+      49724,
+      49808,
+      51519,
+      51520,
+      51521,
+      54549,
+      60129,
+      60130,
+      60131,
+      63745,
+      63746,
+      63747,
+      64506,
+      64982,
+      64983,
+      64984,
+      65234
+    ],
+    "StillPresentRequestedPids": [],
+    "RuntimeOwners": [
+      {
+        "ProcessId": 34232,
+        "ParentProcessId": 46768,
+        "ExecutablePath": "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "CommandLine": "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe \"D:/deepseek harness/work_anki_enligish/docs/wb-gateway-repair-20261107/round2/finalize_round2.py\"",
+        "CreationDate": "11/07/2026 12:39:00",
+        "AllowedAuditor": true
+      },
+      {
+        "ProcessId": 43432,
+        "ParentProcessId": 34232,
+        "ExecutablePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "CommandLine": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\final_inventory.ps1\" -R2Root \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\" -R2PidCsv 2504,4968,8784,8984,11228,11504,16848,20104,21028,22656,25732,31792,34752,35440,38056,38568,44000,44936 -R2PortCsv 18791,49196,49197,49198,49724,49808,51519,51520,51521,54549,60129,60130,60131,63745,63746,63747,64506,64982,64983,64984,65234",
+        "CreationDate": "11/07/2026 12:39:00",
+        "AllowedAuditor": true
+      }
+    ],
+    "OwnPortListeners": [],
+    "Mutation": "none: read-only CIM and TCP inventory"
+  },
+  "productionInventoryCommand": {
+    "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\inventory.ps1\"",
+    "exit": 0,
+    "stdout": "{\r\n    \"Timestamp\":  \"2026-11-07T12:39:23.9702322+08:00\",\r\n    \"PSVersion\":  \"5.1.26100.9711\",\r\n    \"Listeners\":  [\r\n                      {\r\n                          \"LocalAddress\":  \"::\",\r\n                          \"LocalPort\":  8790,\r\n                          \"OwningProcess\":  38084\r\n                      },\r\n                      {\r\n                          \"LocalAddress\":  \"::\",\r\n                          \"LocalPort\":  8789,\r\n                          \"OwningProcess\":  29624\r\n                      },\r\n                      {\r\n                          \"LocalAddress\":  \"::\",\r\n                          \"LocalPort\":  8788,\r\n                          \"OwningProcess\":  44332\r\n                      }\r\n                  ],\r\n    \"Owners\":  [\r\n                   {\r\n                       \"ProcessId\":  38084,\r\n                       \"ExecutablePath\":  \"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run\\\\wb2api.exe\",\r\n                       \"CommandLine\":  \"\\\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run\\\\wb2api.exe\\\"  -config config.json \",\r\n                       \"CreationDate\":  \"11/07/2026 11:10:53\"\r\n                   },\r\n                   {\r\n                       \"ProcessId\":  29624,\r\n                       \"ExecutablePath\":  \"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run-bot\\\\wb2api.exe\",\r\n                       \"CommandLine\":  \"\\\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run-bot\\\\wb2api.exe\\\"  -config config.json \",\r\n                       \"CreationDate\":  \"11/06/2026 16:57:05\"\r\n                   },\r\n                   {\r\n                       \"ProcessId\":  44332,\r\n                       \"ExecutablePath\":  \"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\r\n                       \"CommandLine\":  \"\\\"C:\\\\Program Files\\\\nodejs\\\\node.exe\\\"  \\\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run\\\\wb-router.js\\\" \",\r\n                       \"CreationDate\":  \"11/07/2026 12:28:14\"\r\n                   }\r\n               ]\r\n}\r\n",
+    "stderr": ""
+  },
+  "productionInventory": {
+    "Timestamp": "2026-11-07T12:39:23.9702322+08:00",
+    "PSVersion": "5.1.26100.9711",
+    "Listeners": [
+      {
+        "LocalAddress": "::",
+        "LocalPort": 8790,
+        "OwningProcess": 38084
+      },
+      {
+        "LocalAddress": "::",
+        "LocalPort": 8789,
+        "OwningProcess": 29624
+      },
+      {
+        "LocalAddress": "::",
+        "LocalPort": 8788,
+        "OwningProcess": 44332
+      }
+    ],
+    "Owners": [
+      {
+        "ProcessId": 38084,
+        "ExecutablePath": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+        "CommandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json ",
+        "CreationDate": "11/07/2026 11:10:53"
+      },
+      {
+        "ProcessId": 29624,
+        "ExecutablePath": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+        "CommandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json ",
+        "CreationDate": "11/06/2026 16:57:05"
+      },
+      {
+        "ProcessId": 44332,
+        "ExecutablePath": "C:\\Program Files\\nodejs\\node.exe",
+        "CommandLine": "\"C:\\Program Files\\nodejs\\node.exe\"  \"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js\" ",
+        "CreationDate": "11/07/2026 12:28:14"
+      }
+    ]
+  },
+  "protectedPoolIdentitiesUnchanged": true,
+  "frozenFinalHashes": {
+    "specSha256": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "lockSha256": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "manifestSha256": "1e1583a1137454a88ca0b387c5be212279f61c4d9c19db3340c7ed89a4bda564"
+  },
+  "frozenFinalHashesMatch": true,
+  "formalFinalHashes": [
+    {
+      "source": "D:/deepseek harness/work_anki_enligish/docs/wb-gateway-repair-20261107/candidate/wb-router.js",
+      "target": "D:/deepseek_v4.1flash1017/workbuddy2api-panel/run/wb-router.js",
+      "approvedSha256": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+      "originalSha256": "8628b0b611a511be41c0586cef9ac27cb50f9f037f192b527b9fae0cca47bf33",
+      "backup": "D:/deepseek_v4.1flash1017/workbuddy2api-panel/run/wb-router.js.bak-wb-repair-20261107-1105",
+      "targetFinalSha256": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+      "matchesApproved": true
+    },
+    {
+      "source": "D:/deepseek harness/work_anki_enligish/docs/wb-gateway-repair-20261107/candidate/start-silent.cmd",
+      "target": "D:/deepseek_v4.1flash1017/workbuddy2api-panel/run/start-silent.cmd",
+      "approvedSha256": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+      "originalSha256": "ff185895bb63fc10145f0443b2972cfa1c415bdd95ad202a9884b319c79c5c4f",
+      "backup": "D:/deepseek_v4.1flash1017/workbuddy2api-panel/run/start-silent.cmd.bak-wb-repair-20261107-1105",
+      "targetFinalSha256": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+      "matchesApproved": true
+    },
+    {
+      "source": "D:/deepseek harness/work_anki_enligish/docs/wb-gateway-repair-20261107/candidate/wb-service-check.ps1",
+      "target": "D:/deepseek_v4.1flash1017/workbuddy2api-panel/run/wb-service-check.ps1",
+      "approvedSha256": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+      "originalSha256": null,
+      "backup": null,
+      "targetFinalSha256": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+      "matchesApproved": true
+    },
+    {
+      "source": "D:/deepseek harness/work_anki_enligish/docs/wb-gateway-repair-20261107/candidate/wb-gateway-guard.ps1",
+      "target": "D:/deepseek_v4.1flash1017/thebigfish/tools/wb-gateway-guard.ps1",
+      "approvedSha256": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+      "originalSha256": "ecc57db9064399c72ab6474cccaa522d94a9cb523b2ee8905747fbd8d67aa4da",
+      "backup": "D:/deepseek_v4.1flash1017/thebigfish/tools/wb-gateway-guard.ps1.bak-wb-repair-20261107-1105",
+      "targetFinalSha256": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+      "matchesApproved": true
+    },
+    {
+      "source": null,
+      "target": "C:/temp/stub-rewrite.py",
+      "approvedSha256": "4bcf738c9bec23d3cae3c518b700c2af567a718733411670398bb908f17b7d24",
+      "originalSha256": "7190a1aeb6b433f42caeb16adc9eb072a3b329601803d4a90bc4d3e4b9df6440",
+      "backup": "C:/temp/stub-rewrite.py.bak-wb-repair-20261107-1105",
+      "targetFinalSha256": "4bcf738c9bec23d3cae3c518b700c2af567a718733411670398bb908f17b7d24",
+      "matchesApproved": true
+    }
+  ],
+  "cleanupPassed": true
+}

@@ -51,6 +51,11 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     val settings: StateFlow<UserSettings> = settingsRepository.settingsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UserSettings())
 
+    /** 还没被电脑处理完的重写标记数（1.4.3）。 */
+    val rewritePendingCount: StateFlow<Int> =
+        (application as KaoyanWordApp).rewriteRepository.observeOpenCount()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
     private val weekRange = DateUtils.learningDateRange(days = 7)
 
     private val heatmapRange = DateUtils.learningHeatmapRange()

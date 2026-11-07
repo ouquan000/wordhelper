@@ -19,6 +19,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -65,6 +67,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
@@ -96,11 +99,13 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kaoyan.wordhelper.KaoyanWordApp
 import com.kaoyan.wordhelper.R
-import com.kaoyan.wordhelper.data.entity.Progress
+import com.kaoyan.wordhelper.data.entity.RewriteStatus
 import com.kaoyan.wordhelper.data.entity.Word
 import com.kaoyan.wordhelper.data.model.AIContentType
 import com.kaoyan.wordhelper.data.model.CardBackBlock
@@ -127,7 +132,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -141,6 +145,8 @@ fun LearningScreen(
     val activeBook by viewModel.activeBook.collectAsStateWithLifecycle()
     val cardBackConfig by viewModel.cardBackConfig.collectAsStateWithLifecycle()
     val currentWord by viewModel.currentWord.collectAsStateWithLifecycle()
+    // 卡背正文直接订阅库里的思路：电脑端结果一落库就换文，不依赖词对象什么时候被刷新
+    val liveApproach by viewModel.liveApproach.collectAsStateWithLifecycle()
     val currentIndex by viewModel.currentIndex.collectAsStateWithLifecycle()
     val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
     val isInNewWords by viewModel.isInNewWords.collectAsStateWithLifecycle()
@@ -162,6 +168,24 @@ fun LearningScreen(
     val swipeSnackbarEvent by viewModel.swipeSnackbarEvent.collectAsStateWithLifecycle()
     val showSwipeGuide by viewModel.showSwipeGuide.collectAsStateWithLifecycle()
     val checkInState by viewModel.checkInState.collectAsStateWithLifecycle()
+    val rewriteMark by viewModel.currentRewriteMark.collectAsStateWithLifecycle()
+    val rewriteModels by viewModel.rewriteModels.collectAsStateWithLifecycle()
+    val rewriteModelId by viewModel.rewriteModelId.collectAsStateWithLifecycle()
+    val rewriteProgress by viewModel.rewriteProgress.collectAsStateWithLifecycle()
+    val rewriteUpdatedTick by viewModel.rewriteUpdatedTick.collectAsStateWithLifecycle()
+    // 回到前台就补发断网时的标记、拉电脑端跑完的结果；没网也只是静默跳过。
+    LifecycleResumeEffect(Unit) {
+        viewModel.syncRewrite()
+        onPauseOrDispose { }
+    }
+    var rewriteJustUpdated by remember { mutableStateOf(false) }
+    LaunchedEffect(rewriteUpdatedTick) {
+        if (rewriteUpdatedTick > 0) {
+            rewriteJustUpdated = true
+            delay(2_000)
+            rewriteJustUpdated = false
+        }
+    }
     val context = LocalContext.current
     val pronunciationRepository = remember(context) {
         (context.applicationContext as KaoyanWordApp).pronunciationRepository
@@ -196,6 +220,18 @@ fun LearningScreen(
         if (initialMode != LearningMode.RECOGNITION) {
             isCardFlipped = false
         }
+    }
+
+    // 卡背可见 + 本词标记还没跑完，才每 4 秒问一次电脑端进度。
+    // 翻回正面（key 变化）、离开学习页、App 进后台（ON_STOP）都会停掉轮询。
+    val shouldPollRewrite = isCardFlipped && (
+        rewriteMark?.status == RewriteStatus.PENDING || rewriteMark?.status == RewriteStatus.QUEUED
+        )
+    LifecycleStartEffect(shouldPollRewrite) {
+        if (shouldPollRewrite) {
+            viewModel.startRewriteProgressPolling()
+        }
+        onStopOrDispose { viewModel.stopRewriteProgressPolling() }
     }
 
     LaunchedEffect(Unit) {
@@ -425,6 +461,9 @@ fun LearningScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // 1.4.3：卡背输入框唤起键盘时，整页让到键盘上方，
+                // 否则「重写思路」按钮会被键盘盖住，点不到（edge-to-edge 默认不会让）。
+                .imePadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -558,8 +597,9 @@ fun LearningScreen(
                                             .testTag("learning_word_card")
                                     ) { swipeModifier ->
                                         WordCard(
-                                            word = state.word,
-                                            currentProgress = currentProgress,
+                                            // 词对象可能是旧快照，卡背正文以库里的实时值为准
+                                            word = liveApproach?.let { state.word.copy(approach = it) }
+                                                ?: state.word,
                                             isInNewWords = state.isInNewWords,
                                             onToggleNewWords = viewModel::toggleNewWord,
                                             reviewTag = reviewTag,
@@ -570,9 +610,29 @@ fun LearningScreen(
                                             onPronounceClick = { playPronunciation(state.word) },
                                             showPronounceButton = pronunciationEnabled,
                                             pronounceLoading = pronouncingWordId == state.word.id,
-                                            onFlipChanged = { isCardFlipped = it },
+                                            onFlipChanged = { flipped ->
+                                                isCardFlipped = flipped
+                                                // 翻到背面顺手同步一次；翻回正面不发请求
+                                                if (flipped) viewModel.syncRewriteOnBackFlip()
+                                            },
                                             starEnabled = !isAnswering,
                                             cardBackConfig = cardBackConfig,
+                                            // 1.4.3.1：重写条挪进卡背底部，只在背面出现
+                                            backActions = {
+                                                RewriteBar(
+                                                    wordId = state.word.id,
+                                                    mark = rewriteMark,
+                                                    models = rewriteModels,
+                                                    selectedModelId = rewriteModelId,
+                                                    onSelectModel = viewModel::selectRewriteModel,
+                                                    onMark = viewModel::markRewrite,
+                                                    onCancel = viewModel::cancelRewrite,
+                                                    onUndo = viewModel::undoRewrite,
+                                                    enabled = !isAnswering,
+                                                    progress = rewriteProgress,
+                                                    justUpdated = rewriteJustUpdated
+                                                )
+                                            },
                                             modifier = swipeModifier.fillMaxHeight()
                                         )
                                     }
@@ -1558,7 +1618,6 @@ private fun RecognitionActionPanel(
 @Composable
 private fun WordCard(
     word: Word,
-    currentProgress: Progress?,
     isInNewWords: Boolean,
     onToggleNewWords: () -> Unit,
     reviewTag: String,
@@ -1572,6 +1631,7 @@ private fun WordCard(
     onFlipChanged: (Boolean) -> Unit,
     starEnabled: Boolean,
     cardBackConfig: CardBackConfig,
+    backActions: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var isFlipped by remember(word.id) { mutableStateOf(false) }
@@ -1756,13 +1816,14 @@ private fun WordCard(
                             )
                         }
                     } else {
+                        // 1.4.3.2：重写区随卡背内容一起滚，排在正文最后，不再固定贴卡片底边。
                         CardBackBlocks(
                             config = cardBackConfig,
                             word = word,
-                            currentProgress = currentProgress,
                             displayWord = displayWord,
                             backWordStyle = backWordStyle,
-                            scrollState = backContentScrollState
+                            scrollState = backContentScrollState,
+                            backActions = backActions
                         )
                     }
                 }
@@ -1796,6 +1857,8 @@ private fun WordCard(
                     }
                 }
             }
+            // 1.4.3.2：操作区已挪进卡背滚动内容（CardBackBlocks 的 backActions），
+            // 这里不再固定贴底，避免正文被切走两百多像素。
         }
     }
 }
@@ -1811,10 +1874,10 @@ private fun WordCard(
 private fun CardBackBlocks(
     config: CardBackConfig,
     word: Word,
-    currentProgress: Progress?,
     displayWord: String,
     backWordStyle: TextStyle,
-    scrollState: androidx.compose.foundation.ScrollState
+    scrollState: androidx.compose.foundation.ScrollState,
+    backActions: (@Composable () -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -1828,10 +1891,24 @@ private fun CardBackBlocks(
             CardBackBlockView(
                 block = block,
                 word = word,
-                currentProgress = currentProgress,
                 displayWord = displayWord,
                 backWordStyle = backWordStyle
             )
+        }
+        // 1.4.3.2：重写区放在正文最后，跟着滚动；用分隔线把「内容」和「操作」分开。
+        if (backActions != null) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // 吞掉空白区的点击，免得点状态文字时把卡片翻回正面
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { }
+            ) {
+                backActions()
+            }
         }
     }
 }
@@ -1846,7 +1923,6 @@ private fun CardBackBlocks(
 private fun CardBackBlockView(
     block: CardBackBlock,
     word: Word,
-    currentProgress: Progress?,
     displayWord: String,
     backWordStyle: TextStyle
 ) {
@@ -1939,36 +2015,8 @@ private fun CardBackBlockView(
             contentStyle = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle)
         )
 
-        CardBackBlockType.EF_STATS -> currentProgress?.let { progress ->
-            val efValue = progress.easeFactor
-            val efOffset = efValue - 2.5f
-            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f))
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text(
-                        text = "EF系数因子：${formatEfValue(efValue)}",
-                        style = MaterialTheme.typography.labelLarge.scaledBy(bodyStyle),
-                        color = overrideColor ?: MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = "相对基准2.50偏移：${formatEfOffset(efOffset)}",
-                        style = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "当前间隔：${progress.intervalDays}天 · 复习次数：${progress.reviewCount}",
-                        style = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
+        // 1.4.3.1：EF 系数因子不再展示（easeFactor 的计算与存储不变）
+        CardBackBlockType.EF_STATS -> Unit
 
         null -> Unit
     }
@@ -2199,14 +2247,6 @@ private fun String.adaptiveWordText(): String {
     val trimmed = trim()
     if (trimmed.length <= 12) return trimmed
     return trimmed.toCharArray().joinToString(separator = "\u200B")
-}
-
-private fun formatEfValue(value: Float): String {
-    return String.format(Locale.US, "%.2f", value)
-}
-
-private fun formatEfOffset(value: Float): String {
-    return String.format(Locale.US, "%+.2f", value)
 }
 
 @Composable

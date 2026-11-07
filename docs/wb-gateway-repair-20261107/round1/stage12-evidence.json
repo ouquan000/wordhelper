@@ -1,0 +1,1213 @@
+{
+  "started_at": "2026-11-07T03:29:13.068202+00:00",
+  "scope": "G1/G2 only; G3-G6 and final K1-K6 pending candidate-ready",
+  "commands": [
+    {
+      "argv": [
+        "powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "$ports = @(8788,8789,8790,18791,18792); $out = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object {$ports -contains $_.LocalPort} | ForEach-Object {$p = Get-CimInstance Win32_Process -Filter (\"ProcessId=\" + $_.OwningProcess); [pscustomobject]@{port=$_.LocalPort;address=$_.LocalAddress;pid=$_.OwningProcess;exe=$p.ExecutablePath;created=$p.CreationDate.ToString(\"o\");commandLine=$p.CommandLine}}); ConvertTo-Json -InputObject $out -Depth 4 -Compress"
+      ],
+      "exit_code": 0,
+      "stdout": "[{\"port\":8790,\"address\":\"::\",\"pid\":38084,\"exe\":\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run\\\\wb2api.exe\",\"created\":\"2026-11-07T11:10:53.3877780+08:00\",\"commandLine\":\"\\\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run\\\\wb2api.exe\\\"  -config config.json \"},{\"port\":8789,\"address\":\"::\",\"pid\":29624,\"exe\":\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run-bot\\\\wb2api.exe\",\"created\":\"2026-11-06T16:57:05.1653160+08:00\",\"commandLine\":\"\\\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run-bot\\\\wb2api.exe\\\"  -config config.json \"},{\"port\":8788,\"address\":\"::\",\"pid\":10576,\"exe\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"created\":\"2026-11-06T16:54:20.7556520+08:00\",\"commandLine\":\"\\\"C:\\\\Program Files\\\\nodejs\\\\node.exe\\\"  \\\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run\\\\wb-router.js\\\" \"}]",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-c",
+        "import http.server,runpy,sys; exec(\"def reject_bind(*a, **k):\\n print('BIND_GUARD_REACHED', flush=True)\\n raise SystemExit(91)\"); http.server.ThreadingHTTPServer=reject_bind; sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name='__main__')",
+        "C:\\temp\\stub-rewrite.py",
+        "--port",
+        "8788"
+      ],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "usage: stub-rewrite.py [-h] [--host HOST] [--port PORT]\nstub-rewrite.py: error: 8788, 8789 and 8790 are reserved WB gateway ports"
+    },
+    {
+      "argv": [
+        "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-c",
+        "import http.server,runpy,sys; exec(\"def reject_bind(*a, **k):\\n print('BIND_GUARD_REACHED', flush=True)\\n raise SystemExit(91)\"); http.server.ThreadingHTTPServer=reject_bind; sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name='__main__')",
+        "C:\\temp\\stub-rewrite.py",
+        "--port",
+        "8789"
+      ],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "usage: stub-rewrite.py [-h] [--host HOST] [--port PORT]\nstub-rewrite.py: error: 8788, 8789 and 8790 are reserved WB gateway ports"
+    },
+    {
+      "argv": [
+        "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-c",
+        "import http.server,runpy,sys; exec(\"def reject_bind(*a, **k):\\n print('BIND_GUARD_REACHED', flush=True)\\n raise SystemExit(91)\"); http.server.ThreadingHTTPServer=reject_bind; sys.argv=sys.argv[1:]; runpy.run_path(sys.argv[0],run_name='__main__')",
+        "C:\\temp\\stub-rewrite.py",
+        "--port",
+        "8790"
+      ],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "usage: stub-rewrite.py [-h] [--host HOST] [--port PORT]\nstub-rewrite.py: error: 8788, 8789 and 8790 are reserved WB gateway ports"
+    },
+    {
+      "argv": [
+        "powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "$ports = @(8788,8789,8790,18791,18792); $out = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object {$ports -contains $_.LocalPort} | ForEach-Object {$p = Get-CimInstance Win32_Process -Filter (\"ProcessId=\" + $_.OwningProcess); [pscustomobject]@{port=$_.LocalPort;address=$_.LocalAddress;pid=$_.OwningProcess;exe=$p.ExecutablePath;created=$p.CreationDate.ToString(\"o\");commandLine=$p.CommandLine}}); ConvertTo-Json -InputObject $out -Depth 4 -Compress"
+      ],
+      "exit_code": 0,
+      "stdout": "[{\"port\":8790,\"address\":\"::\",\"pid\":38084,\"exe\":\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run\\\\wb2api.exe\",\"created\":\"2026-11-07T11:10:53.3877780+08:00\",\"commandLine\":\"\\\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run\\\\wb2api.exe\\\"  -config config.json \"},{\"port\":8789,\"address\":\"::\",\"pid\":29624,\"exe\":\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run-bot\\\\wb2api.exe\",\"created\":\"2026-11-06T16:57:05.1653160+08:00\",\"commandLine\":\"\\\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run-bot\\\\wb2api.exe\\\"  -config config.json \"},{\"port\":8788,\"address\":\"::\",\"pid\":10576,\"exe\":\"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\"created\":\"2026-11-06T16:54:20.7556520+08:00\",\"commandLine\":\"\\\"C:\\\\Program Files\\\\nodejs\\\\node.exe\\\"  \\\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run\\\\wb-router.js\\\" \"}]",
+      "stderr": ""
+    }
+  ],
+  "checks": [
+    {
+      "name": "freeze.begin",
+      "pass": true,
+      "details": {
+        "spec_sha256": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+        "lock_sha256": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+        "stub_sha256": "4bcf738c9bec23d3cae3c518b700c2af567a718733411670398bb908f17b7d24",
+        "router_config_sha256": "21216097818995b03baf7945bb4ff0507422ae1c8275e5bc4f9a0b38692f1cd2"
+      }
+    },
+    {
+      "name": "G1.main_listener_identity",
+      "pass": true,
+      "details": {
+        "port": 8790,
+        "address": "::",
+        "pid": 38084,
+        "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+        "created": "2026-11-07T11:10:53.3877780+08:00",
+        "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json "
+      }
+    },
+    {
+      "name": "G2.aux_original_identity",
+      "pass": true,
+      "details": {
+        "port": 8789,
+        "address": "::",
+        "pid": 29624,
+        "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+        "created": "2026-11-06T16:57:05.1653160+08:00",
+        "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json "
+      }
+    },
+    {
+      "name": "G1.default_port_initially_no_listener",
+      "pass": true,
+      "details": {
+        "port": 18791,
+        "listener": null
+      }
+    },
+    {
+      "name": "G1.reject_gateway_port_8788",
+      "pass": true,
+      "details": {
+        "exit_code": 2,
+        "stderr": "usage: stub-rewrite.py [-h] [--host HOST] [--port PORT]\nstub-rewrite.py: error: 8788, 8789 and 8790 are reserved WB gateway ports",
+        "bind_attempted": false
+      }
+    },
+    {
+      "name": "G1.reject_gateway_port_8789",
+      "pass": true,
+      "details": {
+        "exit_code": 2,
+        "stderr": "usage: stub-rewrite.py [-h] [--host HOST] [--port PORT]\nstub-rewrite.py: error: 8788, 8789 and 8790 are reserved WB gateway ports",
+        "bind_attempted": false
+      }
+    },
+    {
+      "name": "G1.reject_gateway_port_8790",
+      "pass": true,
+      "details": {
+        "exit_code": 2,
+        "stderr": "usage: stub-rewrite.py [-h] [--host HOST] [--port PORT]\nstub-rewrite.py: error: 8788, 8789 and 8790 are reserved WB gateway ports",
+        "bind_attempted": false
+      }
+    },
+    {
+      "name": "G1.stub-default",
+      "pass": true,
+      "details": {
+        "label": "stub-default",
+        "port": 18791,
+        "argv": [
+          "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+          "-u",
+          "C:\\temp\\stub-rewrite.py"
+        ],
+        "preflight_free": true,
+        "owned_child_pid": 14552,
+        "status_before": {
+          "method": "GET",
+          "port": 18791,
+          "path": "/rewrite/status",
+          "authenticated": false,
+          "status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "bytes": 37,
+          "body_sha256": "68b2222958212125e11d8b6e66590f3a96fc198a6619a2075df2c59a0dcf2123",
+          "elapsed_ms": 547.0,
+          "json": {
+            "queued": 0,
+            "done": 0,
+            "failed": 0
+          }
+        },
+        "status_after": {
+          "method": "GET",
+          "port": 18791,
+          "path": "/rewrite/status",
+          "authenticated": false,
+          "status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "bytes": 37,
+          "body_sha256": "68b2222958212125e11d8b6e66590f3a96fc198a6619a2075df2c59a0dcf2123",
+          "elapsed_ms": 15.0,
+          "json": {
+            "queued": 0,
+            "done": 0,
+            "failed": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "G1.stub-default.cleanup",
+      "pass": true,
+      "details": {
+        "label": "stub-default",
+        "port": 18791,
+        "argv": [
+          "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+          "-u",
+          "C:\\temp\\stub-rewrite.py"
+        ],
+        "preflight_free": true,
+        "owned_child_pid": 14552,
+        "status_before": {
+          "method": "GET",
+          "port": 18791,
+          "path": "/rewrite/status",
+          "authenticated": false,
+          "status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "bytes": 37,
+          "body_sha256": "68b2222958212125e11d8b6e66590f3a96fc198a6619a2075df2c59a0dcf2123",
+          "elapsed_ms": 547.0,
+          "json": {
+            "queued": 0,
+            "done": 0,
+            "failed": 0
+          }
+        },
+        "status_after": {
+          "method": "GET",
+          "port": 18791,
+          "path": "/rewrite/status",
+          "authenticated": false,
+          "status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "bytes": 37,
+          "body_sha256": "68b2222958212125e11d8b6e66590f3a96fc198a6619a2075df2c59a0dcf2123",
+          "elapsed_ms": 15.0,
+          "json": {
+            "queued": 0,
+            "done": 0,
+            "failed": 0
+          }
+        },
+        "was_running_before_cleanup": true,
+        "exit_code_after_cleanup": 1,
+        "own_process_reaped": true,
+        "port_closed_after_cleanup": true,
+        "stdout_log": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\stub-default-stdout.log"
+      }
+    },
+    {
+      "name": "G1.stub-explicit",
+      "pass": true,
+      "details": {
+        "label": "stub-explicit",
+        "port": 18792,
+        "argv": [
+          "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+          "-u",
+          "C:\\temp\\stub-rewrite.py",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "18792"
+        ],
+        "preflight_free": true,
+        "owned_child_pid": 11996,
+        "status_before": {
+          "method": "GET",
+          "port": 18792,
+          "path": "/rewrite/status",
+          "authenticated": false,
+          "status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "bytes": 37,
+          "body_sha256": "68b2222958212125e11d8b6e66590f3a96fc198a6619a2075df2c59a0dcf2123",
+          "elapsed_ms": 515.0,
+          "json": {
+            "queued": 0,
+            "done": 0,
+            "failed": 0
+          }
+        },
+        "status_after": {
+          "method": "GET",
+          "port": 18792,
+          "path": "/rewrite/status",
+          "authenticated": false,
+          "status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "bytes": 37,
+          "body_sha256": "68b2222958212125e11d8b6e66590f3a96fc198a6619a2075df2c59a0dcf2123",
+          "elapsed_ms": 16.0,
+          "json": {
+            "queued": 0,
+            "done": 0,
+            "failed": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "G1.stub-explicit.cleanup",
+      "pass": true,
+      "details": {
+        "label": "stub-explicit",
+        "port": 18792,
+        "argv": [
+          "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+          "-u",
+          "C:\\temp\\stub-rewrite.py",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "18792"
+        ],
+        "preflight_free": true,
+        "owned_child_pid": 11996,
+        "status_before": {
+          "method": "GET",
+          "port": 18792,
+          "path": "/rewrite/status",
+          "authenticated": false,
+          "status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "bytes": 37,
+          "body_sha256": "68b2222958212125e11d8b6e66590f3a96fc198a6619a2075df2c59a0dcf2123",
+          "elapsed_ms": 515.0,
+          "json": {
+            "queued": 0,
+            "done": 0,
+            "failed": 0
+          }
+        },
+        "status_after": {
+          "method": "GET",
+          "port": 18792,
+          "path": "/rewrite/status",
+          "authenticated": false,
+          "status": 200,
+          "content_type": "application/json; charset=utf-8",
+          "bytes": 37,
+          "body_sha256": "68b2222958212125e11d8b6e66590f3a96fc198a6619a2075df2c59a0dcf2123",
+          "elapsed_ms": 16.0,
+          "json": {
+            "queued": 0,
+            "done": 0,
+            "failed": 0
+          }
+        },
+        "was_running_before_cleanup": true,
+        "exit_code_after_cleanup": 1,
+        "own_process_reaped": true,
+        "port_closed_after_cleanup": true,
+        "stdout_log": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\stub-explicit-stdout.log"
+      }
+    },
+    {
+      "name": "G2.main_health",
+      "pass": true,
+      "details": {
+        "method": "GET",
+        "port": 8790,
+        "path": "/healthz",
+        "authenticated": false,
+        "status": 200,
+        "content_type": "application/json",
+        "bytes": 92,
+        "body_sha256": "57a1ad524a8fc17ae954ee615c3a9eaa2fa993fddd33b10f14fc1d899899d33f",
+        "elapsed_ms": 15.0,
+        "json": {
+          "healthy": 7,
+          "realm_servable": {
+            "cn": true,
+            "global": true
+          },
+          "service": "workbuddy2api",
+          "total": 7
+        }
+      }
+    },
+    {
+      "name": "G2.entry_health",
+      "pass": true,
+      "details": {
+        "method": "GET",
+        "port": 8788,
+        "path": "/healthz",
+        "authenticated": false,
+        "status": 200,
+        "content_type": "application/json",
+        "bytes": 92,
+        "body_sha256": "57a1ad524a8fc17ae954ee615c3a9eaa2fa993fddd33b10f14fc1d899899d33f",
+        "elapsed_ms": 16.0,
+        "json": {
+          "healthy": 7,
+          "realm_servable": {
+            "cn": true,
+            "global": true
+          },
+          "service": "workbuddy2api",
+          "total": 7
+        }
+      }
+    },
+    {
+      "name": "G1.main_service_identity",
+      "pass": true,
+      "details": {
+        "method": "GET",
+        "port": 8790,
+        "path": "/healthz",
+        "authenticated": false,
+        "status": 200,
+        "content_type": "application/json",
+        "bytes": 92,
+        "body_sha256": "57a1ad524a8fc17ae954ee615c3a9eaa2fa993fddd33b10f14fc1d899899d33f",
+        "elapsed_ms": 15.0,
+        "json": {
+          "healthy": 7,
+          "realm_servable": {
+            "cn": true,
+            "global": true
+          },
+          "service": "workbuddy2api",
+          "total": 7
+        }
+      }
+    },
+    {
+      "name": "G2.aux_health",
+      "pass": true,
+      "details": {
+        "method": "GET",
+        "port": 8789,
+        "path": "/healthz",
+        "authenticated": false,
+        "status": 200,
+        "content_type": "application/json",
+        "bytes": 93,
+        "body_sha256": "04991bec9809a61fb8036f4734ac07e6f4e2335c1897085e96f51215f029c734",
+        "elapsed_ms": 16.0,
+        "json": {
+          "healthy": 1,
+          "realm_servable": {
+            "cn": true,
+            "global": false
+          },
+          "service": "workbuddy2api",
+          "total": 1
+        }
+      }
+    },
+    {
+      "name": "G2.main_models",
+      "pass": true,
+      "details": {
+        "method": "GET",
+        "port": 8790,
+        "path": "/v1/models",
+        "authenticated": true,
+        "status": 200,
+        "content_type": "application/json",
+        "bytes": 34124,
+        "body_sha256": "c6a90228135634a716c5aff874fce431e0d7bd85b877804fb112434fe7eeed26",
+        "elapsed_ms": 453.0,
+        "model_ids": [
+          "cn:auto",
+          "cn:balanced-model",
+          "cn:deep-model",
+          "cn:deepseek-r1-0528",
+          "cn:deepseek-r1-0528-lkeap",
+          "cn:deepseek-v3-0324",
+          "cn:deepseek-v3-0324-lkeap",
+          "cn:deepseek-v3-1",
+          "cn:deepseek-v3-1-lkeap",
+          "cn:deepseek-v3-1-volc",
+          "cn:deepseek-v3-2-volc",
+          "cn:deepseek-v4-flash",
+          "cn:deepseek-v4-pro",
+          "cn:deepseek-v4.1-flash",
+          "cn:default-1.1",
+          "cn:default-1.2",
+          "cn:fast-model",
+          "cn:glm-4.6",
+          "cn:glm-4.6v",
+          "cn:glm-5.0-turbo",
+          "cn:glm-5.2",
+          "cn:glm-5.3",
+          "cn:glm-5.3-flash",
+          "cn:hunyuan-2.0-instruct",
+          "cn:hunyuan-chat",
+          "cn:hunyuan-image-alpha",
+          "cn:hunyuan-image-alpha-edit",
+          "cn:hy3",
+          "cn:hy3-b",
+          "cn:hy3-c",
+          "cn:hy3-x",
+          "cn:hy4-preview-ctrl",
+          "cn:hy4-preview-exp",
+          "cn:hy4-preview-f",
+          "cn:hy4-preview-x",
+          "cn:hy4free",
+          "cn:hy4preview-exp1",
+          "cn:hy4preview-exp2",
+          "cn:hy4std",
+          "cn:kimi-k2-instruct-taiji",
+          "cn:kimi-k2-thinking",
+          "cn:kimi-k2.5",
+          "cn:kimi-k2.8-preview",
+          "cn:kimi-k3-1",
+          "cn:kimi-k3.1-pro",
+          "cn:mimo-v2.6-pro",
+          "cn:minimax-m2.5",
+          "cn:minimax-m2.7",
+          "cn:minimax-m3.1-flash",
+          "cn:space-bunny",
+          "cn:step-5-preview",
+          "cn:wb-lite",
+          "global:deepseek-v4.1-flash-sg",
+          "global:default-model",
+          "global:gemini-3.8-flash",
+          "global:glm-5.3",
+          "global:glm-5.3-flash",
+          "global:gpt-5.6-luna",
+          "global:gpt-5.6-sol",
+          "global:gpt-5.6-terra",
+          "global:gpt-6-astra",
+          "global:gpt-6-luna",
+          "global:gpt-6-sol",
+          "global:gpt-6.1-sol",
+          "global:grok-4.7",
+          "global:hy-image-3.5",
+          "global:hy3",
+          "global:hy4-preview-f",
+          "global:hy4free",
+          "global:hy4std",
+          "global:kimi-k3",
+          "global:kimi-k3.1-pro",
+          "global:kimi-k3.1-pro-highspeed",
+          "global:max-model",
+          "global:minimax-m3.1-flash"
+        ],
+        "model_count": 75,
+        "valid_nonempty_directory": true
+      }
+    },
+    {
+      "name": "G2.entry_models",
+      "pass": true,
+      "details": {
+        "method": "GET",
+        "port": 8788,
+        "path": "/v1/models",
+        "authenticated": true,
+        "status": 200,
+        "content_type": "application/json",
+        "bytes": 34124,
+        "body_sha256": "c6a90228135634a716c5aff874fce431e0d7bd85b877804fb112434fe7eeed26",
+        "elapsed_ms": 0.0,
+        "model_ids": [
+          "cn:auto",
+          "cn:balanced-model",
+          "cn:deep-model",
+          "cn:deepseek-r1-0528",
+          "cn:deepseek-r1-0528-lkeap",
+          "cn:deepseek-v3-0324",
+          "cn:deepseek-v3-0324-lkeap",
+          "cn:deepseek-v3-1",
+          "cn:deepseek-v3-1-lkeap",
+          "cn:deepseek-v3-1-volc",
+          "cn:deepseek-v3-2-volc",
+          "cn:deepseek-v4-flash",
+          "cn:deepseek-v4-pro",
+          "cn:deepseek-v4.1-flash",
+          "cn:default-1.1",
+          "cn:default-1.2",
+          "cn:fast-model",
+          "cn:glm-4.6",
+          "cn:glm-4.6v",
+          "cn:glm-5.0-turbo",
+          "cn:glm-5.2",
+          "cn:glm-5.3",
+          "cn:glm-5.3-flash",
+          "cn:hunyuan-2.0-instruct",
+          "cn:hunyuan-chat",
+          "cn:hunyuan-image-alpha",
+          "cn:hunyuan-image-alpha-edit",
+          "cn:hy3",
+          "cn:hy3-b",
+          "cn:hy3-c",
+          "cn:hy3-x",
+          "cn:hy4-preview-ctrl",
+          "cn:hy4-preview-exp",
+          "cn:hy4-preview-f",
+          "cn:hy4-preview-x",
+          "cn:hy4free",
+          "cn:hy4preview-exp1",
+          "cn:hy4preview-exp2",
+          "cn:hy4std",
+          "cn:kimi-k2-instruct-taiji",
+          "cn:kimi-k2-thinking",
+          "cn:kimi-k2.5",
+          "cn:kimi-k2.8-preview",
+          "cn:kimi-k3-1",
+          "cn:kimi-k3.1-pro",
+          "cn:mimo-v2.6-pro",
+          "cn:minimax-m2.5",
+          "cn:minimax-m2.7",
+          "cn:minimax-m3.1-flash",
+          "cn:space-bunny",
+          "cn:step-5-preview",
+          "cn:wb-lite",
+          "global:deepseek-v4.1-flash-sg",
+          "global:default-model",
+          "global:gemini-3.8-flash",
+          "global:glm-5.3",
+          "global:glm-5.3-flash",
+          "global:gpt-5.6-luna",
+          "global:gpt-5.6-sol",
+          "global:gpt-5.6-terra",
+          "global:gpt-6-astra",
+          "global:gpt-6-luna",
+          "global:gpt-6-sol",
+          "global:gpt-6.1-sol",
+          "global:grok-4.7",
+          "global:hy-image-3.5",
+          "global:hy3",
+          "global:hy4-preview-f",
+          "global:hy4free",
+          "global:hy4std",
+          "global:kimi-k3",
+          "global:kimi-k3.1-pro",
+          "global:kimi-k3.1-pro-highspeed",
+          "global:max-model",
+          "global:minimax-m3.1-flash"
+        ],
+        "model_count": 75,
+        "valid_nonempty_directory": true
+      }
+    },
+    {
+      "name": "G2.model_id_sets_equal",
+      "pass": true,
+      "details": {
+        "main_count": 75,
+        "entry_count": 75,
+        "only_main": [],
+        "only_entry": [],
+        "count_is_observation_not_fixed_assertion": true
+      }
+    },
+    {
+      "name": "G2.entry_panel_200",
+      "pass": true,
+      "details": {
+        "method": "GET",
+        "port": 8788,
+        "path": "/panel/",
+        "authenticated": false,
+        "status": 200,
+        "content_type": "text/html; charset=utf-8",
+        "bytes": 109357,
+        "body_sha256": "73bc98ea8d216566537042abf901f439ab6015aadc717b605e0238cfb592dc40",
+        "elapsed_ms": 31.0,
+        "title": "WorkBuddy2API · 控制台"
+      }
+    },
+    {
+      "name": "G2.production_identity_unchanged_8788",
+      "pass": true,
+      "details": {
+        "before": {
+          "port": 8788,
+          "address": "::",
+          "pid": 10576,
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "created": "2026-11-06T16:54:20.7556520+08:00",
+          "commandLine": "\"C:\\Program Files\\nodejs\\node.exe\"  \"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js\" "
+        },
+        "after": {
+          "port": 8788,
+          "address": "::",
+          "pid": 10576,
+          "exe": "C:\\Program Files\\nodejs\\node.exe",
+          "created": "2026-11-06T16:54:20.7556520+08:00",
+          "commandLine": "\"C:\\Program Files\\nodejs\\node.exe\"  \"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js\" "
+        }
+      }
+    },
+    {
+      "name": "G2.production_identity_unchanged_8789",
+      "pass": true,
+      "details": {
+        "before": {
+          "port": 8789,
+          "address": "::",
+          "pid": 29624,
+          "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+          "created": "2026-11-06T16:57:05.1653160+08:00",
+          "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json "
+        },
+        "after": {
+          "port": 8789,
+          "address": "::",
+          "pid": 29624,
+          "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+          "created": "2026-11-06T16:57:05.1653160+08:00",
+          "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json "
+        }
+      }
+    },
+    {
+      "name": "G2.production_identity_unchanged_8790",
+      "pass": true,
+      "details": {
+        "before": {
+          "port": 8790,
+          "address": "::",
+          "pid": 38084,
+          "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+          "created": "2026-11-07T11:10:53.3877780+08:00",
+          "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json "
+        },
+        "after": {
+          "port": 8790,
+          "address": "::",
+          "pid": 38084,
+          "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+          "created": "2026-11-07T11:10:53.3877780+08:00",
+          "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json "
+        }
+      }
+    },
+    {
+      "name": "cleanup.no_test_listeners",
+      "pass": true,
+      "details": {
+        "test_ports": [
+          18791,
+          18792
+        ]
+      }
+    },
+    {
+      "name": "freeze.end",
+      "pass": true,
+      "details": {
+        "spec_sha256": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+        "lock_sha256": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+        "stub_sha256": "4bcf738c9bec23d3cae3c518b700c2af567a718733411670398bb908f17b7d24",
+        "router_config_sha256": "21216097818995b03baf7945bb4ff0507422ae1c8275e5bc4f9a0b38692f1cd2"
+      }
+    },
+    {
+      "name": "readonly.router_config_unchanged",
+      "pass": true,
+      "details": null
+    },
+    {
+      "name": "readonly.stub_unchanged",
+      "pass": true,
+      "details": null
+    }
+  ],
+  "stub_runs": [
+    {
+      "label": "stub-default",
+      "port": 18791,
+      "argv": [
+        "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-u",
+        "C:\\temp\\stub-rewrite.py"
+      ],
+      "preflight_free": true,
+      "owned_child_pid": 14552,
+      "status_before": {
+        "method": "GET",
+        "port": 18791,
+        "path": "/rewrite/status",
+        "authenticated": false,
+        "status": 200,
+        "content_type": "application/json; charset=utf-8",
+        "bytes": 37,
+        "body_sha256": "68b2222958212125e11d8b6e66590f3a96fc198a6619a2075df2c59a0dcf2123",
+        "elapsed_ms": 547.0,
+        "json": {
+          "queued": 0,
+          "done": 0,
+          "failed": 0
+        }
+      },
+      "status_after": {
+        "method": "GET",
+        "port": 18791,
+        "path": "/rewrite/status",
+        "authenticated": false,
+        "status": 200,
+        "content_type": "application/json; charset=utf-8",
+        "bytes": 37,
+        "body_sha256": "68b2222958212125e11d8b6e66590f3a96fc198a6619a2075df2c59a0dcf2123",
+        "elapsed_ms": 15.0,
+        "json": {
+          "queued": 0,
+          "done": 0,
+          "failed": 0
+        }
+      },
+      "was_running_before_cleanup": true,
+      "exit_code_after_cleanup": 1,
+      "own_process_reaped": true,
+      "port_closed_after_cleanup": true,
+      "stdout_log": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\stub-default-stdout.log"
+    },
+    {
+      "label": "stub-explicit",
+      "port": 18792,
+      "argv": [
+        "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-u",
+        "C:\\temp\\stub-rewrite.py",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18792"
+      ],
+      "preflight_free": true,
+      "owned_child_pid": 11996,
+      "status_before": {
+        "method": "GET",
+        "port": 18792,
+        "path": "/rewrite/status",
+        "authenticated": false,
+        "status": 200,
+        "content_type": "application/json; charset=utf-8",
+        "bytes": 37,
+        "body_sha256": "68b2222958212125e11d8b6e66590f3a96fc198a6619a2075df2c59a0dcf2123",
+        "elapsed_ms": 515.0,
+        "json": {
+          "queued": 0,
+          "done": 0,
+          "failed": 0
+        }
+      },
+      "status_after": {
+        "method": "GET",
+        "port": 18792,
+        "path": "/rewrite/status",
+        "authenticated": false,
+        "status": 200,
+        "content_type": "application/json; charset=utf-8",
+        "bytes": 37,
+        "body_sha256": "68b2222958212125e11d8b6e66590f3a96fc198a6619a2075df2c59a0dcf2123",
+        "elapsed_ms": 16.0,
+        "json": {
+          "queued": 0,
+          "done": 0,
+          "failed": 0
+        }
+      },
+      "was_running_before_cleanup": true,
+      "exit_code_after_cleanup": 1,
+      "own_process_reaped": true,
+      "port_closed_after_cleanup": true,
+      "stdout_log": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\stub-explicit-stdout.log"
+    }
+  ],
+  "errors": [],
+  "hashes_begin": {
+    "spec_sha256": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "lock_sha256": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "stub_sha256": "4bcf738c9bec23d3cae3c518b700c2af567a718733411670398bb908f17b7d24",
+    "router_config_sha256": "21216097818995b03baf7945bb4ff0507422ae1c8275e5bc4f9a0b38692f1cd2"
+  },
+  "listeners_before": [
+    {
+      "port": 8790,
+      "address": "::",
+      "pid": 38084,
+      "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+      "created": "2026-11-07T11:10:53.3877780+08:00",
+      "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json "
+    },
+    {
+      "port": 8789,
+      "address": "::",
+      "pid": 29624,
+      "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+      "created": "2026-11-06T16:57:05.1653160+08:00",
+      "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json "
+    },
+    {
+      "port": 8788,
+      "address": "::",
+      "pid": 10576,
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "created": "2026-11-06T16:54:20.7556520+08:00",
+      "commandLine": "\"C:\\Program Files\\nodejs\\node.exe\"  \"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js\" "
+    }
+  ],
+  "auth_source": "Read-only run/router.config.json main.key; never logged; no auths read",
+  "live_gets": {
+    "main_health": {
+      "method": "GET",
+      "port": 8790,
+      "path": "/healthz",
+      "authenticated": false,
+      "status": 200,
+      "content_type": "application/json",
+      "bytes": 92,
+      "body_sha256": "57a1ad524a8fc17ae954ee615c3a9eaa2fa993fddd33b10f14fc1d899899d33f",
+      "elapsed_ms": 15.0,
+      "json": {
+        "healthy": 7,
+        "realm_servable": {
+          "cn": true,
+          "global": true
+        },
+        "service": "workbuddy2api",
+        "total": 7
+      }
+    },
+    "entry_health": {
+      "method": "GET",
+      "port": 8788,
+      "path": "/healthz",
+      "authenticated": false,
+      "status": 200,
+      "content_type": "application/json",
+      "bytes": 92,
+      "body_sha256": "57a1ad524a8fc17ae954ee615c3a9eaa2fa993fddd33b10f14fc1d899899d33f",
+      "elapsed_ms": 16.0,
+      "json": {
+        "healthy": 7,
+        "realm_servable": {
+          "cn": true,
+          "global": true
+        },
+        "service": "workbuddy2api",
+        "total": 7
+      }
+    },
+    "aux_health": {
+      "method": "GET",
+      "port": 8789,
+      "path": "/healthz",
+      "authenticated": false,
+      "status": 200,
+      "content_type": "application/json",
+      "bytes": 93,
+      "body_sha256": "04991bec9809a61fb8036f4734ac07e6f4e2335c1897085e96f51215f029c734",
+      "elapsed_ms": 16.0,
+      "json": {
+        "healthy": 1,
+        "realm_servable": {
+          "cn": true,
+          "global": false
+        },
+        "service": "workbuddy2api",
+        "total": 1
+      }
+    },
+    "main_models": {
+      "method": "GET",
+      "port": 8790,
+      "path": "/v1/models",
+      "authenticated": true,
+      "status": 200,
+      "content_type": "application/json",
+      "bytes": 34124,
+      "body_sha256": "c6a90228135634a716c5aff874fce431e0d7bd85b877804fb112434fe7eeed26",
+      "elapsed_ms": 453.0,
+      "model_ids": [
+        "cn:auto",
+        "cn:balanced-model",
+        "cn:deep-model",
+        "cn:deepseek-r1-0528",
+        "cn:deepseek-r1-0528-lkeap",
+        "cn:deepseek-v3-0324",
+        "cn:deepseek-v3-0324-lkeap",
+        "cn:deepseek-v3-1",
+        "cn:deepseek-v3-1-lkeap",
+        "cn:deepseek-v3-1-volc",
+        "cn:deepseek-v3-2-volc",
+        "cn:deepseek-v4-flash",
+        "cn:deepseek-v4-pro",
+        "cn:deepseek-v4.1-flash",
+        "cn:default-1.1",
+        "cn:default-1.2",
+        "cn:fast-model",
+        "cn:glm-4.6",
+        "cn:glm-4.6v",
+        "cn:glm-5.0-turbo",
+        "cn:glm-5.2",
+        "cn:glm-5.3",
+        "cn:glm-5.3-flash",
+        "cn:hunyuan-2.0-instruct",
+        "cn:hunyuan-chat",
+        "cn:hunyuan-image-alpha",
+        "cn:hunyuan-image-alpha-edit",
+        "cn:hy3",
+        "cn:hy3-b",
+        "cn:hy3-c",
+        "cn:hy3-x",
+        "cn:hy4-preview-ctrl",
+        "cn:hy4-preview-exp",
+        "cn:hy4-preview-f",
+        "cn:hy4-preview-x",
+        "cn:hy4free",
+        "cn:hy4preview-exp1",
+        "cn:hy4preview-exp2",
+        "cn:hy4std",
+        "cn:kimi-k2-instruct-taiji",
+        "cn:kimi-k2-thinking",
+        "cn:kimi-k2.5",
+        "cn:kimi-k2.8-preview",
+        "cn:kimi-k3-1",
+        "cn:kimi-k3.1-pro",
+        "cn:mimo-v2.6-pro",
+        "cn:minimax-m2.5",
+        "cn:minimax-m2.7",
+        "cn:minimax-m3.1-flash",
+        "cn:space-bunny",
+        "cn:step-5-preview",
+        "cn:wb-lite",
+        "global:deepseek-v4.1-flash-sg",
+        "global:default-model",
+        "global:gemini-3.8-flash",
+        "global:glm-5.3",
+        "global:glm-5.3-flash",
+        "global:gpt-5.6-luna",
+        "global:gpt-5.6-sol",
+        "global:gpt-5.6-terra",
+        "global:gpt-6-astra",
+        "global:gpt-6-luna",
+        "global:gpt-6-sol",
+        "global:gpt-6.1-sol",
+        "global:grok-4.7",
+        "global:hy-image-3.5",
+        "global:hy3",
+        "global:hy4-preview-f",
+        "global:hy4free",
+        "global:hy4std",
+        "global:kimi-k3",
+        "global:kimi-k3.1-pro",
+        "global:kimi-k3.1-pro-highspeed",
+        "global:max-model",
+        "global:minimax-m3.1-flash"
+      ],
+      "model_count": 75,
+      "valid_nonempty_directory": true
+    },
+    "entry_models": {
+      "method": "GET",
+      "port": 8788,
+      "path": "/v1/models",
+      "authenticated": true,
+      "status": 200,
+      "content_type": "application/json",
+      "bytes": 34124,
+      "body_sha256": "c6a90228135634a716c5aff874fce431e0d7bd85b877804fb112434fe7eeed26",
+      "elapsed_ms": 0.0,
+      "model_ids": [
+        "cn:auto",
+        "cn:balanced-model",
+        "cn:deep-model",
+        "cn:deepseek-r1-0528",
+        "cn:deepseek-r1-0528-lkeap",
+        "cn:deepseek-v3-0324",
+        "cn:deepseek-v3-0324-lkeap",
+        "cn:deepseek-v3-1",
+        "cn:deepseek-v3-1-lkeap",
+        "cn:deepseek-v3-1-volc",
+        "cn:deepseek-v3-2-volc",
+        "cn:deepseek-v4-flash",
+        "cn:deepseek-v4-pro",
+        "cn:deepseek-v4.1-flash",
+        "cn:default-1.1",
+        "cn:default-1.2",
+        "cn:fast-model",
+        "cn:glm-4.6",
+        "cn:glm-4.6v",
+        "cn:glm-5.0-turbo",
+        "cn:glm-5.2",
+        "cn:glm-5.3",
+        "cn:glm-5.3-flash",
+        "cn:hunyuan-2.0-instruct",
+        "cn:hunyuan-chat",
+        "cn:hunyuan-image-alpha",
+        "cn:hunyuan-image-alpha-edit",
+        "cn:hy3",
+        "cn:hy3-b",
+        "cn:hy3-c",
+        "cn:hy3-x",
+        "cn:hy4-preview-ctrl",
+        "cn:hy4-preview-exp",
+        "cn:hy4-preview-f",
+        "cn:hy4-preview-x",
+        "cn:hy4free",
+        "cn:hy4preview-exp1",
+        "cn:hy4preview-exp2",
+        "cn:hy4std",
+        "cn:kimi-k2-instruct-taiji",
+        "cn:kimi-k2-thinking",
+        "cn:kimi-k2.5",
+        "cn:kimi-k2.8-preview",
+        "cn:kimi-k3-1",
+        "cn:kimi-k3.1-pro",
+        "cn:mimo-v2.6-pro",
+        "cn:minimax-m2.5",
+        "cn:minimax-m2.7",
+        "cn:minimax-m3.1-flash",
+        "cn:space-bunny",
+        "cn:step-5-preview",
+        "cn:wb-lite",
+        "global:deepseek-v4.1-flash-sg",
+        "global:default-model",
+        "global:gemini-3.8-flash",
+        "global:glm-5.3",
+        "global:glm-5.3-flash",
+        "global:gpt-5.6-luna",
+        "global:gpt-5.6-sol",
+        "global:gpt-5.6-terra",
+        "global:gpt-6-astra",
+        "global:gpt-6-luna",
+        "global:gpt-6-sol",
+        "global:gpt-6.1-sol",
+        "global:grok-4.7",
+        "global:hy-image-3.5",
+        "global:hy3",
+        "global:hy4-preview-f",
+        "global:hy4free",
+        "global:hy4std",
+        "global:kimi-k3",
+        "global:kimi-k3.1-pro",
+        "global:kimi-k3.1-pro-highspeed",
+        "global:max-model",
+        "global:minimax-m3.1-flash"
+      ],
+      "model_count": 75,
+      "valid_nonempty_directory": true
+    },
+    "entry_panel": {
+      "method": "GET",
+      "port": 8788,
+      "path": "/panel/",
+      "authenticated": false,
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 109357,
+      "body_sha256": "73bc98ea8d216566537042abf901f439ab6015aadc717b605e0238cfb592dc40",
+      "elapsed_ms": 31.0,
+      "title": "WorkBuddy2API · 控制台"
+    },
+    "entry_status": {
+      "method": "GET",
+      "port": 8788,
+      "path": "/_router/status",
+      "authenticated": false,
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "bytes": 686,
+      "body_sha256": "afa15b34929fd11028bfa78d83b658e7728161780ca7ec0fc922204e6674a0a6",
+      "elapsed_ms": 16.0,
+      "top_level_fields": [
+        "aux",
+        "changedAt",
+        "counters",
+        "hold",
+        "main",
+        "qq",
+        "state",
+        "stateMeaning",
+        "weight"
+      ],
+      "mode": null
+    }
+  },
+  "listeners_after": [
+    {
+      "port": 8790,
+      "address": "::",
+      "pid": 38084,
+      "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+      "created": "2026-11-07T11:10:53.3877780+08:00",
+      "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json "
+    },
+    {
+      "port": 8789,
+      "address": "::",
+      "pid": 29624,
+      "exe": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+      "created": "2026-11-06T16:57:05.1653160+08:00",
+      "commandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json "
+    },
+    {
+      "port": 8788,
+      "address": "::",
+      "pid": 10576,
+      "exe": "C:\\Program Files\\nodejs\\node.exe",
+      "created": "2026-11-06T16:54:20.7556520+08:00",
+      "commandLine": "\"C:\\Program Files\\nodejs\\node.exe\"  \"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js\" "
+    }
+  ],
+  "hashes_end": {
+    "spec_sha256": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "lock_sha256": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "stub_sha256": "4bcf738c9bec23d3cae3c518b700c2af567a718733411670398bb908f17b7d24",
+    "router_config_sha256": "21216097818995b03baf7945bb4ff0507422ae1c8275e5bc4f9a0b38692f1cd2"
+  },
+  "G1": {
+    "status": "PASS",
+    "score": 15,
+    "max_score": 15,
+    "check_count": 10
+  },
+  "G2": {
+    "status": "PASS",
+    "score": 15,
+    "max_score": 15,
+    "check_count": 11
+  },
+  "ended_at": "2026-11-07T03:29:28.262326+00:00",
+  "post_count": 0,
+  "production_stops": 0
+}

@@ -1,0 +1,213 @@
+[
+  {
+    "case": "build_fake_WB",
+    "pass": true,
+    "command": "C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe /nologo /target:exe \"/out:D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scratch-launcher-v3\\panel\\run\\wb2api.exe\" \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\FakeWB.cs\"",
+    "raw": {
+      "exit": 0,
+      "stdout": "",
+      "stderr": "",
+      "command": "C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe /nologo /target:exe \"/out:D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scratch-launcher-v3\\panel\\run\\wb2api.exe\" \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\FakeWB.cs\""
+    }
+  },
+  {
+    "case": "isolation_helper_transform",
+    "pass": true,
+    "command": "python round2/launcher_v3.py (case isolation_helper_transform)",
+    "raw": {
+      "source": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate\\wb-service-check.ps1",
+      "sourceSha256": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+      "copySha256": "84879cb05202c29d3b3bdbe2c05ab417f14b20cc24ac821aa2abcd952f5656ca",
+      "transforms": [
+        {
+          "kind": "isolated-port-literal",
+          "from": 8790,
+          "to": 60129,
+          "occurrences": 5
+        },
+        {
+          "kind": "isolated-port-literal",
+          "from": 8789,
+          "to": 60130,
+          "occurrences": 5
+        },
+        {
+          "kind": "isolated-port-literal",
+          "from": 8788,
+          "to": 60131,
+          "occurrences": 1
+        }
+      ]
+    }
+  },
+  {
+    "case": "isolation_launcher_transform",
+    "pass": true,
+    "command": "python round2/launcher_v3.py (case isolation_launcher_transform)",
+    "raw": {
+      "sourceSha256": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+      "copySha256": "bcff3614ddc86cf4162851579b5c558f7458e7f867c625fec94bcf1a55619c26",
+      "transforms": [
+        {
+          "kind": "production-sanitizer-path",
+          "to": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scratch-launcher-v3\\sanitize-recorder.ps1",
+          "occurrences": 1
+        },
+        {
+          "kind": "production-log-path",
+          "to": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scratch-launcher-v3\\sanitize.log",
+          "occurrences": 1
+        },
+        {
+          "kind": "cmd CRLF normalization"
+        }
+      ],
+      "note": "sanitation invocation is recorded; production sanitizer implementation is not under test"
+    }
+  },
+  {
+    "case": "native_fake_identity",
+    "pass": true,
+    "command": "python round2/launcher_v3.py (case native_fake_identity)",
+    "raw": {
+      "mainPid": 2504,
+      "auxPid": 16848,
+      "routerPid": 31792,
+      "ports": {
+        "main": 60129,
+        "aux": 60130,
+        "router": 60131
+      },
+      "fakeExeHash": "a6f44f87695a1693b8491edeab16333a6990c367ddac37221dcf7a67411c60b7",
+      "mainHealthRaw": {
+        "status": 200,
+        "body": "{\"service\":\"workbuddy2api\",\"healthy\":2}"
+      },
+      "auxHealthRaw": {
+        "status": 200,
+        "body": "{\"service\":\"workbuddy2api\",\"healthy\":2}"
+      }
+    }
+  },
+  {
+    "case": "G3_native_launcher_idempotent",
+    "pass": true,
+    "command": "C:\\Windows\\system32\\cmd.exe /d /c start-silent.cmd",
+    "raw": {
+      "exit": 0,
+      "stdout": "WB_CHECK name=main port=60129 state=healthy reason=workbuddy2api-healthy pids=2504\r\nWB_CHECK name=router port=60131 state=healthy reason=router-status-healthy pids=31792\r\n",
+      "stderr": "",
+      "command": "C:\\Windows\\system32\\cmd.exe /d /c start-silent.cmd",
+      "startsBefore": [
+        "2504 2026-11-07T04:33:02.4107707Z"
+      ],
+      "startsAfter": [
+        "2504 2026-11-07T04:33:02.4107707Z"
+      ],
+      "mainPid": 2504,
+      "mainStillRunning": true
+    }
+  },
+  {
+    "case": "G3_native_launcher_correct_unhealthy",
+    "pass": true,
+    "command": "C:\\Windows\\system32\\cmd.exe /d /c start-silent.cmd",
+    "raw": {
+      "exit": 30,
+      "stdout": "WB_CHECK name=main port=60129 state=unhealthy reason=health-healthy-count-not-positive-integer pids=2504\r\n",
+      "stderr": "WB_START ERROR main inspection code=30; no duplicate process will be started. \r\n",
+      "command": "C:\\Windows\\system32\\cmd.exe /d /c start-silent.cmd",
+      "startsBefore": [
+        "2504 2026-11-07T04:33:02.4107707Z"
+      ],
+      "startsAfter": [
+        "2504 2026-11-07T04:33:02.4107707Z"
+      ],
+      "mainStillRunning": true
+    }
+  },
+  {
+    "case": "G3_native_launcher_foreign",
+    "pass": true,
+    "command": "C:\\Windows\\system32\\cmd.exe /d /c start-silent.cmd",
+    "raw": {
+      "exit": 20,
+      "stdout": "WB_CHECK name=main port=60129 state=foreign reason=CONFLICT-listener-owner-identity-mismatch pids=11228\r\n",
+      "stderr": "WB_START ERROR main inspection code=20; no duplicate process will be started. \r\n",
+      "command": "C:\\Windows\\system32\\cmd.exe /d /c start-silent.cmd",
+      "startsBefore": [
+        "2504 2026-11-07T04:33:02.4107707Z"
+      ],
+      "startsAfter": [
+        "2504 2026-11-07T04:33:02.4107707Z"
+      ],
+      "foreignStillListening": true,
+      "foreignHealthRaw": {
+        "status": 200,
+        "body": "{\"service\":\"workbuddy2api\",\"healthy\":3}"
+      }
+    }
+  },
+  {
+    "case": "G3_native_launcher_missing_held",
+    "pass": true,
+    "command": "C:\\Windows\\system32\\cmd.exe /d /c start-silent.cmd",
+    "raw": {
+      "exit": 10,
+      "stdout": "WB_CHECK name=main port=60129 state=missing reason=no-listener pids=\r\n",
+      "stderr": "WB_START HOLD .hold-restart prevents a missing service from starting. \r\n",
+      "command": "C:\\Windows\\system32\\cmd.exe /d /c start-silent.cmd"
+    }
+  },
+  {
+    "case": "native_runtime_logs",
+    "pass": true,
+    "command": "python round2/launcher_v3.py (case native_runtime_logs)",
+    "raw": {
+      "panel\\run\\requests.txt": " healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\nGET /healthz HTTP/1.1 zero\n",
+      "panel\\run\\sanitizer-called.txt": "round2 sanitation recorder\nround2 sanitation recorder\nround2 sanitation recorder\nround2 sanitation recorder\n",
+      "panel\\run\\starts.txt": "2504 2026-11-07T04:33:02.4107707Z\n",
+      "panel\\run-bot\\requests.txt": " healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\nGET /healthz HTTP/1.1 healthy\n",
+      "panel\\run-bot\\starts.txt": "16848 2026-11-07T04:33:02.4170070Z\n"
+    }
+  },
+  {
+    "case": "cleanup_scripts",
+    "pass": true,
+    "command": "python round2/launcher_v3.py (case cleanup_scripts)",
+    "raw": {
+      "processes": [
+        {
+          "pid": 2504,
+          "exit": 1,
+          "running": false
+        },
+        {
+          "pid": 16848,
+          "exit": 1,
+          "running": false
+        },
+        {
+          "pid": 31792,
+          "exit": 1,
+          "running": false
+        }
+      ],
+      "ports": [
+        {
+          "port": 60129,
+          "accepting": false
+        },
+        {
+          "port": 60130,
+          "accepting": false
+        },
+        {
+          "port": 60131,
+          "accepting": false
+        }
+      ],
+      "scratchRemoved": true
+    }
+  }
+]

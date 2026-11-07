@@ -136,6 +136,46 @@ class WordRepository(private val database: AppDatabase) {
         return bookId
     }
 
+    /**
+     * 1.4.3.2：一次性清空「学习记录」，让用户从零开始背。
+     * 只清记录表，不动词书、单词、记忆思路、重写队列。
+     */
+    suspend fun resetStudyRecords() {
+        database.withTransaction {
+            val db = database.openHelper.writableDatabase
+            listOf(
+                "tb_progress",
+                "tb_early_review_ref",
+                "tb_new_word_ref",
+                "tb_daily_stats",
+                "tb_study_log",
+                "word_ml_stats",
+                "training_samples"
+            ).forEach { table -> db.execSQL("DELETE FROM $table") }
+        }
+    }
+
+    /**
+     * 20 词测试书：只建书和内容，不切成当前学习书（用户想测时自己切）。
+     * 已存在同名书时就地更新，不重复建。
+     */
+    suspend fun ensureTestDeck(seed: CardSeedPayload): Long {
+        val bookName = seed.book.trim().ifBlank { "测试·20词" }
+        val drafts = CardSeedLoader.toDrafts(seed)
+        if (drafts.isEmpty()) return 0L
+
+        var bookId = 0L
+        database.withTransaction {
+            val existing = bookDao.findByNameAndType(bookName, Book.TYPE_IMPORTED)
+            bookId = existing?.id ?: bookDao.insert(
+                Book(name = bookName, type = Book.TYPE_IMPORTED, totalCount = 0, isActive = false)
+            )
+            upsertDraftsForBook(bookId, drafts)
+            bookDao.updateTotalCount(bookId, wordDao.getWordCount(bookId))
+        }
+        return bookId
+    }
+
     suspend fun ensurePresetBooks(presetSeeds: List<PresetBookSeed> = PresetBookCatalog.presets) {
         database.withTransaction {
             val books = bookDao.getAllBooksList().toMutableList()
@@ -1034,8 +1074,11 @@ class WordRepository(private val database: AppDatabase) {
 
         // 记忆思路与搭配按 word_id 单独存，重新导入只覆盖它们自己，
         // 不会碰 tb_progress，所以更新内容不会重置学习进度。
+        // 1.4.3：用户重写过的词（source=user）跳过，否则种子版本一涨就把重写冲掉。
+        val userSourcedWordIds = wordMemoryDao.getUserSourcedWordIds().toHashSet()
         val memories = normalizedDrafts.mapNotNull { (key, draft) ->
             val wordId = wordIdsByKey[key] ?: return@mapNotNull null
+            if (wordId in userSourcedWordIds) return@mapNotNull null
             if (draft.approach.isBlank() && draft.collocations.isBlank()) return@mapNotNull null
             WordMemory(
                 wordId = wordId,

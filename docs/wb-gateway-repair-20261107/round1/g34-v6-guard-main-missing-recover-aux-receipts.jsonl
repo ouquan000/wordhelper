@@ -1,0 +1,4 @@
+{"kind":"launch","pid":44284,"port":54185,"exe":"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-37452\\guard-main-missing-recover\\run-bot\\wb2api.exe"}
+{"kind":"http","pid":44284,"method":"GET","path":"/healthz"}
+{"kind":"http","pid":44284,"method":"GET","path":"/healthz"}
+{"kind":"exit","pid":44284,"stopped":true}

@@ -1,0 +1,2425 @@
+[
+  {
+    "case": "compile_supplement_netstat",
+    "pass": true,
+    "command": "C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe /nologo /target:exe \"/out:D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scratch-health-supplement\\netstat.exe\" \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\FakeNetstat.cs\"",
+    "raw": {
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  {
+    "case": "router_start_fresh-health",
+    "pass": true,
+    "command": "\"C:\\Program Files\\nodejs\\node.EXE\" \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scratch-health-supplement\\fresh-health\\wb-router.js\"",
+    "raw": {
+      "pid": 8784,
+      "listen": 64984,
+      "sourceSha256": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+      "copySha256": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+      "transforms": [],
+      "config": {
+        "listen": 64984,
+        "main": {
+          "host": "127.0.0.1",
+          "port": 64982,
+          "key": "ROUND2-SYNTHETIC-MAIN"
+        },
+        "aux": {
+          "host": "127.0.0.1",
+          "port": 64983,
+          "key": "ROUND2-SYNTHETIC-AUX"
+        },
+        "probeMs": 80,
+        "auxHealthMs": 60,
+        "healthTimeoutMs": 150,
+        "healthMaxBytes": 1024,
+        "healthStaleMs": 400,
+        "onlineHoldMs": 100000000,
+        "offlineHoldMs": 100000000,
+        "qqPort": 62371,
+        "mainWeight": 5,
+        "auxWeight": 3,
+        "requestTimeoutMs": 1800,
+        "auxPauseUntil": null
+      }
+    }
+  },
+  {
+    "case": "G5_fresh_main_wrong",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_main_wrong)",
+    "raw": {
+      "changedEpoch": 1794025760.1203501,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 492,
+          "lastProbeAt": "2026-11-07T04:29:20.159Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:20.187Z",
+          "ttlMs": 400,
+          "ageMs": 21,
+          "remainingTtlMs": 379,
+          "expiresAt": "2026-11-07T04:29:20.587Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": false,
+          "reason": "invalid_service",
+          "service": null,
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:20.187Z",
+          "ttlMs": 400,
+          "ageMs": 21,
+          "remainingTtlMs": 379,
+          "expiresAt": "2026-11-07T04:29:20.587Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 0,
+          "toMain": 0,
+          "toAux": 0,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"aux\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:20 GMT",
+          "content-type": "application/json",
+          "content-length": "133",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70622.359,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_main_invalid_json",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_main_invalid_json)",
+    "raw": {
+      "changedEpoch": 1794025760.2129626,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 591,
+          "lastProbeAt": "2026-11-07T04:29:20.251Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:20.253Z",
+          "ttlMs": 400,
+          "ageMs": 54,
+          "remainingTtlMs": 346,
+          "expiresAt": "2026-11-07T04:29:20.653Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": false,
+          "reason": "invalid_json",
+          "service": null,
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:20.252Z",
+          "ttlMs": 400,
+          "ageMs": 55,
+          "remainingTtlMs": 345,
+          "expiresAt": "2026-11-07T04:29:20.652Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 1,
+          "toMain": 0,
+          "toAux": 1,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"aux\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:20 GMT",
+          "content-type": "application/json",
+          "content-length": "133",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70622.468,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_main_not_found",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_main_not_found)",
+    "raw": {
+      "changedEpoch": 1794025760.3332365,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 693,
+          "lastProbeAt": "2026-11-07T04:29:20.349Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:20.382Z",
+          "ttlMs": 400,
+          "ageMs": 27,
+          "remainingTtlMs": 373,
+          "expiresAt": "2026-11-07T04:29:20.782Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": false,
+          "reason": "http_status_404",
+          "service": null,
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:20.383Z",
+          "ttlMs": 400,
+          "ageMs": 26,
+          "remainingTtlMs": 374,
+          "expiresAt": "2026-11-07T04:29:20.783Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 2,
+          "toMain": 0,
+          "toAux": 2,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"aux\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:20 GMT",
+          "content-type": "application/json",
+          "content-length": "133",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70622.562,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_main_zero",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_main_zero)",
+    "raw": {
+      "changedEpoch": 1794025760.4271016,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 788,
+          "lastProbeAt": "2026-11-07T04:29:20.424Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:20.443Z",
+          "ttlMs": 400,
+          "ageMs": 61,
+          "remainingTtlMs": 339,
+          "expiresAt": "2026-11-07T04:29:20.843Z",
+          "probing": true,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": false,
+          "reason": "invalid_healthy",
+          "service": "workbuddy2api",
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:20.443Z",
+          "ttlMs": 400,
+          "ageMs": 61,
+          "remainingTtlMs": 339,
+          "expiresAt": "2026-11-07T04:29:20.843Z",
+          "probing": true
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 3,
+          "toMain": 0,
+          "toAux": 3,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"aux\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:20 GMT",
+          "content-type": "application/json",
+          "content-length": "133",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70622.656,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_main_negative",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_main_negative)",
+    "raw": {
+      "changedEpoch": 1794025760.5076075,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 864,
+          "lastProbeAt": "2026-11-07T04:29:20.523Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:20.566Z",
+          "ttlMs": 400,
+          "ageMs": 14,
+          "remainingTtlMs": 386,
+          "expiresAt": "2026-11-07T04:29:20.966Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": false,
+          "reason": "invalid_healthy",
+          "service": "workbuddy2api",
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:20.566Z",
+          "ttlMs": 400,
+          "ageMs": 14,
+          "remainingTtlMs": 386,
+          "expiresAt": "2026-11-07T04:29:20.966Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 4,
+          "toMain": 0,
+          "toAux": 4,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"aux\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:20 GMT",
+          "content-type": "application/json",
+          "content-length": "133",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70622.718,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_main_fraction",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_main_fraction)",
+    "raw": {
+      "changedEpoch": 1794025760.582479,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 973,
+          "lastProbeAt": "2026-11-07T04:29:20.686Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:20.687Z",
+          "ttlMs": 400,
+          "ageMs": 2,
+          "remainingTtlMs": 398,
+          "expiresAt": "2026-11-07T04:29:21.087Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": false,
+          "reason": "invalid_healthy",
+          "service": "workbuddy2api",
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:20.687Z",
+          "ttlMs": 400,
+          "ageMs": 2,
+          "remainingTtlMs": 398,
+          "expiresAt": "2026-11-07T04:29:21.087Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 5,
+          "toMain": 0,
+          "toAux": 5,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"aux\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:20 GMT",
+          "content-type": "application/json",
+          "content-length": "133",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70622.843,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_main_string",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_main_string)",
+    "raw": {
+      "changedEpoch": 1794025760.707537,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 1066,
+          "lastProbeAt": "2026-11-07T04:29:20.779Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:20.753Z",
+          "ttlMs": 400,
+          "ageMs": 29,
+          "remainingTtlMs": 371,
+          "expiresAt": "2026-11-07T04:29:21.153Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": false,
+          "reason": "invalid_healthy",
+          "service": "workbuddy2api",
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:20.753Z",
+          "ttlMs": 400,
+          "ageMs": 29,
+          "remainingTtlMs": 371,
+          "expiresAt": "2026-11-07T04:29:21.153Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 6,
+          "toMain": 0,
+          "toAux": 6,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"aux\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:20 GMT",
+          "content-type": "application/json",
+          "content-length": "133",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70622.937,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_main_boolean",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_main_boolean)",
+    "raw": {
+      "changedEpoch": 1794025760.7999392,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 1159,
+          "lastProbeAt": "2026-11-07T04:29:20.779Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:20.814Z",
+          "ttlMs": 400,
+          "ageMs": 61,
+          "remainingTtlMs": 339,
+          "expiresAt": "2026-11-07T04:29:21.214Z",
+          "probing": true,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": false,
+          "reason": "invalid_healthy",
+          "service": "workbuddy2api",
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:20.814Z",
+          "ttlMs": 400,
+          "ageMs": 61,
+          "remainingTtlMs": 339,
+          "expiresAt": "2026-11-07T04:29:21.214Z",
+          "probing": true
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 7,
+          "toMain": 0,
+          "toAux": 7,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"aux\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:20 GMT",
+          "content-type": "application/json",
+          "content-length": "133",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70623.031,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_main_missing",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_main_missing)",
+    "raw": {
+      "changedEpoch": 1794025760.8909848,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 1231,
+          "lastProbeAt": "2026-11-07T04:29:20.876Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:20.939Z",
+          "ttlMs": 400,
+          "ageMs": 8,
+          "remainingTtlMs": 392,
+          "expiresAt": "2026-11-07T04:29:21.339Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": false,
+          "reason": "invalid_healthy",
+          "service": "workbuddy2api",
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:20.939Z",
+          "ttlMs": 400,
+          "ageMs": 8,
+          "remainingTtlMs": 392,
+          "expiresAt": "2026-11-07T04:29:21.339Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 8,
+          "toMain": 0,
+          "toAux": 8,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"aux\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:20 GMT",
+          "content-type": "application/json",
+          "content-length": "133",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70623.093,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_main_oversize",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_main_oversize)",
+    "raw": {
+      "changedEpoch": 1794025760.949776,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 1299,
+          "lastProbeAt": "2026-11-07T04:29:20.965Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:21.005Z",
+          "ttlMs": 400,
+          "ageMs": 10,
+          "remainingTtlMs": 390,
+          "expiresAt": "2026-11-07T04:29:21.405Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": false,
+          "reason": "body_too_large",
+          "service": null,
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:21.004Z",
+          "ttlMs": 400,
+          "ageMs": 11,
+          "remainingTtlMs": 389,
+          "expiresAt": "2026-11-07T04:29:21.404Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 9,
+          "toMain": 0,
+          "toAux": 9,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"aux\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:21 GMT",
+          "content-type": "application/json",
+          "content-length": "133",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70623.171,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_main_timeout",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_main_timeout)",
+    "raw": {
+      "changedEpoch": 1794025761.0323303,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 1534,
+          "lastProbeAt": "2026-11-07T04:29:21.216Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:21.188Z",
+          "ttlMs": 400,
+          "ageMs": 62,
+          "remainingTtlMs": 338,
+          "expiresAt": "2026-11-07T04:29:21.588Z",
+          "probing": true,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": false,
+          "reason": "timeout",
+          "service": null,
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:21.215Z",
+          "ttlMs": 400,
+          "ageMs": 35,
+          "remainingTtlMs": 365,
+          "expiresAt": "2026-11-07T04:29:21.615Z",
+          "probing": true
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 10,
+          "toMain": 0,
+          "toAux": 10,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"aux\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:21 GMT",
+          "content-type": "application/json",
+          "content-length": "133",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70623.406,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_aux_wrong",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_aux_wrong)",
+    "raw": {
+      "changedEpoch": 1794025761.467841,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 1828,
+          "lastProbeAt": "2026-11-07T04:29:21.479Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": false,
+          "reason": "invalid_service",
+          "service": null,
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:21.515Z",
+          "ttlMs": 400,
+          "ageMs": 29,
+          "remainingTtlMs": 371,
+          "expiresAt": "2026-11-07T04:29:21.915Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:21.515Z",
+          "ttlMs": 400,
+          "ageMs": 29,
+          "remainingTtlMs": 371,
+          "expiresAt": "2026-11-07T04:29:21.915Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 11,
+          "toMain": 0,
+          "toAux": 11,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"main\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:21 GMT",
+          "content-type": "application/json",
+          "content-length": "134",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70623.703,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_aux_invalid_json",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_aux_invalid_json)",
+    "raw": {
+      "changedEpoch": 1794025761.5625923,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 1922,
+          "lastProbeAt": "2026-11-07T04:29:21.569Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": false,
+          "reason": "invalid_json",
+          "service": null,
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:21.576Z",
+          "ttlMs": 400,
+          "ageMs": 62,
+          "remainingTtlMs": 338,
+          "expiresAt": "2026-11-07T04:29:21.976Z",
+          "probing": true,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:21.576Z",
+          "ttlMs": 400,
+          "ageMs": 62,
+          "remainingTtlMs": 338,
+          "expiresAt": "2026-11-07T04:29:21.976Z",
+          "probing": true
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 12,
+          "toMain": 1,
+          "toAux": 11,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"main\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:21 GMT",
+          "content-type": "application/json",
+          "content-length": "134",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70623.796,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_aux_not_found",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_aux_not_found)",
+    "raw": {
+      "changedEpoch": 1794025761.6543057,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 2066,
+          "lastProbeAt": "2026-11-07T04:29:21.758Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": false,
+          "reason": "http_status_404",
+          "service": null,
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:21.717Z",
+          "ttlMs": 400,
+          "ageMs": 65,
+          "remainingTtlMs": 335,
+          "expiresAt": "2026-11-07T04:29:22.117Z",
+          "probing": true,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:21.716Z",
+          "ttlMs": 400,
+          "ageMs": 66,
+          "remainingTtlMs": 334,
+          "expiresAt": "2026-11-07T04:29:22.116Z",
+          "probing": true
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 13,
+          "toMain": 2,
+          "toAux": 11,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"main\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:21 GMT",
+          "content-type": "application/json",
+          "content-length": "134",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70623.921,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_aux_zero",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_aux_zero)",
+    "raw": {
+      "changedEpoch": 1794025761.785391,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 2165,
+          "lastProbeAt": "2026-11-07T04:29:21.824Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": false,
+          "reason": "invalid_healthy",
+          "service": "workbuddy2api",
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:21.844Z",
+          "ttlMs": 400,
+          "ageMs": 37,
+          "remainingTtlMs": 363,
+          "expiresAt": "2026-11-07T04:29:22.244Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:21.844Z",
+          "ttlMs": 400,
+          "ageMs": 37,
+          "remainingTtlMs": 363,
+          "expiresAt": "2026-11-07T04:29:22.244Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 14,
+          "toMain": 3,
+          "toAux": 11,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"main\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:21 GMT",
+          "content-type": "application/json",
+          "content-length": "134",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70624.046,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_aux_negative",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_aux_negative)",
+    "raw": {
+      "changedEpoch": 1794025761.9071295,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 2266,
+          "lastProbeAt": "2026-11-07T04:29:21.922Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": false,
+          "reason": "invalid_healthy",
+          "service": "workbuddy2api",
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:21.968Z",
+          "ttlMs": 400,
+          "ageMs": 14,
+          "remainingTtlMs": 386,
+          "expiresAt": "2026-11-07T04:29:22.368Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:21.968Z",
+          "ttlMs": 400,
+          "ageMs": 14,
+          "remainingTtlMs": 386,
+          "expiresAt": "2026-11-07T04:29:22.368Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 15,
+          "toMain": 4,
+          "toAux": 11,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"main\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:21 GMT",
+          "content-type": "application/json",
+          "content-length": "134",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70624.14,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_aux_fraction",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_aux_fraction)",
+    "raw": {
+      "changedEpoch": 1794025762.0004344,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 2360,
+          "lastProbeAt": "2026-11-07T04:29:22.006Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": false,
+          "reason": "invalid_healthy",
+          "service": "workbuddy2api",
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:22.031Z",
+          "ttlMs": 400,
+          "ageMs": 45,
+          "remainingTtlMs": 355,
+          "expiresAt": "2026-11-07T04:29:22.431Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:22.031Z",
+          "ttlMs": 400,
+          "ageMs": 45,
+          "remainingTtlMs": 355,
+          "expiresAt": "2026-11-07T04:29:22.431Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 16,
+          "toMain": 5,
+          "toAux": 11,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"main\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:22 GMT",
+          "content-type": "application/json",
+          "content-length": "134",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70624.234,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_aux_string",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_aux_string)",
+    "raw": {
+      "changedEpoch": 1794025762.093176,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 2454,
+          "lastProbeAt": "2026-11-07T04:29:22.090Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": false,
+          "reason": "invalid_healthy",
+          "service": "workbuddy2api",
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:22.155Z",
+          "ttlMs": 400,
+          "ageMs": 15,
+          "remainingTtlMs": 385,
+          "expiresAt": "2026-11-07T04:29:22.555Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:22.155Z",
+          "ttlMs": 400,
+          "ageMs": 15,
+          "remainingTtlMs": 385,
+          "expiresAt": "2026-11-07T04:29:22.555Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 17,
+          "toMain": 6,
+          "toAux": 11,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"main\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:22 GMT",
+          "content-type": "application/json",
+          "content-length": "134",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70624.312,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_aux_boolean",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_aux_boolean)",
+    "raw": {
+      "changedEpoch": 1794025762.172618,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 2532,
+          "lastProbeAt": "2026-11-07T04:29:22.181Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": false,
+          "reason": "invalid_healthy",
+          "service": "workbuddy2api",
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:22.221Z",
+          "ttlMs": 400,
+          "ageMs": 27,
+          "remainingTtlMs": 373,
+          "expiresAt": "2026-11-07T04:29:22.621Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:22.221Z",
+          "ttlMs": 400,
+          "ageMs": 27,
+          "remainingTtlMs": 373,
+          "expiresAt": "2026-11-07T04:29:22.621Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 18,
+          "toMain": 7,
+          "toAux": 11,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"main\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:22 GMT",
+          "content-type": "application/json",
+          "content-length": "134",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70624.406,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_aux_missing",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_aux_missing)",
+    "raw": {
+      "changedEpoch": 1794025762.266699,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 2626,
+          "lastProbeAt": "2026-11-07T04:29:22.263Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": false,
+          "reason": "invalid_healthy",
+          "service": "workbuddy2api",
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:22.282Z",
+          "ttlMs": 400,
+          "ageMs": 60,
+          "remainingTtlMs": 340,
+          "expiresAt": "2026-11-07T04:29:22.682Z",
+          "probing": true,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:22.282Z",
+          "ttlMs": 400,
+          "ageMs": 60,
+          "remainingTtlMs": 340,
+          "expiresAt": "2026-11-07T04:29:22.682Z",
+          "probing": true
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 19,
+          "toMain": 8,
+          "toAux": 11,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"main\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:22 GMT",
+          "content-type": "application/json",
+          "content-length": "134",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70624.484,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_aux_oversize",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_aux_oversize)",
+    "raw": {
+      "changedEpoch": 1794025762.3460727,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 2769,
+          "lastProbeAt": "2026-11-07T04:29:22.447Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": false,
+          "reason": "body_too_large",
+          "service": null,
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:22.421Z",
+          "ttlMs": 400,
+          "ageMs": 64,
+          "remainingTtlMs": 336,
+          "expiresAt": "2026-11-07T04:29:22.821Z",
+          "probing": true,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:22.421Z",
+          "ttlMs": 400,
+          "ageMs": 64,
+          "remainingTtlMs": 336,
+          "expiresAt": "2026-11-07T04:29:22.821Z",
+          "probing": true
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 20,
+          "toMain": 9,
+          "toAux": 11,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"main\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:22 GMT",
+          "content-type": "application/json",
+          "content-length": "134",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70624.625,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G5_fresh_aux_timeout",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_fresh_aux_timeout)",
+    "raw": {
+      "changedEpoch": 1794025762.4894562,
+      "status": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T00:00:00.000Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 3048,
+          "lastProbeAt": "2026-11-07T04:29:22.713Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": false,
+          "reason": "timeout",
+          "service": null,
+          "healthyCount": null,
+          "checkedAt": "2026-11-07T04:29:22.707Z",
+          "ttlMs": 400,
+          "ageMs": 57,
+          "remainingTtlMs": 343,
+          "expiresAt": "2026-11-07T04:29:23.107Z",
+          "probing": true,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:22.747Z",
+          "ttlMs": 400,
+          "ageMs": 17,
+          "remainingTtlMs": 383,
+          "expiresAt": "2026-11-07T04:29:23.147Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 100000000,
+          "offlineMs": 100000000
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 21,
+          "toMain": 10,
+          "toAux": 11,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": "{\"pool\": \"main\", \"path\": \"/v1/chat/completions\", \"receivedSha256\": \"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:22 GMT",
+          "content-type": "application/json",
+          "content-length": "134",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "posts": [
+        {
+          "at": 70624.906,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "ok",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        }
+      ]
+    }
+  },
+  {
+    "case": "G6_each_pool_main_404",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G6_each_pool_main_404)",
+    "raw": {
+      "response": {
+        "status": 404,
+        "body": "{\"error\": \"404\", \"pool\": \"main\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:23 GMT",
+          "content-type": "application/json",
+          "content-length": "32",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "events": [
+        {
+          "at": 70625.203,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "404",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        },
+        {
+          "at": 70625.203,
+          "kind": "POST_BODY",
+          "pool": "main",
+          "mode": "404",
+          "declaredBytes": 28,
+          "actualBytes": 28,
+          "sha256": "a356934b5c758efe67b826b037451984047570e35919eecd3edd8cdb97e6a425"
+        }
+      ]
+    }
+  },
+  {
+    "case": "G6_each_pool_main_429",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G6_each_pool_main_429)",
+    "raw": {
+      "response": {
+        "status": 429,
+        "body": "{\"error\": \"429\", \"pool\": \"main\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:23 GMT",
+          "content-type": "application/json",
+          "content-length": "32",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "events": [
+        {
+          "at": 70625.359,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "429",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        },
+        {
+          "at": 70625.359,
+          "kind": "POST_BODY",
+          "pool": "main",
+          "mode": "429",
+          "declaredBytes": 28,
+          "actualBytes": 28,
+          "sha256": "a356934b5c758efe67b826b037451984047570e35919eecd3edd8cdb97e6a425"
+        }
+      ]
+    }
+  },
+  {
+    "case": "G6_each_pool_main_reset",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G6_each_pool_main_reset)",
+    "raw": {
+      "response": {
+        "status": 502,
+        "body": "{\"error\":{\"type\":\"router_error\",\"message\":\"wb-router: upstream main failed: socket hang up\"}}",
+        "headers": {
+          "content-type": "application/json",
+          "content-length": "93",
+          "connection": "close",
+          "Date": "Sat, 07 Nov 2026 04:29:23 GMT"
+        }
+      },
+      "events": [
+        {
+          "at": 70625.484,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "reset",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        },
+        {
+          "at": 70625.484,
+          "kind": "POST_BODY",
+          "pool": "main",
+          "mode": "reset",
+          "declaredBytes": 28,
+          "actualBytes": 28,
+          "sha256": "a356934b5c758efe67b826b037451984047570e35919eecd3edd8cdb97e6a425"
+        }
+      ]
+    }
+  },
+  {
+    "case": "G6_each_pool_main_partial",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G6_each_pool_main_partial)",
+    "raw": {
+      "response": {
+        "errorType": "IncompleteRead",
+        "error": "IncompleteRead(7 bytes read, 93 more expected)"
+      },
+      "events": [
+        {
+          "at": 70625.656,
+          "kind": "POST_BEGIN",
+          "pool": "main",
+          "path": "/v1/chat/completions",
+          "mode": "partial",
+          "x-router": "main",
+          "authIsAuxSynthetic": false,
+          "hasXApiKey": false
+        },
+        {
+          "at": 70625.656,
+          "kind": "POST_BODY",
+          "pool": "main",
+          "mode": "partial",
+          "declaredBytes": 28,
+          "actualBytes": 28,
+          "sha256": "a356934b5c758efe67b826b037451984047570e35919eecd3edd8cdb97e6a425"
+        }
+      ]
+    }
+  },
+  {
+    "case": "G6_each_pool_aux_404",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G6_each_pool_aux_404)",
+    "raw": {
+      "response": {
+        "status": 404,
+        "body": "{\"error\": \"404\", \"pool\": \"aux\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:23 GMT",
+          "content-type": "application/json",
+          "content-length": "31",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "events": [
+        {
+          "at": 70625.953,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "404",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        },
+        {
+          "at": 70625.953,
+          "kind": "POST_BODY",
+          "pool": "aux",
+          "mode": "404",
+          "declaredBytes": 27,
+          "actualBytes": 27,
+          "sha256": "6ba7478b415102d9220f33741f9f5e95da52d8780d9ffcaab9fc645b39a986cb"
+        }
+      ]
+    }
+  },
+  {
+    "case": "G6_each_pool_aux_429",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G6_each_pool_aux_429)",
+    "raw": {
+      "response": {
+        "status": 429,
+        "body": "{\"error\": \"429\", \"pool\": \"aux\"}",
+        "headers": {
+          "server": "BaseHTTP/0.6 Python/3.12.10",
+          "date": "Sat, 07 Nov 2026 04:29:23 GMT",
+          "content-type": "application/json",
+          "content-length": "31",
+          "Connection": "keep-alive",
+          "Keep-Alive": "timeout=5"
+        }
+      },
+      "events": [
+        {
+          "at": 70626.093,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "429",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        },
+        {
+          "at": 70626.093,
+          "kind": "POST_BODY",
+          "pool": "aux",
+          "mode": "429",
+          "declaredBytes": 27,
+          "actualBytes": 27,
+          "sha256": "6ba7478b415102d9220f33741f9f5e95da52d8780d9ffcaab9fc645b39a986cb"
+        }
+      ]
+    }
+  },
+  {
+    "case": "G6_each_pool_aux_reset",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G6_each_pool_aux_reset)",
+    "raw": {
+      "response": {
+        "status": 502,
+        "body": "{\"error\":{\"type\":\"router_error\",\"message\":\"wb-router: upstream aux failed: socket hang up\"}}",
+        "headers": {
+          "content-type": "application/json",
+          "content-length": "92",
+          "connection": "close",
+          "Date": "Sat, 07 Nov 2026 04:29:24 GMT"
+        }
+      },
+      "events": [
+        {
+          "at": 70626.25,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "reset",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        },
+        {
+          "at": 70626.25,
+          "kind": "POST_BODY",
+          "pool": "aux",
+          "mode": "reset",
+          "declaredBytes": 27,
+          "actualBytes": 27,
+          "sha256": "6ba7478b415102d9220f33741f9f5e95da52d8780d9ffcaab9fc645b39a986cb"
+        }
+      ]
+    }
+  },
+  {
+    "case": "G6_each_pool_aux_partial",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G6_each_pool_aux_partial)",
+    "raw": {
+      "response": {
+        "errorType": "IncompleteRead",
+        "error": "IncompleteRead(7 bytes read, 93 more expected)"
+      },
+      "events": [
+        {
+          "at": 70626.406,
+          "kind": "POST_BEGIN",
+          "pool": "aux",
+          "path": "/v1/chat/completions",
+          "mode": "partial",
+          "x-router": "aux",
+          "authIsAuxSynthetic": true,
+          "hasXApiKey": false
+        },
+        {
+          "at": 70626.406,
+          "kind": "POST_BODY",
+          "pool": "aux",
+          "mode": "partial",
+          "declaredBytes": 27,
+          "actualBytes": 27,
+          "sha256": "6ba7478b415102d9220f33741f9f5e95da52d8780d9ffcaab9fc645b39a986cb"
+        }
+      ]
+    }
+  },
+  {
+    "case": "router_start_qq-both-directions",
+    "pass": true,
+    "command": "\"C:\\Program Files\\nodejs\\node.EXE\" \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scratch-health-supplement\\qq-both-directions\\wb-router.js\"",
+    "raw": {
+      "pid": 21028,
+      "listen": 65234,
+      "sourceSha256": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+      "copySha256": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+      "transforms": [],
+      "config": {
+        "listen": 65234,
+        "main": {
+          "host": "127.0.0.1",
+          "port": 64982,
+          "key": "ROUND2-SYNTHETIC-MAIN"
+        },
+        "aux": {
+          "host": "127.0.0.1",
+          "port": 64983,
+          "key": "ROUND2-SYNTHETIC-AUX"
+        },
+        "probeMs": 80,
+        "auxHealthMs": 60,
+        "healthTimeoutMs": 150,
+        "healthMaxBytes": 1024,
+        "healthStaleMs": 400,
+        "onlineHoldMs": 150,
+        "offlineHoldMs": 150,
+        "qqPort": 62371,
+        "mainWeight": 5,
+        "auxWeight": 3,
+        "requestTimeoutMs": 1800,
+        "auxPauseUntil": null
+      }
+    }
+  },
+  {
+    "case": "G5_QQ_both_transitions",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case G5_QQ_both_transitions)",
+    "raw": {
+      "onlineStatus": {
+        "state": "online",
+        "stateMeaning": "QQ 在线：只用主实例（不碰年糕的号）",
+        "changedAt": "2026-11-07T04:29:25.321Z",
+        "qq": {
+          "raw": true,
+          "rawHeldMs": 258,
+          "lastProbeAt": "2026-11-07T04:29:25.321Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:25.359Z",
+          "ttlMs": 400,
+          "ageMs": 24,
+          "remainingTtlMs": 376,
+          "expiresAt": "2026-11-07T04:29:25.759Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:25.359Z",
+          "ttlMs": 400,
+          "ageMs": 24,
+          "remainingTtlMs": 376,
+          "expiresAt": "2026-11-07T04:29:25.759Z",
+          "probing": false
+        },
+        "hold": {
+          "onlineMs": 150,
+          "offlineMs": 150
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 0,
+          "toMain": 0,
+          "toAux": 0,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "offlineStatus": {
+        "state": "offline",
+        "stateMeaning": "QQ 离线：主实例 + 年糕实例按权重合力",
+        "changedAt": "2026-11-07T04:29:25.574Z",
+        "qq": {
+          "raw": false,
+          "rawHeldMs": 218,
+          "lastProbeAt": "2026-11-07T04:29:25.574Z",
+          "lastProbeErr": ""
+        },
+        "aux": {
+          "target": "127.0.0.1:64983",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:25.559Z",
+          "ttlMs": 400,
+          "ageMs": 60,
+          "remainingTtlMs": 340,
+          "expiresAt": "2026-11-07T04:29:25.959Z",
+          "probing": true,
+          "paused": false,
+          "pauseUntil": null
+        },
+        "main": {
+          "target": "127.0.0.1:64982",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 3,
+          "checkedAt": "2026-11-07T04:29:25.558Z",
+          "ttlMs": 400,
+          "ageMs": 61,
+          "remainingTtlMs": 339,
+          "expiresAt": "2026-11-07T04:29:25.958Z",
+          "probing": true
+        },
+        "hold": {
+          "onlineMs": 150,
+          "offlineMs": 150
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "counters": {
+          "requests": 0,
+          "toMain": 0,
+          "toAux": 0,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "netstatCalls": "2026-11-07T04:29:24.6838071Z offline\n2026-11-07T04:29:24.7786265Z offline\n2026-11-07T04:29:24.8679784Z offline\n2026-11-07T04:29:24.9486728Z offline\n2026-11-07T04:29:25.0381508Z offline\n2026-11-07T04:29:25.1189197Z online\n2026-11-07T04:29:25.2082899Z online\n2026-11-07T04:29:25.3042739Z online\n2026-11-07T04:29:25.3930690Z offline\n2026-11-07T04:29:25.4730454Z offline\n2026-11-07T04:29:25.5652113Z offline\n",
+      "boundary": "accelerated 150ms holds in own config; candidate source defaults unmodified"
+    }
+  },
+  {
+    "case": "cleanup_supplement",
+    "pass": true,
+    "command": "python round2/health_supplement.py (internal case cleanup_supplement)",
+    "raw": {
+      "processes": [
+        {
+          "pid": 8784,
+          "exit": 1,
+          "running": false
+        },
+        {
+          "pid": 21028,
+          "exit": 1,
+          "running": false
+        }
+      ],
+      "scratchRemoved": true,
+      "poolPorts": [
+        {
+          "port": 64982,
+          "accepting": false
+        },
+        {
+          "port": 64983,
+          "accepting": false
+        }
+      ]
+    }
+  }
+]

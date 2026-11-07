@@ -234,9 +234,43 @@ export MSYS2_ARG_CONV_EXCL='*'
 3. **没被要求就不动手。** 先给「根因 + 改法」等一句「开始」，不要边猜边改边装机。
 4. **一次讲清再改**：手势、触摸阈值这类问题先读代码定根因，改一版就要能改到位，不靠反复试错逼近。
 
+## 1.4.3 重写记忆思路（2026-11-07 实现，待独立验收）
+
+- 卡背最底加「重写思路」按钮 + 模型下拉 + 折叠输入框；**手机只打标记，不调模型**
+- 标记进本地 `tb_rewrite_queue`（断网留队列，联网补发），电脑端重生该词的**记忆思路**，下次打开时自动拉回生效，不动学习进度
+- **不回灌 anki**：重写只服务 App 种子里的 `approach`，与 anki 原卡有意分叉，不必也不要求同步回去
+- 写回时 `source=user / rev+1 / prev_approach=旧文`；种子导入跳过 `source=user` 的行，所以种子升级不会冲掉用户改过的词；可撤销一次（退回后交还 `source=seed`）
+- 生成与润色用**同一个模型**，模型下拉里的 5 个：`ds-v41-flash`、`step5`、`glm53`（WB 网关，`http://127.0.0.1:8788/v1`）、`portdan-gpt`、`portdan-grok`（中转站，走 DSH 里配好的 provider）
+- 评分由**独立的评分 agent** 执行：单独一次调用、只看成品三行、不给它生成过程与拆法，不与生成/润色共用上下文
+- WB 网关会忽略 `system` 角色，提示词与正文一律放 `user`；推理型模型要留足 `max_tokens`（生成/润色 12000、评审 8192）。step-5 早先返回空 content 的根因是提示词里塞了整卡生图要求，已把生成提示词缩成「只产三行推导」，实测 25s 就能出内容
+- 同步时机：学习页回到前台时补发队列、拉结果，拉到后立刻按库刷新当前卡片；另外在 `Application.onCreate` 里等种子导入完再补一次同步（换机/清数据后靠它恢复），避免「种子没导完就把结果丢掉」
+- 电脑端服务在 `tools/rewrite-service/`，路由挂在现有卡背编辑器 `tools/cardback-editor/server.py`（默认 8765）上；手机复用「卡背结构地址」
+- 实测耗时与脾气（同一个词 appropriate）：`ds-v41-flash` 一次过约 2 分钟；`step5` 两轮约 3.5 分钟；`glm53` 常要两轮；`portdan-gpt` 可能两轮都判不过（属质量判罚，原卡保持不动）；`portdan-grok` 在服务端串行加锁后可用，但单条约 10 分钟
+
+## 1.4.3.1 体验修整（2026-11-07，versionCode 7）
+
+- **重写条挪进卡背内部**：作为卡背最下面一行（`WordCard` 的 `backActions` 槽），固定贴卡底、不随卡背内容滚动；只在背面显示，正面看不到也不占高度
+- **真实进度**：电脑端每条任务有 `stage`（`queued/generate/polish/judge/done/failed`），手机按 8% / 45% / 75% / 92% / 100% 显示进度条；失败停在当前值并变红。只在卡背可见且标记未完成时 4 秒轮询，翻回正面即停
+- **翻到背面就同步**：翻面触发一次增量拉取（8 秒内最多一次），不必切后台；拉到结果后**原地换文**，并闪 2 秒「已更新」
+- **同词连写第二遍也换文**：终态同步的判断从「本条会话还没同步过」改成「当前标记还没完成」，修掉「停在 100% 但文字要翻面才换」的问题；卡背正文改为直接订阅 `tb_word_memory` 里的记忆思路（`WordMemoryDao.observeApproach` → `LearningViewModel.liveApproach`），不再依赖卡片重建，所以**不翻面、不重启当场换文**
+- **去掉 EF 系数因子**：卡背不再显示 `EF系数因子`；内置默认清单与已发布清单（revision 36）都删掉了 `EF_STATS` 块，枚举保留只为兼容旧远端配置
+- **电脑端记录页**：`http://<电脑>:8765/rewrite` 可以看每条重写任务的阶段、失败原因、重试；卡背编辑器首页也有「重写记录」入口
+- 当前 `versionCode 7 / versionName 1.4.3.1`
+
+## 1.4.3.2 记录清理与布局重排（2026-11-08，versionCode 8）
+
+- **重写条竖排整行**：按钮整行、模型下拉整行、输入框常显（1–4 行），按钮不再 `weight(1f)`，长文案不会被模型下拉挤掉
+- **重写条随卡背滚**：作为 `CardBackBlocks` 的 `backActions` 槽排在正文最后，跟背面内容一起滚；原来固定贴卡底的那块已删
+- **一次性清空学习记录**：升级后第一次启动清 `tb_progress / tb_early_review_ref / tb_new_word_ref / tb_daily_stats / tb_study_log / word_ml_stats / training_samples`，并清当天新词计划；DataStore 标记 `cleanup_132_done`，之后正常背词不会被清（**不可逆**）
+- **20 词测试书**：`assets/test20_cards.json` 从六级卡抽 20 词（带记忆思路），书名「测试·20词」，只建书不切当前书、可删、删了不复活
+- 完整词库两本没有删；生词本引用随记录清理一起清空
+- 当前 `versionCode 8 / versionName 1.4.3.2`
+
 ## 版本号约定
 
-- 当前交付 `versionCode 4 / versionName 1.4.1preview`（卡片翻面手势改造版，独立验收 100/100）
-- 上一版 `versionCode 3 / versionName 1.4`（内置 5228 词种子，`dist/english-app-1.4-cet6.apk`）
-- **下一次发版 `versionCode` +1（→5）**；内部验证包不要升号，同号覆盖安装即可
-- 数据库版本 14；下次加表或加列必须是 15，并补一条迁移
+- 当前 `versionCode 8 / versionName 1.4.3.2`（重写条竖排随滚 + 清记录 + 20 词测试书）
+- 上一版 `versionCode 7 / versionName 1.4.3.1`（重写条进卡背 + 进度条 + 原地换文）
+- 再上一版 `versionCode 6 / versionName 1.4.3`（重写记忆思路）
+- 再上一版 `versionCode 5 / versionName 1.4.2`（卡背 JSON 清单 + 电脑端编辑器）
+- **下一次发版 `versionCode` +1（→9）**；内部验证包不要升号，同号覆盖安装即可
+- 数据库版本 15；本次加 `tb_rewrite_queue` 与 `tb_word_memory.source/rev/prev_approach`，迁移 `MIGRATION_14_15`

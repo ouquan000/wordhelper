@@ -8,13 +8,18 @@ import com.kaoyan.wordhelper.data.entity.Book
 import com.kaoyan.wordhelper.data.model.AIContentType
 import com.kaoyan.wordhelper.data.model.CardBackConfig
 import com.kaoyan.wordhelper.data.entity.Progress
+import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
+import com.kaoyan.wordhelper.data.entity.RewriteStatus
 import com.kaoyan.wordhelper.data.entity.Word
+import com.kaoyan.wordhelper.data.model.RewriteModel
+import com.kaoyan.wordhelper.data.model.RewriteModels
 import com.kaoyan.wordhelper.data.model.DailyStatsAggregate
 import com.kaoyan.wordhelper.data.model.PronunciationSource
 import com.kaoyan.wordhelper.data.model.SpellingOutcome
 import com.kaoyan.wordhelper.data.model.StudyRating
 import com.kaoyan.wordhelper.data.repository.AddToNewWordsSource
 import com.kaoyan.wordhelper.data.repository.CheckInResult
+import com.kaoyan.wordhelper.data.repository.RewriteRepository
 import com.kaoyan.wordhelper.data.repository.TodayNewWordsPlan
 import com.kaoyan.wordhelper.ml.core.AdaptiveResponseThreshold
 import com.kaoyan.wordhelper.ml.integration.MLEnhancedScheduler
@@ -24,6 +29,9 @@ import com.kaoyan.wordhelper.util.ImmediateRetryQueuePlanner
 import com.kaoyan.wordhelper.util.RetryRandomSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,6 +40,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
@@ -71,6 +80,18 @@ data class SwipeSnackbarEvent(
     val undoToken: Long? = null
 )
 
+/**
+ * 卡背重写进度（1.4.3.1）。
+ *
+ * [fraction] 为 null = 服务端没说清阶段，用不确定进度条；
+ * [offline] = 这一轮没连上电脑，界面上提示「等电脑上线」。
+ */
+data class RewriteProgressUi(
+    val fraction: Float?,
+    val failed: Boolean = false,
+    val offline: Boolean = false
+)
+
 private data class TooEasyUndoPayload(
     val wordId: Long,
     val snapshots: List<Progress>
@@ -90,6 +111,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     private val aiConfigRepository = (application as KaoyanWordApp).aiConfigRepository
     private val aiRepository = (application as KaoyanWordApp).aiRepository
     private val cardBackRepository = (application as KaoyanWordApp).cardBackRepository
+    private val rewriteRepository = (application as KaoyanWordApp).rewriteRepository
 
     /** 卡背结构清单（1.4.2）；默认就是 1.4.1 的样子。 */
     val cardBackConfig: StateFlow<CardBackConfig> = cardBackRepository.config
@@ -152,6 +174,52 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
 
     private val _currentWord = MutableStateFlow<Word?>(null)
     val currentWord: StateFlow<Word?> = _currentWord.asStateFlow()
+
+    // ---- 重写记忆思路（1.4.3）----
+
+    /** 下拉里的模型；电脑端下发，离线/没连上就用内置 5 个。 */
+    private val _rewriteModels = MutableStateFlow(RewriteModels.DEFAULT)
+    val rewriteModels: StateFlow<List<RewriteModel>> = _rewriteModels.asStateFlow()
+
+    private val _rewriteModelId = MutableStateFlow(RewriteModels.DEFAULT_ID)
+    val rewriteModelId: StateFlow<String> = _rewriteModelId.asStateFlow()
+
+    /** 当前这张卡的重写标记；null = 还没标记过。 */
+    val currentRewriteMark: StateFlow<RewriteQueueItem?> = _currentWord
+        .flatMapLatest { word ->
+            if (word == null) flowOf(null) else rewriteRepository.observeMark(word.id)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * 当前词的记忆思路，直接来自数据库。
+     * 卡背读它而不是读词对象快照：电脑端结果不管被哪一次同步落库，界面都会立刻换文。
+     */
+    val liveApproach: StateFlow<String?> = _currentWord
+        .flatMapLatest { word ->
+            if (word == null) flowOf(null) else rewriteRepository.observeApproach(word.id)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** 卡背上的进度条数据；null = 还没问过电脑端。 */
+    private val _rewriteProgress = MutableStateFlow<RewriteProgressUi?>(null)
+    val rewriteProgress: StateFlow<RewriteProgressUi?> = _rewriteProgress.asStateFlow()
+
+    /** 同步把卡背文字换掉时 +1，界面据此闪 2 秒「已更新」。 */
+    private val _rewriteUpdatedTick = MutableStateFlow(0)
+    val rewriteUpdatedTick: StateFlow<Int> = _rewriteUpdatedTick.asStateFlow()
+
+    /** 翻面同步的节流时间戳。 */
+    private var lastBackFlipSyncAt = 0L
+
+    /** 进度轮询的 job；null = 没在轮询。 */
+    private var rewritePollJob: Job? = null
+
+    /** 上一次轮询的是哪个词，用来在换词时把进度清零。 */
+    private var polledWordId: Long? = null
+
+    /** 这条标记到了终态还要不要拉一次结果；标记/换词时重新置上。 */
+    private var pendingTerminalSync = true
 
     private val _currentIndex = MutableStateFlow(0)
     val currentIndex: StateFlow<Int> = _currentIndex.asStateFlow()
@@ -240,6 +308,19 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
 
     init {
         refreshAiAvailability()
+        // 换词立刻把进度归零：上一条标记的 100% 不属于这张卡
+        viewModelScope.launch {
+            _currentWord.map { it?.id }.distinctUntilChanged().collect { wordId ->
+                _rewriteProgress.value = null
+                polledWordId = wordId
+                pendingTerminalSync = true
+            }
+        }
+        viewModelScope.launch {
+            val savedModel = settingsRepository.rewriteModel()
+            if (savedModel.isNotBlank()) _rewriteModelId.value = savedModel
+            _rewriteModels.value = rewriteRepository.models()
+        }
         // 加载ML响应时间阈值
         viewModelScope.launch {
             settingsRepository.settingsFlow.collect { settings ->
@@ -307,6 +388,168 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
         }
+    }
+
+    // ---- 重写记忆思路（1.4.3）：只打标记，真正的生成在电脑端 ----
+
+    fun selectRewriteModel(modelId: String) {
+        if (modelId.isBlank()) return
+        _rewriteModelId.value = modelId
+        viewModelScope.launch { settingsRepository.updateRewriteModel(modelId) }
+    }
+
+    /** 点「重写思路」：落本地队列后立刻试发一次，发不出去就等下次同步补发。 */
+    fun markRewrite(instruction: String) {
+        val word = _currentWord.value ?: return
+        val modelId = _rewriteModelId.value.ifBlank { RewriteModels.DEFAULT_ID }
+        // 新一次标记：到终态时还要再拉一次结果
+        pendingTerminalSync = true
+        _rewriteProgress.value = null
+        viewModelScope.launch {
+            if (!rewriteRepository.hasAddress()) {
+                _message.value = RewriteRepository.NO_ADDRESS
+                return@launch
+            }
+            val sent = rewriteRepository.enqueueAndSync(word.id, word.word, modelId, instruction)
+            if (!sent) {
+                _message.value = "已记下，等电脑连上再发"
+            }
+        }
+    }
+
+    fun cancelRewrite() {
+        val word = _currentWord.value ?: return
+        viewModelScope.launch { rewriteRepository.cancel(word.id) }
+    }
+
+    fun undoRewrite() {
+        val word = _currentWord.value ?: return
+        viewModelScope.launch {
+            val restored = rewriteRepository.undo(word.id)
+            if (restored != null) {
+                _currentWord.value = _currentWord.value?.copy(approach = restored)
+                _message.value = "已撤销回上一版"
+            } else {
+                _message.value = "没有可撤销的上一版了"
+            }
+        }
+    }
+
+    /** 回前台/进学习页：静默补发队列 + 增量拉结果，命中当前词就原地刷新卡背。 */
+    fun syncRewrite() {
+        viewModelScope.launch { syncRewriteNow() }
+    }
+
+    /** 翻到卡背顺手同步一次；8 秒内最多一次，来回翻面不打爆电脑。 */
+    fun syncRewriteOnBackFlip() {
+        val now = System.currentTimeMillis()
+        if (now - lastBackFlipSyncAt < REWRITE_FLIP_SYNC_MIN_INTERVAL_MS) return
+        lastBackFlipSyncAt = now
+        syncRewrite()
+    }
+
+    private suspend fun syncRewriteNow() {
+        rewriteRepository.sync()
+        // 不管这次有没有拉到新结果，都拿库里的最新思路刷一下当前卡片：
+        // 结果可能在上一轮同步里就落库了，但卡片还停着旧文本。
+        val current = _currentWord.value
+        if (current != null) {
+            val fresh = rewriteRepository.approachOf(current.id)
+            if (fresh != null && fresh != current.approach) {
+                _currentWord.value = _currentWord.value?.copy(approach = fresh)
+                _rewriteUpdatedTick.value += 1
+            }
+        }
+        if (_rewriteModels.value === RewriteModels.DEFAULT) {
+            _rewriteModels.value = rewriteRepository.models()
+        }
+    }
+
+    /**
+     * 卡背可见且标记未完成时调用：每 4 秒问一次电脑端进度。
+     * 翻回正面、离开学习页、App 进后台由调用方 stop，避免后台空转耗电。
+     */
+    fun startRewriteProgressPolling() {
+        if (rewritePollJob?.isActive == true) return
+        val wordId = _currentWord.value?.id
+        if (wordId != null && wordId != polledWordId) {
+            // 换词了：上一个词的 100% 不带过来
+            polledWordId = wordId
+            _rewriteProgress.value = null
+            pendingTerminalSync = true
+        }
+        rewritePollJob = viewModelScope.launch {
+            while (isActive) {
+                pollRewriteProgressOnce()
+                delay(REWRITE_PROGRESS_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    fun stopRewriteProgressPolling() {
+        rewritePollJob?.cancel()
+        rewritePollJob = null
+    }
+
+    private suspend fun pollRewriteProgressOnce() {
+        val word = _currentWord.value ?: return
+        val markCreatedAt = currentRewriteMark.value?.createdAt ?: 0L
+        val snapshot = rewriteRepository.statusOf(word.word, sinceMillis = markCreatedAt)
+        if (_currentWord.value?.id != word.id) return
+        if (snapshot == null) {
+            // 连不上电脑：保留上一次的百分比，只把「等电脑上线」点亮
+            _rewriteProgress.value = RewriteProgressUi(
+                fraction = _rewriteProgress.value?.fraction,
+                failed = _rewriteProgress.value?.failed == true,
+                offline = true
+            )
+            return
+        }
+        if (snapshot.state == RewriteRepository.STATE_MISSING) {
+            _rewriteProgress.value = RewriteProgressUi(fraction = null)
+            return
+        }
+        val state = snapshot.state.lowercase()
+        val stage = snapshot.stage?.lowercase()
+        val failed = state == STATE_FAILED || stage == STATE_FAILED
+        val previous = _rewriteProgress.value
+        val fraction = when {
+            // failed 停在最后一次已知进度上，变红，不回退成 0
+            failed -> previous?.fraction
+            else -> fractionOfStage(stage) ?: fractionOfState(state) ?: previous?.fraction
+        }
+        _rewriteProgress.value = RewriteProgressUi(
+            fraction = fraction,
+            failed = failed,
+            offline = false
+        )
+        val markStatus = currentRewriteMark.value?.status
+        val markStillOpen = markStatus != RewriteStatus.DONE && markStatus != RewriteStatus.FAILED
+        if ((state == "done" || failed) && (pendingTerminalSync || markStillOpen)) {
+            // 终态立刻拉一次结果，把卡背文字 / 标记状态换成最终值。
+            // pendingTerminalSync 只在「换了词」时重置，同一个词连续重写第二遍时它是 false，
+            // 所以还得看当前标记是否仍未完成——否则第二遍会停在 100% 却不换文。
+            syncRewriteNow()
+            val after = rewriteRepository.observeMark(word.id).first()?.status
+            pendingTerminalSync = after != RewriteStatus.DONE && after != RewriteStatus.FAILED
+        }
+    }
+
+    private fun fractionOfStage(stage: String?): Float? = when (stage) {
+        "queued" -> 0.08f
+        "generate" -> 0.45f
+        "polish" -> 0.75f
+        "judge" -> 0.92f
+        "done" -> 1f
+        else -> null
+    }
+
+    /** 老服务没有 stage：按 state 粗推断 —— pending 排队、running 已在生成。 */
+    private fun fractionOfState(state: String): Float? = when (state) {
+        "pending" -> 0.08f
+        "running" -> 0.45f
+        "done" -> 1f
+        else -> null
     }
 
     fun switchBook(bookId: Long) {
@@ -977,6 +1220,9 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     companion object {
         private const val DEFAULT_NEW_WORDS_LIMIT = 20
         private const val RESPONSE_TIME_DOWNGRADE_THRESHOLD_MS = 6_000L
+        private const val REWRITE_FLIP_SYNC_MIN_INTERVAL_MS = 8_000L
+        private const val REWRITE_PROGRESS_POLL_INTERVAL_MS = 4_000L
+        private const val STATE_FAILED = "failed"
         private val DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE
     }
 }

@@ -1,0 +1,402 @@
+{
+  "observedAt": "2026-11-07T11:22:38.070Z",
+  "timezone": "Asia/Shanghai",
+  "purpose": "Afternoon outage forensics; read-only production access",
+  "sources": [
+    {
+      "path": "D:/deepseek_v4.1flash1017/workbuddy2api-panel/run/router.log",
+      "bytes": 1855256,
+      "sha256": "00427a4b38d90b3159a0cd3559111491357e157ff145cb4fac0b334540ad9476",
+      "selected": [
+        {
+          "line": 23356,
+          "text": "2026-11-07T05:42:03.197Z REQ GET /healthz -> main 200 1ms 0B"
+        },
+        {
+          "line": 23357,
+          "text": "2026-11-07T05:42:20.787Z REQ POST /v1/chat/completions -> aux 200 2259ms 500658B"
+        },
+        {
+          "line": 23358,
+          "text": "2026-11-07T05:42:24.135Z REQ POST /v1/chat/completions -> main 200 4586ms 739602B"
+        },
+        {
+          "line": 23359,
+          "text": "2026-11-07T05:42:25.872Z REQ POST /v1/chat/completions -> main 200 4459ms 501659B"
+        },
+        {
+          "line": 23360,
+          "text": "2026-11-07T05:42:32.372Z REQ GET /status -> main 200 1ms 0B"
+        },
+        {
+          "line": 23361,
+          "text": "2026-11-07T05:42:47.079Z REQ POST /v1/chat/completions -> aux 200 3856ms 503971B"
+        },
+        {
+          "line": 23362,
+          "text": "2026-11-07T05:42:51.278Z REQ POST /v1/chat/completions -> main 200 3460ms 506439B"
+        },
+        {
+          "line": 23363,
+          "text": "2026-11-07T05:42:59.001Z REQ POST /v1/chat/completions -> main 200 4868ms 741831B"
+        },
+        {
+          "line": 23364,
+          "text": "2026-11-07T05:43:05.764Z REQ POST /v1/chat/completions -> main 200 5400ms 744349B"
+        },
+        {
+          "line": 23365,
+          "text": "2026-11-07T05:43:08.850Z REQ POST /v1/chat/completions -> aux 200 16616ms 509849B"
+        },
+        {
+          "line": 23366,
+          "text": "2026-11-07T05:43:24.575Z REQ POST /v1/chat/completions -> aux 200 13602ms 519455B"
+        },
+        {
+          "line": 23367,
+          "text": "2026-11-07T05:43:29.482Z REQ POST /v1/chat/completions -> main 200 4041ms 532304B"
+        },
+        {
+          "line": 23368,
+          "text": "2026-11-07T05:43:34.852Z REQ POST /v1/chat/completions -> main 200 4753ms 535225B"
+        },
+        {
+          "line": 23369,
+          "text": "2026-11-07T05:43:36.226Z REQ POST /v1/chat/completions -> aux 200 2585ms 746904B"
+        },
+        {
+          "line": 23370,
+          "text": "2026-11-07T05:43:48.380Z REQ POST /v1/chat/completions -> main 200 11997ms 538761B"
+        },
+        {
+          "line": 23371,
+          "text": "2026-11-07T05:43:55.079Z REQ POST /v1/chat/completions -> main 200 3335ms 747906B"
+        },
+        {
+          "line": 23372,
+          "text": "2026-11-07T05:44:02.901Z REQ POST /v1/chat/completions -> aux 200 13588ms 544400B"
+        },
+        {
+          "line": 23373,
+          "text": "2026-11-07T05:44:17.073Z REQ POST /v1/chat/completions -> main 200 3881ms 749521B"
+        },
+        {
+          "line": 23374,
+          "text": "2026-11-07T05:44:20.830Z REQ POST /v1/chat/completions -> aux 200 12265ms 552819B"
+        },
+        {
+          "line": 23375,
+          "text": "2026-11-07T05:44:35.258Z REQ POST /v1/chat/completions -> main 200 2909ms 751095B"
+        },
+        {
+          "line": 23376,
+          "text": "2026-11-07T05:44:44.334Z REQ POST /v1/chat/completions -> main 200 40853ms 562988B"
+        },
+        {
+          "line": 23377,
+          "text": "2026-11-07T05:44:47.754Z REQ POST /v1/chat/completions -> aux 200 2726ms 368329B"
+        },
+        {
+          "line": 23378,
+          "text": "2026-11-07T05:44:52.859Z REQ POST /v1/chat/completions -> main 200 4621ms 369443B"
+        },
+        {
+          "line": 23379,
+          "text": "2026-11-07T05:44:57.540Z REQ POST /v1/chat/completions -> aux 200 4275ms 370795B"
+        },
+        {
+          "line": 23380,
+          "text": "2026-11-07T05:45:01.276Z REQ POST /v1/chat/completions -> main 200 3420ms 751978B"
+        },
+        {
+          "line": 23381,
+          "text": "2026-11-07T05:45:08.413Z REQ POST /v1/chat/completions -> main 200 4860ms 752934B"
+        },
+        {
+          "line": 23382,
+          "text": "2026-11-07T05:45:31.212Z REQ POST /v1/chat/completions -> aux 200 21129ms 766057B"
+        },
+        {
+          "line": 23383,
+          "text": "2026-11-07T05:45:37.704Z REQ POST /v1/chat/completions -> main 200 4754ms 546896B"
+        },
+        {
+          "line": 23384,
+          "text": "2026-11-07T05:47:17.353Z START saved state offline"
+        },
+        {
+          "line": 23385,
+          "text": "2026-11-07T05:47:17.362Z HEALTH main connection_error"
+        },
+        {
+          "line": 23386,
+          "text": "2026-11-07T05:47:17.365Z HEALTH aux ok"
+        },
+        {
+          "line": 23387,
+          "text": "2026-11-07T05:47:17.367Z wb-router listening :8788 main=127.0.0.1:8790 aux=127.0.0.1:8789 weights=5:3"
+        },
+        {
+          "line": 23388,
+          "text": "2026-11-07T05:47:37.448Z HEALTH main ok"
+        },
+        {
+          "line": 23389,
+          "text": "2026-11-07T05:50:07.118Z REQ GET /router/status -> main 404 4ms 0B"
+        },
+        {
+          "line": 23390,
+          "text": "2026-11-07T05:50:16.609Z REQ GET /router-status -> main 404 1ms 0B"
+        },
+        {
+          "line": 23391,
+          "text": "2026-11-07T05:50:16.985Z REQ GET /v1/models -> main 200 348ms 0B"
+        },
+        {
+          "line": 23392,
+          "text": "2026-11-07T05:51:26.531Z REQ POST /v1/chat/completions -> aux 200 1174ms 148B"
+        },
+        {
+          "line": 23393,
+          "text": "2026-11-07T05:52:02.735Z REQ GET /healthz -> main 200 2ms 0B"
+        },
+        {
+          "line": 23394,
+          "text": "2026-11-07T05:52:27.804Z REQ GET /status -> main 200 2ms 0B"
+        },
+        {
+          "line": 23395,
+          "text": "2026-11-07T05:52:54.000Z REQ POST /v1/chat/completions -> main 200 1322ms 147B"
+        }
+      ]
+    },
+    {
+      "path": "D:/deepseek_v4.1flash1017/workbuddy2api-panel/run/panel.log",
+      "bytes": 8189577,
+      "sha256": "bf7061cdc6367ed79c9e05b8e0cb16293355ca2f1f1748c0d43c20191a28fab1",
+      "selected": [
+        {
+          "line": 36162,
+          "text": "2026/11/07 13:40:10 balance-sample 1dd3158f-c02f-4a85-8eb7-00bea645dcb0: credits=4065"
+        },
+        {
+          "line": 36175,
+          "text": "2026/11/07 13:41:29 补领清扫：清扫 6 个账号（跳过 0）· 接受 1 · 领奖 0 · 出错 0"
+        },
+        {
+          "line": 36177,
+          "text": "2026/11/07 13:41:48 INFO: [server] stream acct=[REDACTED] model=deepseek-v4.1-flash: finish_reason=stop with zero tool_calls despite 223 declared tool(s) (本轮无工具调用，正常收尾)"
+        },
+        {
+          "line": 36179,
+          "text": "2026/11/07 13:42:11 balance-sample a11a4dfb-6067-4435-8dc2-cd8c71407387: credits=4603"
+        },
+        {
+          "line": 36180,
+          "text": "2026/11/07 13:42:12 balance-sample 045494d2-aada-49ad-a681-999aa816e08b: credits=5598"
+        },
+        {
+          "line": 36197,
+          "text": "2026/11/07 13:47:29 loaded 7 account(s) from ./auths"
+        },
+        {
+          "line": 36198,
+          "text": "2026/11/07 13:47:29 [redisstore] upstash 未配置，进入纯内存模式（Noop 降级）"
+        },
+        {
+          "line": 36199,
+          "text": "2026/11/07 13:47:29 pool: 恢复来源=本地 state.json（无 Redis 快照）"
+        },
+        {
+          "line": 36200,
+          "text": "2026/11/07 13:47:29 指纹脱敏已启用；品牌词规则作用于所有消息角色（features.sanitize_brand_scope=all）"
+        },
+        {
+          "line": 36201,
+          "text": "2026/11/07 13:47:29 [balance] 余额趋势采样已启用: data\\balance_history.json 每 30m0s 一点（1793 点（原始 1793 / 日粒度 0）, 13 账号）"
+        },
+        {
+          "line": 36202,
+          "text": "2026/11/07 13:47:29 签到已启用：[9 21] 点（签到 + 余额查询解冻）"
+        },
+        {
+          "line": 36203,
+          "text": "2026/11/07 13:47:29 猫猫旅行已启用：[9 21] 点（独立排程：领养 / 派出 / 领奖）"
+        },
+        {
+          "line": 36204,
+          "text": "2026/11/07 13:47:29 活跃上报已启用：[10] 点（每日 1 次，点亮连登 + 解锁 first_buddy）"
+        },
+        {
+          "line": 36205,
+          "text": "2026/11/07 13:47:29 token 保活已启用：[22] 点"
+        },
+        {
+          "line": 36206,
+          "text": "2026/11/07 13:47:29 夜猫子已启用：[23] 点（23:00–08:00 窗口 glm-5.2 对话补足）"
+        },
+        {
+          "line": 36207,
+          "text": "2026/11/07 13:47:29 成长任务队列已启用：[11] 点（每日自动跑一遍任务中心待办，账号间并发 1）"
+        },
+        {
+          "line": 36208,
+          "text": "2026/11/07 13:47:29 排程抖动：各任务在名义整点后 0-20 分钟（schedule.jitter_minutes）"
+        },
+        {
+          "line": 36209,
+          "text": "2026/11/07 13:47:29 账号摊开：账号遍历型任务在 30 分钟内按账号错开，最小间隔 120 秒（schedule.account_spread_minutes）"
+        },
+        {
+          "line": 36210,
+          "text": "2026/11/07 13:47:29 余额后台刷新：每 15m0s（签到时点照常额外刷新）"
+        },
+        {
+          "line": 36211,
+          "text": "2026/11/07 13:47:29 补领清扫：每 15m0s（只 accept 待接受的、只 claim 已达标未领的）"
+        },
+        {
+          "line": 36212,
+          "text": "2026/11/07 13:47:29 周期抖动（人味化）：余额刷新 ±300‰（账号遍历同步摊开）、补领清扫 ±300‰，不再精确固定间隔（schedule.*_jitter_permill）"
+        },
+        {
+          "line": 36213,
+          "text": "2026/11/07 13:47:29 夜间参与上限：夜猫子只让积分最高的前 1 个号参加（schedule.night_account_cap）"
+        },
+        {
+          "line": 36214,
+          "text": "2026/11/07 13:47:29 [usage] 已恢复 552 个用量桶（data\\usage.json）"
+        },
+        {
+          "line": 36215,
+          "text": "2026/11/07 13:47:29 [usage] 逐请求用量记录已启用: data\\usage.json (552 buckets, file 144134 bytes)"
+        },
+        {
+          "line": 36216,
+          "text": "2026/11/07 13:47:29 [reqlog] 请求指标已启用；JSONL 归档 data\\request-logs（保留 7 天，上限 100 MiB）"
+        },
+        {
+          "line": 36217,
+          "text": "2026/11/07 13:47:29 [credithist] 已恢复 945 条积分流水 / 13 个余额基线（data\\credit-history.json）"
+        },
+        {
+          "line": 36218,
+          "text": "2026/11/07 13:47:29 [credithist] 积分历史已启用: data\\credit-history.json"
+        },
+        {
+          "line": 36219,
+          "text": "2026/11/07 13:47:30 workbuddy2api listening on :8790 (api_key=[REDACTED], 来源 配置文件 config.json)，管理面板 http://127.0.0.1:8790/panel/"
+        },
+        {
+          "line": 36220,
+          "text": "2026/11/07 13:47:30 scheduler: 补领清扫每 15m0s（暂停中显示 0s）"
+        },
+        {
+          "line": 36221,
+          "text": "2026/11/07 13:47:30 [upstream] warm model rates: cn ok"
+        },
+        {
+          "line": 36222,
+          "text": "2026/11/07 13:47:30 WARN: [updater] release check: 查询 GitHub Release 失败: HTTP 403: {\"message\":\"API rate limit exceeded for 118.167.226.3. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)\",\"documentation_url\":\"https://docs.github.com/rest/overview/resources-in-the-rest-api#rate-limiting\"}"
+        },
+        {
+          "line": 36223,
+          "text": "2026/11/07 13:47:35 [upstream] warm model rates: global ok (22 models)"
+        },
+        {
+          "line": 36224,
+          "text": "2026/11/07 13:48:22 ERR: [upstream] chat_stream acct=[REDACTED]: transport error: Post \"https://www.workbuddy.cn/v2/chat/completions\": context canceled"
+        },
+        {
+          "line": 36226,
+          "text": "2026/11/07 13:51:20 scheduler: 余额后台刷新每 15m0s（暂停中显示 0s）"
+        }
+      ]
+    },
+    {
+      "path": "D:/Apps/Bot/health/wb-guard.log",
+      "bytes": 47326,
+      "sha256": "673b4a07e8e50d06ba8ca55e521f6e3fca8c7c4e0291f5f0345257316b6ec540",
+      "selected": [
+        {
+          "line": 213,
+          "text": "2026-11-07 13:42:13 [guard] HEALTHY  main:8790 reason=workbuddy2api-healthy pids=38084"
+        },
+        {
+          "line": 214,
+          "text": "2026-11-07 13:42:20 [guard] HEALTHY  aux:8789 reason=workbuddy2api-healthy pids=29624"
+        },
+        {
+          "line": 215,
+          "text": "2026-11-07 13:42:28 [guard] HEALTHY  router:8788 reason=router-status-healthy pids=44332"
+        },
+        {
+          "line": 216,
+          "text": "2026-11-07 13:42:28 [guard] HEALTHY wb-bom-watch pid=22900"
+        },
+        {
+          "line": 217,
+          "text": "2026-11-07 13:47:06 [guard] MISSING  main:8790 reason=no-listener pids="
+        },
+        {
+          "line": 218,
+          "text": "2026-11-07 13:47:08 [guard] RECOVER missing main via start-silent.vbs"
+        },
+        {
+          "line": 219,
+          "text": "2026-11-07 13:47:29 [guard] MISSING after-recovery main:8790 reason=no-listener pids="
+        },
+        {
+          "line": 220,
+          "text": "2026-11-07 13:47:34 [guard] HEALTHY  aux:8789 reason=workbuddy2api-healthy pids=29624"
+        },
+        {
+          "line": 221,
+          "text": "2026-11-07 13:47:37 [guard] HEALTHY  router:8788 reason=router-status-healthy pids=31960"
+        },
+        {
+          "line": 222,
+          "text": "2026-11-07 13:47:37 [guard] HEALTHY wb-bom-watch pid=22900"
+        },
+        {
+          "line": 223,
+          "text": "2026-11-07 13:52:08 [guard] HEALTHY  main:8790 reason=workbuddy2api-healthy pids=17980"
+        },
+        {
+          "line": 224,
+          "text": "2026-11-07 13:52:13 [guard] HEALTHY  aux:8789 reason=workbuddy2api-healthy pids=29624"
+        },
+        {
+          "line": 225,
+          "text": "2026-11-07 13:52:18 [guard] HEALTHY  router:8788 reason=router-status-healthy pids=31960"
+        },
+        {
+          "line": 226,
+          "text": "2026-11-07 13:52:18 [guard] HEALTHY wb-bom-watch pid=22900"
+        }
+      ]
+    }
+  ],
+  "currentFileHashes": [
+    {
+      "name": "router",
+      "path": "D:/deepseek_v4.1flash1017/workbuddy2api-panel/run/wb-router.js",
+      "sha256": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+    },
+    {
+      "name": "starter",
+      "path": "D:/deepseek_v4.1flash1017/workbuddy2api-panel/run/start-silent.cmd",
+      "sha256": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7"
+    },
+    {
+      "name": "helper",
+      "path": "D:/deepseek_v4.1flash1017/workbuddy2api-panel/run/wb-service-check.ps1",
+      "sha256": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512"
+    },
+    {
+      "name": "guard",
+      "path": "D:/deepseek_v4.1flash1017/thebigfish/tools/wb-gateway-guard.ps1",
+      "sha256": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1"
+    }
+  ]
+}

@@ -1,0 +1,155 @@
+[
+  {
+    "case": "artifact_identity_start",
+    "pass": true,
+    "command": "python round2/g1_harness.py (sha256 before tests)",
+    "raw": {
+      "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+      "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+      "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\artifact-manifest.json": "1e1583a1137454a88ca0b387c5be212279f61c4d9c19db3340c7ed89a4bda564",
+      "C:\\temp\\stub-rewrite.py": "4bcf738c9bec23d3cae3c518b700c2af567a718733411670398bb908f17b7d24",
+      "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate\\wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+      "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate\\start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+      "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate\\wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+      "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate\\wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1"
+    }
+  },
+  {
+    "case": "G1_stub_exact_copy",
+    "pass": true,
+    "command": "shutil.copyfile approved stub into round2/scratch-g1",
+    "raw": {
+      "sourceSha256": "4bcf738c9bec23d3cae3c518b700c2af567a718733411670398bb908f17b7d24",
+      "copySha256": "4bcf738c9bec23d3cae3c518b700c2af567a718733411670398bb908f17b7d24",
+      "transform": []
+    }
+  },
+  {
+    "case": "G1_reserved_8788",
+    "pass": true,
+    "command": "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scratch-g1\\stub-rewrite.py\" --port 8788",
+    "raw": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: stub-rewrite.py [-h] [--host HOST] [--port PORT]\r\nstub-rewrite.py: error: 8788, 8789 and 8790 are reserved WB gateway ports\r\n"
+    }
+  },
+  {
+    "case": "G1_reserved_8789",
+    "pass": true,
+    "command": "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scratch-g1\\stub-rewrite.py\" --port 8789",
+    "raw": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: stub-rewrite.py [-h] [--host HOST] [--port PORT]\r\nstub-rewrite.py: error: 8788, 8789 and 8790 are reserved WB gateway ports\r\n"
+    }
+  },
+  {
+    "case": "G1_reserved_8790",
+    "pass": true,
+    "command": "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scratch-g1\\stub-rewrite.py\" --port 8790",
+    "raw": {
+      "exit": 2,
+      "stdout": "",
+      "stderr": "usage: stub-rewrite.py [-h] [--host HOST] [--port PORT]\r\nstub-rewrite.py: error: 8788, 8789 and 8790 are reserved WB gateway ports\r\n"
+    }
+  },
+  {
+    "case": "G1_default_port",
+    "pass": true,
+    "command": "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scratch-g1\\stub-rewrite.py\"; GET /rewrite/status /models /rewrite/results",
+    "raw": {
+      "pid": 4968,
+      "port": 18791,
+      "status": {
+        "method": "GET",
+        "port": 18791,
+        "path": "/rewrite/status",
+        "status": 200,
+        "body": "{\"queued\": 0, \"done\": 0, \"failed\": 0}"
+      },
+      "models": {
+        "method": "GET",
+        "port": 18791,
+        "path": "/models",
+        "status": 200,
+        "body": "{\"models\": [{\"id\": \"ds-v41-flash\", \"name\": \"DeepSeek V4.1 Flash\", \"provider\": \"wb\", \"reasoning\": \"max\"}, {\"id\": \"step5\", \"name\": \"Step 5\", \"provider\": \"wb\", \"reasoning\": \"high\"}, {\"id\": \"glm53\", \"name\": \"GLM 5.3\", \"provider\": \"wb\", \"reasoning\": \"high\"}, {\"id\": \"portdan-gpt\", \"name\": \"GPT-6.1 Sol\", \"provider\": \"portdan-gpt\", \"reasoning\": \"high\"}, {\"id\": \"portdan-grok\", \"name\": \"Grok 4.7\", \"provider\": \"portdan-grok\", \"reasoning\": \"high\"}]}"
+      },
+      "results": {
+        "method": "GET",
+        "port": 18791,
+        "path": "/rewrite/results",
+        "status": 200,
+        "body": "{\"results\": [], \"nextSince\": 0, \"more\": false}"
+      }
+    }
+  },
+  {
+    "case": "G1_explicit_port",
+    "pass": true,
+    "command": "C:\\Users\\ouquan\\AppData\\Local\\Programs\\Python\\Python312\\python.exe \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\scratch-g1\\stub-rewrite.py\" --host 127.0.0.1 --port 64506; GET /rewrite/status",
+    "raw": {
+      "pid": 20104,
+      "port": 64506,
+      "status": {
+        "method": "GET",
+        "port": 64506,
+        "path": "/rewrite/status",
+        "status": 200,
+        "body": "{\"queued\": 0, \"done\": 0, \"failed\": 0}"
+      }
+    }
+  },
+  {
+    "case": "G1_production_main_GET_identity",
+    "pass": true,
+    "command": "GET http://127.0.0.1:8790/healthz (read-only)",
+    "raw": {
+      "method": "GET",
+      "port": 8790,
+      "path": "/healthz",
+      "status": 200,
+      "body": "{\"healthy\":7,\"realm_servable\":{\"cn\":true,\"global\":true},\"service\":\"workbuddy2api\",\"total\":7}"
+    }
+  },
+  {
+    "case": "production_inventory_phase1",
+    "pass": true,
+    "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\inventory.ps1\"",
+    "raw": {
+      "exit": 0,
+      "stdout": "{\r\n    \"Timestamp\":  \"2026-11-07T12:27:03.9732379+08:00\",\r\n    \"PSVersion\":  \"5.1.26100.9711\",\r\n    \"Listeners\":  [\r\n                      {\r\n                          \"LocalAddress\":  \"::\",\r\n                          \"LocalPort\":  8790,\r\n                          \"OwningProcess\":  38084\r\n                      },\r\n                      {\r\n                          \"LocalAddress\":  \"::\",\r\n                          \"LocalPort\":  8789,\r\n                          \"OwningProcess\":  29624\r\n                      },\r\n                      {\r\n                          \"LocalAddress\":  \"::\",\r\n                          \"LocalPort\":  8788,\r\n                          \"OwningProcess\":  10576\r\n                      }\r\n                  ],\r\n    \"Owners\":  [\r\n                   {\r\n                       \"ProcessId\":  38084,\r\n                       \"ExecutablePath\":  \"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run\\\\wb2api.exe\",\r\n                       \"CommandLine\":  \"\\\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run\\\\wb2api.exe\\\"  -config config.json \",\r\n                       \"CreationDate\":  \"11/07/2026 11:10:53\"\r\n                   },\r\n                   {\r\n                       \"ProcessId\":  29624,\r\n                       \"ExecutablePath\":  \"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run-bot\\\\wb2api.exe\",\r\n                       \"CommandLine\":  \"\\\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run-bot\\\\wb2api.exe\\\"  -config config.json \",\r\n                       \"CreationDate\":  \"11/06/2026 16:57:05\"\r\n                   },\r\n                   {\r\n                       \"ProcessId\":  10576,\r\n                       \"ExecutablePath\":  \"C:\\\\Program Files\\\\nodejs\\\\node.exe\",\r\n                       \"CommandLine\":  \"\\\"C:\\\\Program Files\\\\nodejs\\\\node.exe\\\"  \\\"D:\\\\deepseek_v4.1flash1017\\\\workbuddy2api-panel\\\\run\\\\wb-router.js\\\" \",\r\n                       \"CreationDate\":  \"11/06/2026 16:54:20\"\r\n                   }\r\n               ]\r\n}\r\n",
+      "stderr": ""
+    }
+  },
+  {
+    "case": "spec_lock_start_end",
+    "pass": true,
+    "command": "sha256 before/after G1 integration",
+    "raw": {
+      "specSha256": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+      "lockSha256": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b"
+    }
+  },
+  {
+    "case": "cleanup_g1",
+    "pass": true,
+    "command": "finally: terminate only own Popen handles; remove only round2/scratch-g1",
+    "raw": {
+      "processes": [
+        {
+          "pid": 4968,
+          "exit": 1,
+          "running": false
+        },
+        {
+          "pid": 20104,
+          "exit": 1,
+          "running": false
+        }
+      ],
+      "scratchRemoved": true,
+      "noPostSent": true
+    }
+  }
+]

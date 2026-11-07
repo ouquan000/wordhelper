@@ -1,0 +1,17 @@
+{
+  "observationWindow": "2026-11-07, after 11:17:18+08:00 and before this evidence file was written",
+  "serial": "emulator-5554",
+  "package": "com.kaoyan.wordhelper",
+  "initialReadOnlyFinding": "card_back_url=10.0.2.2:8790 (92 bytes, observed by read-only agent at 11:13)",
+  "migrationAttempt": "Precondition rejected before any force-stop, backup, push, or preference write because the expected unique old address was no longer present.",
+  "readbackBytes": 25,
+  "readbackHex": "0a170a11636172645f736565645f76657273696f6e12021801",
+  "readbackMeaning": "Only card_seed_version=1 remains; card_back_url is absent and therefore uses the source default (empty). No 8790, 8765 or 18791 address remains in this file.",
+  "settingsWrittenByThisRepair": false,
+  "appStoppedByThisRepair": false,
+  "realPhoneTouched": false,
+  "learningDataTouched": false,
+  "futureFormalServiceAddress": "10.0.2.2:8765",
+  "futureIsolatedStubAddress": "10.0.2.2:18791",
+  "limitation": "The settings changed outside this repair between inspection and attempted migration. This repair does not attribute that change to any actor. It does not overwrite active concurrent app work."
+}

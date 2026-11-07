@@ -157,6 +157,10 @@ interface WordDao {
     @Query("SELECT id FROM tb_word WHERE word_key = :wordKey LIMIT 1")
     suspend fun getWordIdByKey(wordKey: String): Long?
 
+    /** 词表是否已经导完（拉改写结果时，用来区分「查不到这个词」和「种子还没导完」）。 */
+    @Query("SELECT COUNT(*) FROM tb_word")
+    suspend fun countAll(): Int
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertWordEntity(word: WordEntity): Long
 

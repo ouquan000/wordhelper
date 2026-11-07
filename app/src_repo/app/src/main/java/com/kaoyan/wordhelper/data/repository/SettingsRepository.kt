@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.kaoyan.wordhelper.data.model.PronunciationSource
@@ -175,6 +176,42 @@ class SettingsRepository(private val context: Context) {
         dataStore.edit { prefs -> prefs[KEY_CARD_SEED_VERSION] = version }
     }
 
+    /** 已经拉到第几条重写结果；重写结果按 seq 增量拉取。 */
+    suspend fun rewriteLastSeq(): Long {
+        return dataStore.data.map { prefs -> prefs[KEY_REWRITE_LAST_SEQ] ?: 0L }.first()
+    }
+
+    suspend fun updateRewriteLastSeq(seq: Long) {
+        dataStore.edit { prefs -> prefs[KEY_REWRITE_LAST_SEQ] = seq }
+    }
+
+    /** 上次选的模型 id，空 = 还没选过。 */
+    suspend fun rewriteModel(): String {
+        return dataStore.data.map { prefs -> prefs[KEY_REWRITE_MODEL].orEmpty() }.first()
+    }
+
+    suspend fun updateRewriteModel(modelId: String) {
+        dataStore.edit { prefs -> prefs[KEY_REWRITE_MODEL] = modelId.trim() }
+    }
+
+    /** 1.4.3.2 的一次性学习记录清理（清过一次就不再清，免得以后正常背词也被清）。 */
+    suspend fun cleanup132Done(): Boolean {
+        return dataStore.data.map { prefs -> prefs[KEY_CLEANUP_132_DONE] ?: false }.first()
+    }
+
+    suspend fun markCleanup132Done() {
+        dataStore.edit { prefs -> prefs[KEY_CLEANUP_132_DONE] = true }
+    }
+
+    /** 20 词测试书导入过的版本号；导入过一次就不再自动建，用户删了也不会复活。 */
+    suspend fun testDeckVersion(): Int {
+        return dataStore.data.map { prefs -> prefs[KEY_TEST_DECK_VERSION] ?: 0 }.first()
+    }
+
+    suspend fun updateTestDeckVersion(version: Int) {
+        dataStore.edit { prefs -> prefs[KEY_TEST_DECK_VERSION] = version }
+    }
+
     suspend fun saveTodayNewWordsPlan(bookId: Long, wordIds: List<Long>) {
         val learningDate = DateUtils.currentLearningDate().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
         val normalizedWordIds = wordIds.distinct().joinToString(separator = ",")
@@ -212,6 +249,10 @@ class SettingsRepository(private val context: Context) {
         private val KEY_PLANNED_NEW_WORDS_ENABLED = booleanPreferencesKey("planned_new_words_enabled")
         private val KEY_CARD_BACK_URL = stringPreferencesKey("card_back_url")
         private val KEY_CARD_SEED_VERSION = intPreferencesKey("card_seed_version")
+        private val KEY_REWRITE_LAST_SEQ = longPreferencesKey("rewrite_last_seq")
+        private val KEY_REWRITE_MODEL = stringPreferencesKey("rewrite_model")
+        private val KEY_CLEANUP_132_DONE = booleanPreferencesKey("cleanup_132_done")
+        private val KEY_TEST_DECK_VERSION = intPreferencesKey("test_deck_version")
         private val KEY_TODAY_NEW_WORDS_PLAN_DATE = stringPreferencesKey("today_new_words_plan_date")
         private val KEY_TODAY_NEW_WORDS_PLAN_BOOK_ID = stringPreferencesKey("today_new_words_plan_book_id")
         private val KEY_TODAY_NEW_WORDS_PLAN_WORD_IDS = stringPreferencesKey("today_new_words_plan_word_ids")

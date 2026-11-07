@@ -931,6 +931,7 @@ body.is-dragging * { cursor: grabbing !important; }
 }
 
 .btn svg { width: 13px; height: 13px; }
+a.btn { text-decoration: none; }
 
 .btn:hover { background: #202a3b; border-color: #36445c; }
 .btn:active { transform: translateY(1px); }

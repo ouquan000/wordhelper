@@ -1,0 +1,108 @@
+{
+  "commands": [
+    {
+      "label": "diagnostic-compile",
+      "argv": [
+        "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe",
+        "/nologo",
+        "/target:exe",
+        "/r:System.Web.Extensions.dll",
+        "/out:D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-7732\\fixture.exe",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\IndependentWbFixture.cs"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish",
+      "exitCode": 0,
+      "elapsedMs": 157,
+      "output": ""
+    },
+    {
+      "label": "native-direct-helper-main",
+      "argv": [
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\g34-cli-bridge.ps1",
+        "-IndependentTargetHelper",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-7732\\native-http-diagnostic\\run\\wb-service-check.ps1",
+        "-IndependentPortMap",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-7732\\native-http-diagnostic\\port-map.json",
+        "-Service",
+        "main",
+        "-PanelRoot",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-7732\\native-http-diagnostic"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish",
+      "exitCode": 0,
+      "elapsedMs": 7875,
+      "output": "WB_CHECK name=main port=49671 state=healthy reason=workbuddy2api-healthy pids=30932\r\n"
+    },
+    {
+      "label": "native-direct-helper-router",
+      "argv": [
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\g34-cli-bridge.ps1",
+        "-IndependentTargetHelper",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-7732\\native-http-diagnostic\\run\\wb-service-check.ps1",
+        "-IndependentPortMap",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-7732\\native-http-diagnostic\\port-map.json",
+        "-Service",
+        "router",
+        "-PanelRoot",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-7732\\native-http-diagnostic"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish",
+      "exitCode": 0,
+      "elapsedMs": 7765,
+      "output": "WB_CHECK name=router port=49678 state=healthy reason=router-status-healthy pids=32636\r\n"
+    },
+    {
+      "label": "startup-v5-native-http-diagnostic",
+      "argv": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "/d",
+        "/c",
+        "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-7732\\native-http-diagnostic\\run\\start-silent.cmd"
+      ],
+      "cwd": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-7732\\native-http-diagnostic\\run",
+      "exitCode": 40,
+      "elapsedMs": 10500,
+      "output": "WB_CHECK name=main port=49671 state=healthy reason=workbuddy2api-healthy pids=30932\r\nWB_CHECK name=router port=49678 state=error reason=listener-or-process-inspection-failed pids=\r\nWB_START ERROR router inspection code=40; owner or HTTP conflict requires attention. \r\n"
+    }
+  ],
+  "cleanup": [
+    {
+      "scenario": "v5-native-http-diagnostic",
+      "name": "main",
+      "pid": 30932,
+      "method": "owned fixture GET self-stop",
+      "port": 49671,
+      "portClosed": true,
+      "handleExitCode": 0
+    },
+    {
+      "scenario": "v5-native-http-diagnostic",
+      "name": "router",
+      "pid": 32636,
+      "method": "owned fixture GET self-stop",
+      "port": 49678,
+      "portClosed": true,
+      "handleExitCode": 0
+    }
+  ],
+  "hashes": {
+    "acceptance-spec.md": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+    "acceptance-spec.lock": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b",
+    "candidate/start-silent.cmd": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+    "candidate/wb-service-check.ps1": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+    "candidate/wb-gateway-guard.ps1": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+    "candidate/wb-router.js": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+  }
+}

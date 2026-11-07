@@ -1,0 +1,831 @@
+[
+  {
+    "case": "G2_production_inventory_before",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.301339+00:00",
+    "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\inventory.ps1\"",
+    "raw": {
+      "Timestamp": "2026-11-07T12:30:35.1424692+08:00",
+      "PSVersion": "5.1.26100.9711",
+      "Listeners": [
+        {
+          "LocalAddress": "::",
+          "LocalPort": 8790,
+          "OwningProcess": 38084
+        },
+        {
+          "LocalAddress": "::",
+          "LocalPort": 8789,
+          "OwningProcess": 29624
+        },
+        {
+          "LocalAddress": "::",
+          "LocalPort": 8788,
+          "OwningProcess": 44332
+        }
+      ],
+      "Owners": [
+        {
+          "ProcessId": 38084,
+          "ExecutablePath": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+          "CommandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json ",
+          "CreationDate": "11/07/2026 11:10:53"
+        },
+        {
+          "ProcessId": 29624,
+          "ExecutablePath": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+          "CommandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json ",
+          "CreationDate": "11/06/2026 16:57:05"
+        },
+        {
+          "ProcessId": 44332,
+          "ExecutablePath": "C:\\Program Files\\nodejs\\node.exe",
+          "CommandLine": "\"C:\\Program Files\\nodejs\\node.exe\"  \"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js\" ",
+          "CreationDate": "11/07/2026 12:28:14"
+        }
+      ]
+    }
+  },
+  {
+    "case": "formal_match_wb-router.js",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.302925+00:00",
+    "command": "sha256 independently read source and formal target D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js",
+    "raw": {
+      "source": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate\\wb-router.js",
+      "target": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js",
+      "approvedSha256": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+      "sourceSha256": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f",
+      "targetSha256": "2262451f13e4dcef160bb133d1fd17754aa56f0a4ace45c069ea0ebf59c7ce0f"
+    }
+  },
+  {
+    "case": "formal_match_start-silent.cmd",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.303965+00:00",
+    "command": "sha256 independently read source and formal target D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\start-silent.cmd",
+    "raw": {
+      "source": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate\\start-silent.cmd",
+      "target": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\start-silent.cmd",
+      "approvedSha256": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+      "sourceSha256": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7",
+      "targetSha256": "10b4065059c4cc0b35a30d4a1875285bc505ac23066e5a9fc5e3ac40333604e7"
+    }
+  },
+  {
+    "case": "formal_match_wb-service-check.ps1",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.304948+00:00",
+    "command": "sha256 independently read source and formal target D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-service-check.ps1",
+    "raw": {
+      "source": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate\\wb-service-check.ps1",
+      "target": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-service-check.ps1",
+      "approvedSha256": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+      "sourceSha256": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512",
+      "targetSha256": "66091dea24cad91aa8b96c95de90857c22d3c0e98399b311d2ca72362f8ae512"
+    }
+  },
+  {
+    "case": "formal_match_wb-gateway-guard.ps1",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.304948+00:00",
+    "command": "sha256 independently read source and formal target D:\\deepseek_v4.1flash1017\\thebigfish\\tools\\wb-gateway-guard.ps1",
+    "raw": {
+      "source": "D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\candidate\\wb-gateway-guard.ps1",
+      "target": "D:\\deepseek_v4.1flash1017\\thebigfish\\tools\\wb-gateway-guard.ps1",
+      "approvedSha256": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+      "sourceSha256": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1",
+      "targetSha256": "5d7e6cb35a4a60f98ec72a6ba006690bbb93c40a2f97e34abc802331dd43d1c1"
+    }
+  },
+  {
+    "case": "G2_health_8790",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.351014+00:00",
+    "command": "GET http://127.0.0.1:8790/healthz",
+    "raw": {
+      "method": "GET",
+      "port": 8790,
+      "path": "/healthz",
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 92,
+      "bodySha256": "57a1ad524a8fc17ae954ee615c3a9eaa2fa993fddd33b10f14fc1d899899d33f",
+      "json": {
+        "service": "workbuddy2api",
+        "healthy": 7,
+        "total": 7,
+        "realm_servable": {
+          "cn": true,
+          "global": true
+        }
+      }
+    }
+  },
+  {
+    "case": "G2_health_8788",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.367682+00:00",
+    "command": "GET http://127.0.0.1:8788/healthz",
+    "raw": {
+      "method": "GET",
+      "port": 8788,
+      "path": "/healthz",
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 92,
+      "bodySha256": "57a1ad524a8fc17ae954ee615c3a9eaa2fa993fddd33b10f14fc1d899899d33f",
+      "json": {
+        "service": "workbuddy2api",
+        "healthy": 7,
+        "total": 7,
+        "realm_servable": {
+          "cn": true,
+          "global": true
+        }
+      }
+    }
+  },
+  {
+    "case": "G2_health_8789",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.382525+00:00",
+    "command": "GET http://127.0.0.1:8789/healthz",
+    "raw": {
+      "method": "GET",
+      "port": 8789,
+      "path": "/healthz",
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 93,
+      "bodySha256": "04991bec9809a61fb8036f4734ac07e6f4e2335c1897085e96f51215f029c734",
+      "json": {
+        "service": "workbuddy2api",
+        "healthy": 1,
+        "total": 1,
+        "realm_servable": {
+          "cn": true,
+          "global": false
+        }
+      }
+    }
+  },
+  {
+    "case": "G2_models_8790",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.399144+00:00",
+    "command": "GET http://127.0.0.1:8790/v1/models with memory-only local authentication",
+    "raw": {
+      "method": "GET",
+      "port": 8790,
+      "path": "/v1/models",
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 34124,
+      "bodySha256": "0d8b79734baf8854922cf8ff1cc268428fdb6b1884c11ece46c2f0ee4605cd70",
+      "sortedModelIdSet": [
+        "cn:auto",
+        "cn:balanced-model",
+        "cn:deep-model",
+        "cn:deepseek-r1-0528",
+        "cn:deepseek-r1-0528-lkeap",
+        "cn:deepseek-v3-0324",
+        "cn:deepseek-v3-0324-lkeap",
+        "cn:deepseek-v3-1",
+        "cn:deepseek-v3-1-lkeap",
+        "cn:deepseek-v3-1-volc",
+        "cn:deepseek-v3-2-volc",
+        "cn:deepseek-v4-flash",
+        "cn:deepseek-v4-pro",
+        "cn:deepseek-v4.1-flash",
+        "cn:default-1.1",
+        "cn:default-1.2",
+        "cn:fast-model",
+        "cn:glm-4.6",
+        "cn:glm-4.6v",
+        "cn:glm-5.0-turbo",
+        "cn:glm-5.2",
+        "cn:glm-5.3",
+        "cn:glm-5.3-flash",
+        "cn:hunyuan-2.0-instruct",
+        "cn:hunyuan-chat",
+        "cn:hunyuan-image-alpha",
+        "cn:hunyuan-image-alpha-edit",
+        "cn:hy3",
+        "cn:hy3-b",
+        "cn:hy3-c",
+        "cn:hy3-x",
+        "cn:hy4-preview-ctrl",
+        "cn:hy4-preview-exp",
+        "cn:hy4-preview-f",
+        "cn:hy4-preview-x",
+        "cn:hy4free",
+        "cn:hy4preview-exp1",
+        "cn:hy4preview-exp2",
+        "cn:hy4std",
+        "cn:kimi-k2-instruct-taiji",
+        "cn:kimi-k2-thinking",
+        "cn:kimi-k2.5",
+        "cn:kimi-k2.8-preview",
+        "cn:kimi-k3-1",
+        "cn:kimi-k3.1-pro",
+        "cn:mimo-v2.6-pro",
+        "cn:minimax-m2.5",
+        "cn:minimax-m2.7",
+        "cn:minimax-m3.1-flash",
+        "cn:space-bunny",
+        "cn:step-5-preview",
+        "cn:wb-lite",
+        "global:deepseek-v4.1-flash-sg",
+        "global:default-model",
+        "global:gemini-3.8-flash",
+        "global:glm-5.3",
+        "global:glm-5.3-flash",
+        "global:gpt-5.6-luna",
+        "global:gpt-5.6-sol",
+        "global:gpt-5.6-terra",
+        "global:gpt-6-astra",
+        "global:gpt-6-luna",
+        "global:gpt-6-sol",
+        "global:gpt-6.1-sol",
+        "global:grok-4.7",
+        "global:hy-image-3.5",
+        "global:hy3",
+        "global:hy4-preview-f",
+        "global:hy4free",
+        "global:hy4std",
+        "global:kimi-k3",
+        "global:kimi-k3.1-pro",
+        "global:kimi-k3.1-pro-highspeed",
+        "global:max-model",
+        "global:minimax-m3.1-flash"
+      ]
+    }
+  },
+  {
+    "case": "G2_models_8788",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.414910+00:00",
+    "command": "GET http://127.0.0.1:8788/v1/models with memory-only local authentication",
+    "raw": {
+      "method": "GET",
+      "port": 8788,
+      "path": "/v1/models",
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 34124,
+      "bodySha256": "0d8b79734baf8854922cf8ff1cc268428fdb6b1884c11ece46c2f0ee4605cd70",
+      "sortedModelIdSet": [
+        "cn:auto",
+        "cn:balanced-model",
+        "cn:deep-model",
+        "cn:deepseek-r1-0528",
+        "cn:deepseek-r1-0528-lkeap",
+        "cn:deepseek-v3-0324",
+        "cn:deepseek-v3-0324-lkeap",
+        "cn:deepseek-v3-1",
+        "cn:deepseek-v3-1-lkeap",
+        "cn:deepseek-v3-1-volc",
+        "cn:deepseek-v3-2-volc",
+        "cn:deepseek-v4-flash",
+        "cn:deepseek-v4-pro",
+        "cn:deepseek-v4.1-flash",
+        "cn:default-1.1",
+        "cn:default-1.2",
+        "cn:fast-model",
+        "cn:glm-4.6",
+        "cn:glm-4.6v",
+        "cn:glm-5.0-turbo",
+        "cn:glm-5.2",
+        "cn:glm-5.3",
+        "cn:glm-5.3-flash",
+        "cn:hunyuan-2.0-instruct",
+        "cn:hunyuan-chat",
+        "cn:hunyuan-image-alpha",
+        "cn:hunyuan-image-alpha-edit",
+        "cn:hy3",
+        "cn:hy3-b",
+        "cn:hy3-c",
+        "cn:hy3-x",
+        "cn:hy4-preview-ctrl",
+        "cn:hy4-preview-exp",
+        "cn:hy4-preview-f",
+        "cn:hy4-preview-x",
+        "cn:hy4free",
+        "cn:hy4preview-exp1",
+        "cn:hy4preview-exp2",
+        "cn:hy4std",
+        "cn:kimi-k2-instruct-taiji",
+        "cn:kimi-k2-thinking",
+        "cn:kimi-k2.5",
+        "cn:kimi-k2.8-preview",
+        "cn:kimi-k3-1",
+        "cn:kimi-k3.1-pro",
+        "cn:mimo-v2.6-pro",
+        "cn:minimax-m2.5",
+        "cn:minimax-m2.7",
+        "cn:minimax-m3.1-flash",
+        "cn:space-bunny",
+        "cn:step-5-preview",
+        "cn:wb-lite",
+        "global:deepseek-v4.1-flash-sg",
+        "global:default-model",
+        "global:gemini-3.8-flash",
+        "global:glm-5.3",
+        "global:glm-5.3-flash",
+        "global:gpt-5.6-luna",
+        "global:gpt-5.6-sol",
+        "global:gpt-5.6-terra",
+        "global:gpt-6-astra",
+        "global:gpt-6-luna",
+        "global:gpt-6-sol",
+        "global:gpt-6.1-sol",
+        "global:grok-4.7",
+        "global:hy-image-3.5",
+        "global:hy3",
+        "global:hy4-preview-f",
+        "global:hy4free",
+        "global:hy4std",
+        "global:kimi-k3",
+        "global:kimi-k3.1-pro",
+        "global:kimi-k3.1-pro-highspeed",
+        "global:max-model",
+        "global:minimax-m3.1-flash"
+      ]
+    }
+  },
+  {
+    "case": "G2_models_8789",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.875874+00:00",
+    "command": "GET http://127.0.0.1:8789/v1/models with memory-only local authentication",
+    "raw": {
+      "method": "GET",
+      "port": 8789,
+      "path": "/v1/models",
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 22643,
+      "bodySha256": "c356ca102b7ca67b9d274753f18715c404169a8be68ccea42871e1ce3478afc5",
+      "sortedModelIdSet": [
+        "cn:auto",
+        "cn:balanced-model",
+        "cn:deep-model",
+        "cn:deepseek-r1-0528",
+        "cn:deepseek-r1-0528-lkeap",
+        "cn:deepseek-v3-0324",
+        "cn:deepseek-v3-0324-lkeap",
+        "cn:deepseek-v3-1",
+        "cn:deepseek-v3-1-lkeap",
+        "cn:deepseek-v3-1-volc",
+        "cn:deepseek-v3-2-volc",
+        "cn:deepseek-v4-flash",
+        "cn:deepseek-v4-pro",
+        "cn:deepseek-v4.1-flash",
+        "cn:default-1.1",
+        "cn:default-1.2",
+        "cn:fast-model",
+        "cn:glm-4.6",
+        "cn:glm-4.6v",
+        "cn:glm-5.0-turbo",
+        "cn:glm-5.2",
+        "cn:glm-5.3",
+        "cn:glm-5.3-flash",
+        "cn:hunyuan-2.0-instruct",
+        "cn:hunyuan-chat",
+        "cn:hunyuan-image-alpha",
+        "cn:hunyuan-image-alpha-edit",
+        "cn:hy3",
+        "cn:hy3-b",
+        "cn:hy3-c",
+        "cn:hy3-x",
+        "cn:hy4-preview-ctrl",
+        "cn:hy4-preview-exp",
+        "cn:hy4-preview-f",
+        "cn:hy4-preview-x",
+        "cn:hy4free",
+        "cn:hy4preview-exp1",
+        "cn:hy4preview-exp2",
+        "cn:hy4std",
+        "cn:kimi-k2-instruct-taiji",
+        "cn:kimi-k2-thinking",
+        "cn:kimi-k2.5",
+        "cn:kimi-k2.8-preview",
+        "cn:kimi-k3-1",
+        "cn:kimi-k3.1-pro",
+        "cn:mimo-v2.6-pro",
+        "cn:minimax-m2.5",
+        "cn:minimax-m2.7",
+        "cn:minimax-m3.1-flash",
+        "cn:space-bunny",
+        "cn:step-5-preview",
+        "cn:wb-lite"
+      ]
+    }
+  },
+  {
+    "case": "G2_sorted_model_catalog_equal",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.875874+00:00",
+    "command": "compare independently collected sorted model ID sets 8790 vs 8788",
+    "raw": {
+      "mainIds": [
+        "cn:auto",
+        "cn:balanced-model",
+        "cn:deep-model",
+        "cn:deepseek-r1-0528",
+        "cn:deepseek-r1-0528-lkeap",
+        "cn:deepseek-v3-0324",
+        "cn:deepseek-v3-0324-lkeap",
+        "cn:deepseek-v3-1",
+        "cn:deepseek-v3-1-lkeap",
+        "cn:deepseek-v3-1-volc",
+        "cn:deepseek-v3-2-volc",
+        "cn:deepseek-v4-flash",
+        "cn:deepseek-v4-pro",
+        "cn:deepseek-v4.1-flash",
+        "cn:default-1.1",
+        "cn:default-1.2",
+        "cn:fast-model",
+        "cn:glm-4.6",
+        "cn:glm-4.6v",
+        "cn:glm-5.0-turbo",
+        "cn:glm-5.2",
+        "cn:glm-5.3",
+        "cn:glm-5.3-flash",
+        "cn:hunyuan-2.0-instruct",
+        "cn:hunyuan-chat",
+        "cn:hunyuan-image-alpha",
+        "cn:hunyuan-image-alpha-edit",
+        "cn:hy3",
+        "cn:hy3-b",
+        "cn:hy3-c",
+        "cn:hy3-x",
+        "cn:hy4-preview-ctrl",
+        "cn:hy4-preview-exp",
+        "cn:hy4-preview-f",
+        "cn:hy4-preview-x",
+        "cn:hy4free",
+        "cn:hy4preview-exp1",
+        "cn:hy4preview-exp2",
+        "cn:hy4std",
+        "cn:kimi-k2-instruct-taiji",
+        "cn:kimi-k2-thinking",
+        "cn:kimi-k2.5",
+        "cn:kimi-k2.8-preview",
+        "cn:kimi-k3-1",
+        "cn:kimi-k3.1-pro",
+        "cn:mimo-v2.6-pro",
+        "cn:minimax-m2.5",
+        "cn:minimax-m2.7",
+        "cn:minimax-m3.1-flash",
+        "cn:space-bunny",
+        "cn:step-5-preview",
+        "cn:wb-lite",
+        "global:deepseek-v4.1-flash-sg",
+        "global:default-model",
+        "global:gemini-3.8-flash",
+        "global:glm-5.3",
+        "global:glm-5.3-flash",
+        "global:gpt-5.6-luna",
+        "global:gpt-5.6-sol",
+        "global:gpt-5.6-terra",
+        "global:gpt-6-astra",
+        "global:gpt-6-luna",
+        "global:gpt-6-sol",
+        "global:gpt-6.1-sol",
+        "global:grok-4.7",
+        "global:hy-image-3.5",
+        "global:hy3",
+        "global:hy4-preview-f",
+        "global:hy4free",
+        "global:hy4std",
+        "global:kimi-k3",
+        "global:kimi-k3.1-pro",
+        "global:kimi-k3.1-pro-highspeed",
+        "global:max-model",
+        "global:minimax-m3.1-flash"
+      ],
+      "entryIds": [
+        "cn:auto",
+        "cn:balanced-model",
+        "cn:deep-model",
+        "cn:deepseek-r1-0528",
+        "cn:deepseek-r1-0528-lkeap",
+        "cn:deepseek-v3-0324",
+        "cn:deepseek-v3-0324-lkeap",
+        "cn:deepseek-v3-1",
+        "cn:deepseek-v3-1-lkeap",
+        "cn:deepseek-v3-1-volc",
+        "cn:deepseek-v3-2-volc",
+        "cn:deepseek-v4-flash",
+        "cn:deepseek-v4-pro",
+        "cn:deepseek-v4.1-flash",
+        "cn:default-1.1",
+        "cn:default-1.2",
+        "cn:fast-model",
+        "cn:glm-4.6",
+        "cn:glm-4.6v",
+        "cn:glm-5.0-turbo",
+        "cn:glm-5.2",
+        "cn:glm-5.3",
+        "cn:glm-5.3-flash",
+        "cn:hunyuan-2.0-instruct",
+        "cn:hunyuan-chat",
+        "cn:hunyuan-image-alpha",
+        "cn:hunyuan-image-alpha-edit",
+        "cn:hy3",
+        "cn:hy3-b",
+        "cn:hy3-c",
+        "cn:hy3-x",
+        "cn:hy4-preview-ctrl",
+        "cn:hy4-preview-exp",
+        "cn:hy4-preview-f",
+        "cn:hy4-preview-x",
+        "cn:hy4free",
+        "cn:hy4preview-exp1",
+        "cn:hy4preview-exp2",
+        "cn:hy4std",
+        "cn:kimi-k2-instruct-taiji",
+        "cn:kimi-k2-thinking",
+        "cn:kimi-k2.5",
+        "cn:kimi-k2.8-preview",
+        "cn:kimi-k3-1",
+        "cn:kimi-k3.1-pro",
+        "cn:mimo-v2.6-pro",
+        "cn:minimax-m2.5",
+        "cn:minimax-m2.7",
+        "cn:minimax-m3.1-flash",
+        "cn:space-bunny",
+        "cn:step-5-preview",
+        "cn:wb-lite",
+        "global:deepseek-v4.1-flash-sg",
+        "global:default-model",
+        "global:gemini-3.8-flash",
+        "global:glm-5.3",
+        "global:glm-5.3-flash",
+        "global:gpt-5.6-luna",
+        "global:gpt-5.6-sol",
+        "global:gpt-5.6-terra",
+        "global:gpt-6-astra",
+        "global:gpt-6-luna",
+        "global:gpt-6-sol",
+        "global:gpt-6.1-sol",
+        "global:grok-4.7",
+        "global:hy-image-3.5",
+        "global:hy3",
+        "global:hy4-preview-f",
+        "global:hy4free",
+        "global:hy4std",
+        "global:kimi-k3",
+        "global:kimi-k3.1-pro",
+        "global:kimi-k3.1-pro-highspeed",
+        "global:max-model",
+        "global:minimax-m3.1-flash"
+      ],
+      "comparison": "sorted unique ID set, no hardcoded count"
+    }
+  },
+  {
+    "case": "G2_panel_8790",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.894765+00:00",
+    "command": "GET http://127.0.0.1:8790/panel/",
+    "raw": {
+      "method": "GET",
+      "port": 8790,
+      "path": "/panel/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 109357,
+      "bodySha256": "73bc98ea8d216566537042abf901f439ab6015aadc717b605e0238cfb592dc40",
+      "htmlRecognized": true
+    }
+  },
+  {
+    "case": "G2_panel_8788",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.909759+00:00",
+    "command": "GET http://127.0.0.1:8788/panel/",
+    "raw": {
+      "method": "GET",
+      "port": 8788,
+      "path": "/panel/",
+      "status": 200,
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 109357,
+      "bodySha256": "73bc98ea8d216566537042abf901f439ab6015aadc717b605e0238cfb592dc40",
+      "htmlRecognized": true
+    }
+  },
+  {
+    "case": "G2_router_health_observable",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.923365+00:00",
+    "command": "GET http://127.0.0.1:8788/_router/status",
+    "raw": {
+      "method": "GET",
+      "port": 8788,
+      "path": "/_router/status",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "bytes": 1208,
+      "bodySha256": "cb942f90c6cdd70f1edb16f9b9c6f6519a3fc7789453644299b64f4725a27974",
+      "json": {
+        "state": "offline",
+        "changedAt": "2026-11-03T11:11:06.593Z",
+        "main": {
+          "target": "127.0.0.1:8790",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 7,
+          "checkedAt": "2026-11-07T04:30:34.842Z",
+          "ttlMs": 15000,
+          "ageMs": 1081,
+          "remainingTtlMs": 13919,
+          "expiresAt": "2026-11-07T04:30:49.842Z",
+          "probing": false
+        },
+        "aux": {
+          "target": "127.0.0.1:8789",
+          "healthy": true,
+          "reason": "ok",
+          "service": "workbuddy2api",
+          "healthyCount": 1,
+          "checkedAt": "2026-11-07T04:30:34.842Z",
+          "ttlMs": 15000,
+          "ageMs": 1081,
+          "remainingTtlMs": 13919,
+          "expiresAt": "2026-11-07T04:30:49.842Z",
+          "probing": false,
+          "paused": false,
+          "pauseUntil": "2026-11-05T19:14:25+08:00"
+        },
+        "weight": {
+          "main": 5,
+          "aux": 3
+        },
+        "hold": {
+          "onlineMs": 180000,
+          "offlineMs": 300000
+        },
+        "counters": {
+          "requests": 11,
+          "toMain": 9,
+          "toAux": 2,
+          "auxFail": 0,
+          "upstream5xx": 0
+        }
+      },
+      "qq": {
+        "raw": false,
+        "rawHeldMs": 141301,
+        "lastProbeAt": "2026-11-07T04:30:34.867Z",
+        "lastProbeErr": ""
+      }
+    }
+  },
+  {
+    "case": "G2_status_8790",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.940205+00:00",
+    "command": "GET http://127.0.0.1:8790/status with memory-only local authentication; body excluded",
+    "raw": {
+      "method": "GET",
+      "port": 8790,
+      "path": "/status",
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 15141,
+      "bodySha256": "dd5ed005ffa71e4acc2bc90eec46c91304df7089152e4d56d622853b4bac3037",
+      "isJsonObject": true
+    }
+  },
+  {
+    "case": "G2_status_8788",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.955653+00:00",
+    "command": "GET http://127.0.0.1:8788/status with memory-only local authentication; body excluded",
+    "raw": {
+      "method": "GET",
+      "port": 8788,
+      "path": "/status",
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 15141,
+      "bodySha256": "dd5ed005ffa71e4acc2bc90eec46c91304df7089152e4d56d622853b4bac3037",
+      "isJsonObject": true
+    }
+  },
+  {
+    "case": "G2_status_8789",
+    "pass": true,
+    "at": "2026-11-07T04:30:35.970751+00:00",
+    "command": "GET http://127.0.0.1:8789/status with memory-only local authentication; body excluded",
+    "raw": {
+      "method": "GET",
+      "port": 8789,
+      "path": "/status",
+      "status": 200,
+      "contentType": "application/json",
+      "bytes": 2458,
+      "bodySha256": "304fee1c65b24a38d3c351df8da67f6827b188f0f4a5e59e031015bc955a5b98",
+      "isJsonObject": true
+    }
+  },
+  {
+    "case": "G2_production_inventory_after",
+    "pass": true,
+    "at": "2026-11-07T04:30:48.102476+00:00",
+    "command": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round2\\inventory.ps1\"",
+    "raw": {
+      "Timestamp": "2026-11-07T12:30:47.9448169+08:00",
+      "PSVersion": "5.1.26100.9711",
+      "Listeners": [
+        {
+          "LocalAddress": "::",
+          "LocalPort": 8790,
+          "OwningProcess": 38084
+        },
+        {
+          "LocalAddress": "::",
+          "LocalPort": 8789,
+          "OwningProcess": 29624
+        },
+        {
+          "LocalAddress": "::",
+          "LocalPort": 8788,
+          "OwningProcess": 44332
+        }
+      ],
+      "Owners": [
+        {
+          "ProcessId": 38084,
+          "ExecutablePath": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+          "CommandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json ",
+          "CreationDate": "11/07/2026 11:10:53"
+        },
+        {
+          "ProcessId": 29624,
+          "ExecutablePath": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+          "CommandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json ",
+          "CreationDate": "11/06/2026 16:57:05"
+        },
+        {
+          "ProcessId": 44332,
+          "ExecutablePath": "C:\\Program Files\\nodejs\\node.exe",
+          "CommandLine": "\"C:\\Program Files\\nodejs\\node.exe\"  \"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb-router.js\" ",
+          "CreationDate": "11/07/2026 12:28:14"
+        }
+      ]
+    }
+  },
+  {
+    "case": "G2_protected_pools_and_reloaded_entry",
+    "pass": true,
+    "at": "2026-11-07T04:30:48.102476+00:00",
+    "command": "compare before/after CIM listener and creation-time snapshots",
+    "raw": {
+      "protectedPidsUnchanged": true,
+      "mainBefore": {
+        "ProcessId": 38084,
+        "ExecutablePath": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+        "CommandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json ",
+        "CreationDate": "11/07/2026 11:10:53"
+      },
+      "mainAfter": {
+        "ProcessId": 38084,
+        "ExecutablePath": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe",
+        "CommandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run\\wb2api.exe\"  -config config.json ",
+        "CreationDate": "11/07/2026 11:10:53"
+      },
+      "auxBefore": {
+        "ProcessId": 29624,
+        "ExecutablePath": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+        "CommandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json ",
+        "CreationDate": "11/06/2026 16:57:05"
+      },
+      "auxAfter": {
+        "ProcessId": 29624,
+        "ExecutablePath": "D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe",
+        "CommandLine": "\"D:\\deepseek_v4.1flash1017\\workbuddy2api-panel\\run-bot\\wb2api.exe\"  -config config.json ",
+        "CreationDate": "11/06/2026 16:57:05"
+      },
+      "entryOwnerPids": [
+        44332
+      ],
+      "reloadNotice": "parent authorized reload reported at about 2026-11-07T12:28:20+08:00; this evidence is independently sampled"
+    }
+  },
+  {
+    "case": "K1_spec_lock_final_live",
+    "pass": true,
+    "at": "2026-11-07T04:30:48.104500+00:00",
+    "command": "sha256 frozen specification and lock after final online GET checks",
+    "raw": {
+      "specSha256": "c2a33fc5c61973cf58ea892fd7472a142ed4ef222d5eeb63e497b4b36e90fe91",
+      "lockSha256": "50f75118dffa481cd7299f17c6e2981b7dcc96252261cc1543382428bf0fe88b"
+    }
+  }
+]
