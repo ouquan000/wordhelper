@@ -169,7 +169,7 @@ export GRADLE_USER_HOME="D:/deepseek harness/work_anki_enligish/_toolchain/gradl
 | `docs/spec-1.4.3.md` / `spec-1.4.3.1.md` / `spec-1.4.3.2.md` | 三版规格与已知限制 |
 | 真机 1.4.3.2 | 启动无 FATAL；`tb_progress/daily_stats/new_word_ref` 全 0；生词本 0 词；「测试·20词」20 词未激活 |
 | DB 迁移 | 1.4.2 真旧库（user_version=14）覆盖装 1.4.3 后 = 15，三列与队列表就位，无崩溃 |
-| 换机恢复 | 清数据 → 填地址 → 重启，4 条历史结果按 seq 写回，rev 递增 |
+| 换机恢复 | 1.4.4 及以前：清数据 → 填地址 → 重启，4 条历史结果按 seq 写回，rev 递增。**1.4.5 起这条能力失效**：`applyResult` 只认「本地还有这条标记」的结果，换机/清队列后历史重写结果一律丢弃（防穿透 P0 的代价）；学习进度仍由 `tb_progress` 同步链恢复，不受影响 |
 
 ---
 
@@ -423,3 +423,5 @@ C 盘、`syncPresetWords` 早退、`Card(onClick)` 8dp touchSlop、`contentKey`�
 重打包：34,132,820 B，md5 `2e597411417d4f565cadb264b5acc6e8`（vc10 / 1.4.5 / DB17）。
 
 评审鱼留的 P1/P2（**本轮不修，已知**）：撤销不回滚方法标签（没有 prev_method 列）；跨书共享 SRS（同一词在两本书复习进度共用，1.4.5 之前就这样）；16→17 没有自动化迁移测试（人工脚本已跑，见 §13.2）；重写实测 4m48s；400ms 预热可被 `|| isFlipped` 绕过；daily 增量并发可能丢 1 次；同步失败也会写 `lastAutoSyncAt`。
+
+复审报告见 `_recon/rereview-1.4.5-p0.md`（84 行）：**P0 闭合**。反事实核对——服务端 seq29 结果的 clientId `w1436-1794139803756` 与作废队列行严格对应，旧代码下必写全局；同一份包重投后 `tb_word_memory` 零写入（max(updated_at) 停在 20:15:00.858、user 行仍 8），且 `rewrite_last_seq` 推进到 29，说明整页结果被逐条处理并丢弃。其余三处写全局（`undo`、种子导入、`backfillMethod`）都不由网络结果驱动。复审另提三个残留（均非本 P0）：老队列 `book_id=0` 升级瞬间会按全局落地（等价 1.4.4）；`cancel()` 对 QUEUED 不删行，取消后结果仍落本书；`undo` 不还原标签。
