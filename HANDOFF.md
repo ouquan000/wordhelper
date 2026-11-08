@@ -411,3 +411,15 @@ C 盘、`syncPresetWords` 早退、`Card(onClick)` 8dp touchSlop、`contentKey`�
 3. **重写跑到 100% 进度条不收、把撤销挤出屏幕**。修法：`RewriteBar` 在 `DONE` 后 1.5 秒收起进度条（`keepProgress`）。
 
 顺手还修了：`RewriteRepository.upload()` 的书名取 `item.bookId`（原来取 `word.bookId`，测试书里重写会被电脑端记成「六级记忆卡」），旧思路也改取本书那份；连不上时的提示补上「电脑换过网络地址会变，重新粘那一行」；`RewriteBar` 离线态文案同步。重打包 `dist/english-app-1.4.5.apk`，34,132,820 B，md5 `3f924fc272b4261a3e5dcc3ec8fa6ef4`。
+
+### 13.6 评审鱼 P0 与修复（同日）
+
+评审报告 `_recon/acceptance-1.4.5.md`（162 行，截图 `_recon/review-shots-145/`）：五条里四条 PASS，**按书隔离 FAIL（P0）**。场景：撤销后切回学习页再同步，一条迟到（或重投递）的结果仍被接受；`bookId = mark?.bookId ?: 0L` 于是变成 0，把测试书的文本写进全局 `tb_word_memory`，六级书在没有本书记忆时回落全局，于是主书被穿透。
+
+修法（`RewriteRepository.applyResult`）：**本地没有这条标记就直接丢弃结果**。撤销/已应用/换机清队列都算「没有标记」，宁可丢一条，也不再写全局；有标记时仍要求词号与标记完全一致。顺带修按书方法分布：`ProgressDao.getBookMethodCounts` 先读本书 `tb_book_memory.method`，没有再回落全局标签。
+
+端上闭环（模拟器）：测试书重写 `system` 成功 → 本书 `(1436, 2)` 写入 `root/user/rev1`，全局仍 `seed/rev0`；点撤销回到旧文；清掉手机端设置造出「拉取游标归零」→ 翻面触发拉取，电脑端日志出现 `GET /rewrite/results?since=0` 又把历史结果重投了一遍 → 拉库确认全局仍是 `seed/rev0`、队列为空、本书回到撤销后的状态。**即：迟到的作废结果被丢弃，不再穿透。**
+
+重打包：34,132,820 B，md5 `2e597411417d4f565cadb264b5acc6e8`（vc10 / 1.4.5 / DB17）。
+
+评审鱼留的 P1/P2（**本轮不修，已知**）：撤销不回滚方法标签（没有 prev_method 列）；跨书共享 SRS（同一词在两本书复习进度共用，1.4.5 之前就这样）；16→17 没有自动化迁移测试（人工脚本已跑，见 §13.2）；重写实测 4m48s；400ms 预热可被 `|| isFlipped` 绕过；daily 增量并发可能丢 1 次；同步失败也会写 `lastAutoSyncAt`。

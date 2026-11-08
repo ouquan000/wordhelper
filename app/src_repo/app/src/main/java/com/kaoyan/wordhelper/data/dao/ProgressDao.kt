@@ -83,11 +83,13 @@ interface ProgressDao {
     fun getGlobalMethodCounts(): Flow<List<MethodCount>>
 
     @Query(
-        """SELECT IFNULL(m.method, '') AS method, COUNT(DISTINCT p.word_id) AS count
+        """SELECT COALESCE(NULLIF(bm.method, ''), IFNULL(m.method, '')) AS method,
+                  COUNT(DISTINCT p.word_id) AS count
            FROM tb_progress p
            LEFT JOIN tb_word_memory m ON m.word_id = p.word_id
+           LEFT JOIN tb_book_memory bm ON bm.word_id = p.word_id AND bm.book_id = p.book_id
            WHERE p.status >= 1 AND p.book_id = :bookId
-           GROUP BY IFNULL(m.method, '')"""
+           GROUP BY COALESCE(NULLIF(bm.method, ''), IFNULL(m.method, ''))"""
     )
     fun getBookMethodCounts(bookId: Long): Flow<List<MethodCount>>
 

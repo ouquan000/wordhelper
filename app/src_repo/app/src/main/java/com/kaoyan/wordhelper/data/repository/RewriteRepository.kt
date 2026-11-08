@@ -363,21 +363,17 @@ class RewriteRepository(
         val wordId = wordDao.getWordIdByKey(word.lowercase(Locale.ROOT)) ?: return null
         val now = System.currentTimeMillis()
 
-        // 认领守卫：只认「这条标记自己的结果」。
-        // - 结果带 clientId：必须是本 App 的 w{wordId}-{ts} 格式，且 wordId 对得上 ——
-        //   探针/测试数据（probe-*）一律不认；队列里已有新标记时，旧结果也丢掉。
-        // - 结果不带 clientId（老服务/老数据）：只在还有对应标记时接受。
-        // - 队列里没有这条标记（重装、换机）：带合法 clientId 的仍然接受，用来恢复改写。
-        val mark = queueDao.getByWordId(wordId)
+        // 认领守卫：只认「本地还有这条标记」的结果。
+        // - 没有队列行 = 已撤销 / 已应用完 / 换机清过队列：一律丢弃。
+        //   旧逻辑在这里接受合法 clientId，然后把 bookId 当 0 写进全局那份，
+        //   结果就是「撤销后迟到的结果穿透到主书」（1.4.5 验收 P0）。
+        // - 有队列行：带 clientId 时必须和这条标记完全一致；不带 clientId 的老结果也接受。
+        val mark = queueDao.getByWordId(wordId) ?: return null
         val incoming = dto.clientId?.takeIf { it.isNotBlank() }
         if (incoming != null) {
             val owner = CLIENT_ID.matchEntire(incoming)?.groupValues?.get(1)?.toLongOrNull()
             if (owner == null || owner != wordId) return null
-            if (mark != null && incoming != clientIdOf(mark)) {
-                return null
-            }
-        } else if (mark == null) {
-            return null
+            if (incoming != clientIdOf(mark)) return null
         }
 
         if (dto.status == STATUS_FAILED) {
