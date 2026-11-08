@@ -202,9 +202,12 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
      * 当前词的记忆思路，直接来自数据库。
      * 卡背读它而不是读词对象快照：电脑端结果不管被哪一次同步落库，界面都会立刻换文。
      */
-    val liveApproach: StateFlow<String?> = _currentWord
-        .flatMapLatest { word ->
-            if (word == null) flowOf(null) else rewriteRepository.observeApproach(word.id)
+    val liveApproach: StateFlow<String?> = combine(activeBook, _currentWord) { book, word ->
+        (book?.id ?: 0L) to word
+    }
+        .flatMapLatest { (bookId, word) ->
+            if (word == null) flowOf(null)
+            else rewriteRepository.observeApproach(word.id, bookId)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -417,7 +420,13 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 _message.value = RewriteRepository.NO_ADDRESS
                 return@launch
             }
-            val sent = rewriteRepository.enqueueAndSync(word.id, word.word, modelId, instruction)
+            val sent = rewriteRepository.enqueueAndSync(
+                word.id,
+                word.word,
+                modelId,
+                instruction,
+                bookId = activeBook.value?.id ?: 0L
+            )
             if (!sent) {
                 // 口令错和电脑没开是两件事：都说成「等电脑连上」，用户会一直干等。
                 _message.value = if (rewriteRepository.consumeAuthFailure()) {
@@ -437,9 +446,14 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     fun undoRewrite() {
         val word = _currentWord.value ?: return
         viewModelScope.launch {
-            val restored = rewriteRepository.undo(word.id)
+            val bookId = activeBook.value?.id ?: 0L
+            val restored = rewriteRepository.undo(word.id, bookId)
             if (restored != null) {
-                _currentWord.value = _currentWord.value?.copy(approach = restored)
+                val restoredMethod = rewriteRepository.methodOf(word.id, bookId)
+                _currentWord.value = _currentWord.value?.copy(
+                    approach = restored,
+                    method = restoredMethod
+                )
                 _message.value = "已撤销回上一版"
             } else {
                 _message.value = "没有可撤销的上一版了"
@@ -466,9 +480,11 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         // 结果可能在上一轮同步里就落库了，但卡片还停着旧文本。
         val current = _currentWord.value
         if (current != null) {
-            val fresh = rewriteRepository.approachOf(current.id)
+            val bookId = activeBook.value?.id ?: 0L
+            val fresh = rewriteRepository.approachOf(current.id, bookId)
             // 方法标签跟着思路一起换：重写结果里带了 method，别让卡背还挂着旧的那一招。
-            val freshMethod = repository.getWordById(current.id)?.method ?: current.method
+            val freshMethod = rewriteRepository.methodOf(current.id, bookId)
+                .ifBlank { current.method }
             val approachChanged = fresh != null && fresh != current.approach
             val methodChanged = freshMethod != current.method
             if (approachChanged || methodChanged) {

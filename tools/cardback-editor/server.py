@@ -191,6 +191,20 @@ def _token_ok(supplied):
     return hmac.compare_digest(supplied.strip(), expected)
 
 
+def pair_url():
+    """手机要粘贴的那一整行：`http://ip:8765#<口令>`。
+
+    `#` 后面那截客户端从不发送——不进请求行、Referer、代理日志；手机解析后只用
+    host:port 和 X-Cardback-Token 头，所以鉴权逻辑（_token_ok / loopback 免票）一行不用改。
+    这里不带文件路径，手机端 normalizeUrl 会补 /cardback.json。
+    """
+    base = LAN_URL
+    suffix = "/cardback.json"
+    if base.endswith(suffix):
+        base = base[: -len(suffix)]
+    return "%s#%s" % (base, ensure_token())
+
+
 def _is_loopback_peer(peer):
     try:
         return ipaddress.ip_address(peer).is_loopback
@@ -978,6 +992,8 @@ class Handler(BaseHTTPRequestHandler):
         payload = {"ok": True}
         payload.update(state_snapshot())
         payload["lanUrl"] = LAN_URL
+        # 编辑页「一键复制」要的就是这一整行；lanUrl 留着给旧页面/调试用。
+        payload["pairUrl"] = pair_url()
         self._send_json(payload)
 
     def _api_sync_pull(self):
@@ -1353,7 +1369,7 @@ def main(argv=None):
 
     os.makedirs(HISTORY_DIR, exist_ok=True)
     notes = ensure_initialized()
-    token = ensure_token()
+    ensure_token()
 
     lan_ips = detect_lan_ips()
     primary = next((ip for ip in lan_ips if _is_lan_ip(ip)), None)
@@ -1367,16 +1383,15 @@ def main(argv=None):
     print("  浏览器打开：%s" % local_url, flush=True)
     _start_rewrite()
     if primary:
-        print("  手机填这个地址：%s" % LAN_URL, flush=True)
+        print("  手机：粘贴这一行 → %s" % pair_url(), flush=True)
     else:
         print(
-            "  手机填这个地址：（没找到局域网 IP —— 确认电脑连着 WiFi 或网线，且和手机在同一网段）",
+            "  手机：粘贴这一行 →（没找到局域网 IP —— 确认电脑连着 WiFi 或网线，且和手机在同一网段）",
             flush=True,
         )
     print("  发布目录：%s" % PUBLISHED_DIR, flush=True)
-    print("  手机口令：%s" % token, flush=True)
-    print("    口令文件：%s（删掉它再启动会重新生成，手机要跟着改）" % TOKEN_PATH, flush=True)
-    print("    电脑上开编辑器不用填；手机上「我的 → 设置 → 卡背结构口令」填这一串。", flush=True)
+    # 口令不再单独打印：它就在上面那一行末尾，复制一次就够。
+    print("    （电脑上开编辑器不用填；口令文件 %s，删掉再启动会换新的）" % TOKEN_PATH, flush=True)
     others = [ip for ip in lan_ips if ip != primary]
     if others:
         print(

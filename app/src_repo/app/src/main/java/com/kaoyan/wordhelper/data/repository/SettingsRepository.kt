@@ -167,8 +167,18 @@ class SettingsRepository(private val context: Context) {
         dataStore.edit { prefs -> prefs[KEY_PLANNED_NEW_WORDS_ENABLED] = enabled }
     }
 
+    /**
+     * 卡背结构地址写入。电脑端给的是一整行「地址#口令」（`#` 后面是口令）：
+     * 有 `#` 就拆开 —— 地址进 card_back_url、口令覆盖 card_back_token；
+     * 没有 `#` 只当地址存，**不动已有口令**（以前单独填过口令的人不能丢）。
+     * 只在这里解析一次，三处读取路径（CardBack / Rewrite / Sync）保持原样。
+     */
     suspend fun updateCardBackUrl(url: String) {
-        dataStore.edit { prefs -> prefs[KEY_CARD_BACK_URL] = url.trim() }
+        val (parsedUrl, parsedToken) = CardbackAuth.parsePair(url)
+        dataStore.edit { prefs ->
+            prefs[KEY_CARD_BACK_URL] = parsedUrl
+            if (parsedToken != null) prefs[KEY_CARD_BACK_TOKEN] = parsedToken
+        }
     }
 
     suspend fun updateCardBackToken(token: String) {

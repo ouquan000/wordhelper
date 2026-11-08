@@ -8,6 +8,8 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.kaoyan.wordhelper.data.dao.BookDao
+import com.kaoyan.wordhelper.data.dao.BookDailyStatsDao
+import com.kaoyan.wordhelper.data.dao.BookMemoryDao
 import com.kaoyan.wordhelper.data.dao.DailyStatsDao
 import com.kaoyan.wordhelper.data.dao.EarlyReviewDao
 import com.kaoyan.wordhelper.data.dao.ForecastCacheDao
@@ -28,6 +30,8 @@ import com.kaoyan.wordhelper.data.entity.TrainingSample
 import com.kaoyan.wordhelper.data.entity.WordMLStats
 import com.kaoyan.wordhelper.data.entity.WordMemory
 import com.kaoyan.wordhelper.data.entity.Book
+import com.kaoyan.wordhelper.data.entity.BookDailyStats
+import com.kaoyan.wordhelper.data.entity.BookMemory
 import com.kaoyan.wordhelper.data.entity.BookWordContent
 import com.kaoyan.wordhelper.data.entity.DailyStats
 import com.kaoyan.wordhelper.data.entity.EarlyReviewRef
@@ -63,9 +67,11 @@ import kotlinx.coroutines.launch
         WordMemory::class,
         RewriteQueueItem::class,
         SyncOp::class,
-        SyncState::class
+        SyncState::class,
+        BookMemory::class,
+        BookDailyStats::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -85,6 +91,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun wordMemoryDao(): WordMemoryDao
     abstract fun rewriteQueueDao(): RewriteQueueDao
     abstract fun syncDao(): SyncDao
+    abstract fun bookMemoryDao(): BookMemoryDao
+    abstract fun bookDailyStatsDao(): BookDailyStatsDao
 
     companion object {
         @Volatile
@@ -117,7 +125,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_12_13,
                     MIGRATION_13_14,
                     MIGRATION_14_15,
-                    MIGRATION_15_16
+                    MIGRATION_15_16,
+                    MIGRATION_16_17
                 )
                 .build()
         }
@@ -722,6 +731,47 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
+            }
+        }
+
+        /**
+         * 1.4.5：①重写结果按书存（tb_book_memory）②按书每日学习量（tb_book_daily_stats）
+         * ③重写队列记住这本书（tb_rewrite_queue.book_id）。
+         */
+        @VisibleForTesting
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS tb_book_memory (
+                        word_id INTEGER NOT NULL,
+                        book_id INTEGER NOT NULL,
+                        approach TEXT NOT NULL DEFAULT '',
+                        collocations TEXT NOT NULL DEFAULT '',
+                        method TEXT NOT NULL DEFAULT '',
+                        updated_at INTEGER NOT NULL DEFAULT 0,
+                        source TEXT NOT NULL DEFAULT 'seed',
+                        rev INTEGER NOT NULL DEFAULT 0,
+                        prev_approach TEXT,
+                        PRIMARY KEY(word_id, book_id),
+                        FOREIGN KEY(word_id) REFERENCES tb_word(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_tb_book_memory_book_id ON tb_book_memory(book_id)")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS tb_book_daily_stats (
+                        date TEXT NOT NULL,
+                        book_id INTEGER NOT NULL,
+                        new_count INTEGER NOT NULL DEFAULT 0,
+                        review_count INTEGER NOT NULL DEFAULT 0,
+                        spell_count INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY(date, book_id)
+                    )
+                    """.trimIndent()
+                )
+                ensureColumnExists(db, "tb_rewrite_queue", "book_id", "INTEGER NOT NULL DEFAULT 0")
             }
         }
 

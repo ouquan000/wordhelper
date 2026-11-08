@@ -111,6 +111,7 @@
       status: 'connecting',
       revision: null,
       lanUrl: null,
+      pairUrl: null,
       updatedAt: null,
       publishedAt: null,
       historyCount: null
@@ -730,7 +731,7 @@
     if (s.status === 'online') {
       dot.classList.add('online');
       text.textContent = '本地服务在线';
-      text.title = s.lanUrl || '';
+      text.title = s.pairUrl || s.lanUrl || '';
     } else if (s.status === 'offline') {
       dot.classList.add('offline');
       text.textContent = '未连接服务 · 仅本地编辑';
@@ -749,9 +750,10 @@
 
     $('#revision-badge').textContent = revision ? String(revision) : '—';
 
-    var url = s.lanUrl;
-    $('#lan-url').textContent = url || (s.status === 'offline' ? '未连接服务' : '未获取');
-    $('#lan-url').title = url || '启动本地服务后自动获取局域网地址';
+    // 手机只粘这一行：地址#口令。分开展示等于又让人抄两遍。
+    var pair = s.pairUrl;
+    $('#lan-url').textContent = pair || (s.status === 'offline' ? '未连接服务' : '未获取（重启 server.py 后出现）');
+    $('#lan-url').title = pair ? '完整一行：' + pair : '启动本地服务后自动获取；旧版服务没有这一行，重启一次即可';
 
     var draftState = $('#draft-state');
     if (!state.baselineSig) {
@@ -1212,6 +1214,7 @@
         updatedAt: payload.updatedAt || null,
         publishedAt: payload.publishedAt || null,
         lanUrl: typeof payload.lanUrl === 'string' && payload.lanUrl ? payload.lanUrl : null,
+        pairUrl: typeof payload.pairUrl === 'string' && payload.pairUrl ? payload.pairUrl : null,
         historyCount: isFinite(Number(payload.historyCount)) ? Number(payload.historyCount) : null
       };
       if (!Number(state.doc.revision) && state.server.revision != null) {
@@ -1586,12 +1589,13 @@
     $('#open-history').addEventListener('click', openHistory);
 
     $('#copy-url').addEventListener('click', function () {
-      if (!state.server.lanUrl) {
-        toast('还没有地址：先启动本地服务（server.py），再刷新页面。', { tone: 'error', duration: 7000 });
+      var pair = state.server.pairUrl;
+      if (!pair) {
+        toast('还没有可复制的行：先启动本地服务（server.py），再刷新页面。', { tone: 'error', duration: 7000 });
         return;
       }
-      copyText(state.server.lanUrl).then(function (ok) {
-        toast(ok ? '地址已复制：' + state.server.lanUrl : '复制失败，请手动选中复制', {
+      copyText(pair).then(function (ok) {
+        toast(ok ? '已复制，去手机「我的」页 → 卡背结构地址 整行粘贴' : '复制失败，请手动选中复制', {
           tone: ok ? 'success' : 'error',
           duration: 4200
         });

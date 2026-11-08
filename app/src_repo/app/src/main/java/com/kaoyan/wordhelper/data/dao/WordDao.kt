@@ -21,13 +21,14 @@ interface WordDao {
                   c.phrases AS phrases,
                   c.synonyms AS synonyms,
                   c.rel_words AS relWords,
-                  IFNULL(m.approach, '') AS approach,
-                  IFNULL(m.collocations, '') AS collocations,
-                  IFNULL(m.method, '') AS method,
+                  COALESCE(NULLIF(bm.approach, ''), m.approach, '') AS approach,
+                  COALESCE(NULLIF(bm.collocations, ''), m.collocations, '') AS collocations,
+                  COALESCE(NULLIF(bm.method, ''), m.method, '') AS method,
                   c.book_id AS bookId
            FROM tb_book_word_content c
            INNER JOIN tb_word w ON c.word_id = w.id
            LEFT JOIN tb_word_memory m ON m.word_id = w.id
+           LEFT JOIN tb_book_memory bm ON bm.word_id = w.id AND bm.book_id = c.book_id
            WHERE c.book_id = :bookId
            ORDER BY w.id ASC"""
     )
@@ -42,13 +43,14 @@ interface WordDao {
                   c.phrases AS phrases,
                   c.synonyms AS synonyms,
                   c.rel_words AS relWords,
-                  IFNULL(m.approach, '') AS approach,
-                  IFNULL(m.collocations, '') AS collocations,
-                  IFNULL(m.method, '') AS method,
+                  COALESCE(NULLIF(bm.approach, ''), m.approach, '') AS approach,
+                  COALESCE(NULLIF(bm.collocations, ''), m.collocations, '') AS collocations,
+                  COALESCE(NULLIF(bm.method, ''), m.method, '') AS method,
                   c.book_id AS bookId
            FROM tb_book_word_content c
            INNER JOIN tb_word w ON c.word_id = w.id
            LEFT JOIN tb_word_memory m ON m.word_id = w.id
+           LEFT JOIN tb_book_memory bm ON bm.word_id = w.id AND bm.book_id = c.book_id
            WHERE c.book_id = :bookId
            ORDER BY w.id ASC"""
     )
@@ -237,13 +239,14 @@ interface WordDao {
                   c.phrases AS phrases,
                   c.synonyms AS synonyms,
                   c.rel_words AS relWords,
-                  IFNULL(m.approach, '') AS approach,
-                  IFNULL(m.collocations, '') AS collocations,
-                  IFNULL(m.method, '') AS method,
+                  COALESCE(NULLIF(bm.approach, ''), m.approach, '') AS approach,
+                  COALESCE(NULLIF(bm.collocations, ''), m.collocations, '') AS collocations,
+                  COALESCE(NULLIF(bm.method, ''), m.method, '') AS method,
                   c.book_id AS bookId
            FROM tb_book_word_content c
            INNER JOIN tb_word w ON c.word_id = w.id
            LEFT JOIN tb_word_memory m ON m.word_id = w.id
+           LEFT JOIN tb_book_memory bm ON bm.word_id = w.id AND bm.book_id = c.book_id
            WHERE c.book_id = :bookId
              AND w.id NOT IN (
                  SELECT word_id

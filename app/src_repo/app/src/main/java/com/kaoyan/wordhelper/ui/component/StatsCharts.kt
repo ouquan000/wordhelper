@@ -22,6 +22,7 @@ import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.charts.PieChart
 import com.github.mikephil.charting.components.Legend
 import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
@@ -64,6 +65,11 @@ fun MemoryLineChart(
         },
         update = { chart ->
             chart.axisLeft.textColor = axisColor
+            // 计的是「词」，轴上的刻度必须是整数：新书数据少的时候别出现 0.2、0.4 这种刻度。
+            chart.axisLeft.granularity = 1f
+            chart.axisLeft.valueFormatter = object : ValueFormatter() {
+                override fun getFormattedValue(value: Float): String = value.toInt().toString()
+            }
             chart.xAxis.textColor = axisColor
             chart.legend.isEnabled = showLegend
             chart.legend.textColor = axisColor

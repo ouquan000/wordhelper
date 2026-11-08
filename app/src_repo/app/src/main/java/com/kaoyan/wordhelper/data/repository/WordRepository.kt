@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.room.withTransaction
 import com.kaoyan.wordhelper.data.database.AppDatabase
 import com.kaoyan.wordhelper.data.entity.Book
+import com.kaoyan.wordhelper.data.entity.BookDailyStats
 import com.kaoyan.wordhelper.data.entity.BookWordContent
 import com.kaoyan.wordhelper.data.entity.DailyStats
 import com.kaoyan.wordhelper.data.entity.EarlyReviewRef
@@ -52,6 +53,7 @@ class WordRepository(private val database: AppDatabase) {
     private val newWordRefDao = database.newWordRefDao()
     private val studyLogDao = database.studyLogDao()
     private val dailyStatsDao = database.dailyStatsDao()
+    private val bookDailyStatsDao = database.bookDailyStatsDao()
     private val earlyReviewDao = database.earlyReviewDao()
     private val forecastCacheDao = database.forecastCacheDao()
     private val wordMemoryDao = database.wordMemoryDao()
@@ -595,6 +597,12 @@ class WordRepository(private val database: AppDatabase) {
                 fuzzyWordsDelta = if (rating == StudyRating.HARD) 1 else 0,
                 recognizedWordsDelta = if (rating == StudyRating.GOOD) 1 else 0
             )
+            // 1.4.5：全局那份照旧，另外给「这本书」记一笔，学习统计切到词书时才有曲线。
+            updateBookDailyStatsInternal(
+                bookId = bookId,
+                newWordsDelta = if (isNewLearningCompletion) 1 else 0,
+                reviewWordsDelta = if (isReviewCompletion) 1 else 0
+            )
             invalidateForecastCacheInternal()
         }
         // 事务提交后再入同步队列：入队失败不能回滚学习结果，也绝不在事务里做任何网络事。
@@ -707,6 +715,12 @@ class WordRepository(private val database: AppDatabase) {
                 reviewWordsDelta = if (isReviewCompletion) 1 else 0,
                 spellPracticeDelta = attemptCount.coerceAtLeast(1),
                 durationMillisDelta = durationMillis.coerceAtLeast(0L)
+            )
+            updateBookDailyStatsInternal(
+                bookId = bookId,
+                newWordsDelta = if (isNewLearningCompletion) 1 else 0,
+                reviewWordsDelta = if (isReviewCompletion) 1 else 0,
+                spellPracticeDelta = attemptCount.coerceAtLeast(1)
             )
             invalidateForecastCacheInternal()
         }
@@ -998,8 +1012,13 @@ class WordRepository(private val database: AppDatabase) {
                 }
             }
             updateDailyStatsInternal(spellPracticeDelta = 1)
+            updateBookDailyStatsInternal(bookId = bookId, spellPracticeDelta = 1)
         }
     }
+
+    /** 1.4.5：某本书从 fromDate 起的按书记账（升级当天开始才有数据）。 */
+    suspend fun getBookDailyStats(bookId: Long, fromDate: String): List<BookDailyStats> =
+        bookDailyStatsDao.getRange(bookId, fromDate)
 
     private suspend fun getTodayNewWordsCount(): Int {
         val today = currentLearningDate().format(DATE_FORMATTER)
@@ -1257,8 +1276,37 @@ class WordRepository(private val database: AppDatabase) {
         dailyStatsDao.update(updated)
     }
 
-    private suspend fun invalidateForecastCacheInternal() {
-        forecastCacheDao.clearAll()
+    /** 按书累计每日新词/复习/拼写（1.4.5）。bookId<=0 的老调用直接跳过。 */
+    private suspend fun updateBookDailyStatsInternal(
+        bookId: Long,
+        newWordsDelta: Int = 0,
+        reviewWordsDelta: Int = 0,
+        spellPracticeDelta: Int = 0
+    ) {
+        if (bookId <= 0L) return
+        if (newWordsDelta == 0 && reviewWordsDelta == 0 && spellPracticeDelta == 0) return
+        val today = currentLearningDate().format(DATE_FORMATTER)
+        val updated = bookDailyStatsDao.addExisting(
+            date = today,
+            bookId = bookId,
+            newCount = newWordsDelta,
+            reviewCount = reviewWordsDelta,
+            spellCount = spellPracticeDelta
+        )
+        if (updated == 0) {
+            bookDailyStatsDao.insertIfAbsent(
+                BookDailyStats(
+                    date = today,
+                    bookId = bookId,
+                    newCount = newWordsDelta.coerceAtLeast(0),
+                    reviewCount = reviewWordsDelta.coerceAtLeast(0),
+                    spellCount = spellPracticeDelta.coerceAtLeast(0)
+                )
+            )
+        }
+    }
+
+    private suspend fun invalidateForecastCacheInternal() {        forecastCacheDao.clearAll()
     }
 
     private suspend fun getProgressByWordIdsChunked(wordIds: Collection<Long>): List<Progress> {

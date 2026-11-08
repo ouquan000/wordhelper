@@ -127,8 +127,7 @@ data class CardBackConfig(
     val blocks: List<CardBackBlock> = emptyList()
 ) {
     /** 实际会被画出来的块：可见 + 类型认识。 */
-    val renderableBlocks: List<CardBackBlock>
-        get() = blocks.filter { it.visible && it.type != null }
+    val renderableBlocks: List<CardBackBlock> = blocks.filter { it.visible && it.type != null }
 
     /** 被跳过的未知类型（用于给用户一句提示）。 */
     val unknownTypes: List<String>

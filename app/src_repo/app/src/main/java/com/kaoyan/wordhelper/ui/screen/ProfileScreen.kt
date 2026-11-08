@@ -47,7 +47,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kaoyan.wordhelper.data.model.MethodCount
@@ -60,6 +59,7 @@ import com.kaoyan.wordhelper.ui.component.HeatmapLegend
 import com.kaoyan.wordhelper.ui.component.MemoryLineChart
 import com.kaoyan.wordhelper.ui.viewmodel.AiLabSummary
 import com.kaoyan.wordhelper.ui.viewmodel.BookStats
+import com.kaoyan.wordhelper.ui.viewmodel.LineChartEntry
 import com.kaoyan.wordhelper.ui.viewmodel.ProfileViewModel
 import com.kaoyan.wordhelper.ui.viewmodel.ProfileStats
 import com.kaoyan.wordhelper.ui.viewmodel.StatsScope
@@ -80,6 +80,7 @@ fun ProfileScreen(
     val statsScope by viewModel.statsScope.collectAsStateWithLifecycle()
     val bookStats by viewModel.bookStats.collectAsStateWithLifecycle()
     val methodCounts by viewModel.methodCounts.collectAsStateWithLifecycle()
+    val bookLineData by viewModel.bookLineData.collectAsStateWithLifecycle()
     val aiLabSummary by viewModel.aiLabSummary.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val rewritePendingCount by viewModel.rewritePendingCount.collectAsStateWithLifecycle()
@@ -193,6 +194,7 @@ fun ProfileScreen(
                         stats = stats,
                         bookStats = bookStats,
                         methodCounts = methodCounts,
+                        bookLineData = bookLineData,
                         statsScope = statsScope,
                         onStatsScopeChange = viewModel::setStatsScope,
                         onOpenStats = onOpenStats
@@ -228,15 +230,13 @@ fun ProfileScreen(
                         plannedNewWordsEnabled = settings.plannedNewWordsEnabled,
                         showBuiltinFullBooks = showBuiltinFullBooks,
                         cardBackUrl = settings.cardBackUrl,
-                        cardBackToken = settings.cardBackToken,
                         rewritePendingCount = rewritePendingCount,
                         onNewWordsLimitChange = viewModel::updateNewWordsLimit,
                         onFontScaleChange = viewModel::updateFontScale,
                         onDarkModeChange = viewModel::updateDarkMode,
                         onPlannedNewWordsEnabledChange = viewModel::updatePlannedNewWordsEnabled,
                         onShowBuiltinFullBooksChange = viewModel::updateShowBuiltinFullBooks,
-                        onCardBackUrlChange = viewModel::updateCardBackUrl,
-                        onCardBackTokenChange = viewModel::updateCardBackToken
+                        onCardBackUrlChange = viewModel::updateCardBackUrl
                     )
                 }
             }
@@ -270,6 +270,7 @@ private fun StatsCard(
     stats: ProfileStats,
     bookStats: BookStats,
     methodCounts: List<MethodCount>,
+    bookLineData: List<LineChartEntry>,
     statsScope: StatsScope,
     onStatsScopeChange: (StatsScope) -> Unit,
     onOpenStats: () -> Unit
@@ -376,6 +377,21 @@ private fun StatsCard(
                 }
                 Text(
                     text = "按当前词书去重统计；与全局的「次」不是同一口径，两者不能相加。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(text = "过去一周趋势（这本书）", style = MaterialTheme.typography.titleMedium)
+                if (bookLineData.all { it.newCount == 0 && it.reviewCount == 0 }) {
+                    EmptyState(text = "从今天起按书记账，明天就能看到曲线")
+                } else {
+                    MemoryLineChart(
+                        data = bookLineData,
+                        modifier = Modifier.height(180.dp),
+                        showLegend = false
+                    )
+                }
+                Text(
+                    text = "按书记账从升级到 1.4.5 当天开始，更早的历史没有按书拆分。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -542,19 +558,16 @@ private fun SettingsCard(
     plannedNewWordsEnabled: Boolean,
     showBuiltinFullBooks: Boolean,
     cardBackUrl: String,
-    cardBackToken: String,
     rewritePendingCount: Int,
     onNewWordsLimitChange: (Int) -> Unit,
     onFontScaleChange: (Float) -> Unit,
     onDarkModeChange: (DarkMode) -> Unit,
     onPlannedNewWordsEnabledChange: (Boolean) -> Unit,
     onShowBuiltinFullBooksChange: (Boolean) -> Unit,
-    onCardBackUrlChange: (String) -> Unit,
-    onCardBackTokenChange: (String) -> Unit
+    onCardBackUrlChange: (String) -> Unit
 ) {
+    // 电脑端给的是「地址#口令」一整行，这里只让用户粘一次，解析在 SettingsRepository 里做。
     var cardBackUrlInput by remember(cardBackUrl) { mutableStateOf(cardBackUrl) }
-    // 口令是长串随机字符，只显示圆点；粘贴进来能直接存。
-    var cardBackTokenInput by remember(cardBackToken) { mutableStateOf(cardBackToken) }
     var dailyNewWordsInput by remember(newWordsLimit) { mutableStateOf(newWordsLimit.toString()) }
     val parsedDailyNewWords = dailyNewWordsInput.toIntOrNull()
     val canSaveDailyNewWords = parsedDailyNewWords != null &&
@@ -653,7 +666,7 @@ private fun SettingsCard(
                         modifier = Modifier
                             .weight(1f)
                             .testTag("settings_cardback_url"),
-                        placeholder = { Text(text = "http://192.168.1.10:8765") }
+                        placeholder = { Text(text = "粘贴电脑上那一行") }
                     )
                     TextButton(
                         onClick = { onCardBackUrlChange(cardBackUrlInput.trim()) },
@@ -663,40 +676,8 @@ private fun SettingsCard(
                     }
                 }
                 Text(
-                    text = "电脑上跑着卡背编辑器时填它的地址；只填 IP:端口也行，会自动补成 /cardback.json。" +
-                        "留空 = 只用手机上的结构。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "连接口令", style = MaterialTheme.typography.bodySmall)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = cardBackTokenInput,
-                        onValueChange = { cardBackTokenInput = it },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("settings_cardback_token"),
-                        placeholder = { Text(text = "电脑端启动窗口里的「手机口令」") }
-                    )
-                    TextButton(
-                        onClick = { onCardBackTokenChange(cardBackTokenInput.trim()) },
-                        enabled = cardBackTokenInput.trim() != cardBackToken
-                    ) {
-                        Text(text = "保存")
-                    }
-                }
-                Text(
-                    text = "电脑端第一次启动会生成并打印一串口令（存在 tools/cardback-editor/.cardback_token）。" +
-                        "手机和电脑不在同一台机器上时必须填，否则会提示「口令不对」；" +
-                        "在电脑本机开浏览器编辑卡背不用填。",
+                    text = "电脑上开卡背编辑器，点右下角「复制」；或看启动窗口里「手机：粘贴这一行」那行。" +
+                        "整行粘进来就行，不用分开填，存一次以后自动带着用。留空 = 只用手机上的结构。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -56,6 +56,7 @@ class KaoyanWordApp : Application() {
             settingsRepository = settingsRepository,
             wordDao = database.wordDao(),
             wordMemoryDao = database.wordMemoryDao(),
+            bookMemoryDao = database.bookMemoryDao(),
             queueDao = database.rewriteQueueDao(),
             bookDao = database.bookDao()
         )

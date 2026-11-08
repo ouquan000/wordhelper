@@ -43,3 +43,7 @@ tools/cardback-editor/__pycache__/
 tools/rewrite-service/__pycache__/
 tools/rewrite-service/data/
 artifacts-test/
+
+# 真机/模拟器数据库备份（含用户学习数据，不入库）
+_backup/
+_recon/db145/

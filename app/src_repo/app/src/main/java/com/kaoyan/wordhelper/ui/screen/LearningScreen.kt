@@ -67,6 +67,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -617,8 +618,9 @@ fun LearningScreen(
                                             },
                                             starEnabled = !isAnswering,
                                             cardBackConfig = cardBackConfig,
-                                            // 1.4.3.1：重写条挪进卡背底部，只在背面出现
-                                            backActions = {
+                                            // 1.4.3.1：重写条挪进卡背底部，只在背面出现；
+                                            // live = 背面当前可见，翻回正面时按钮跟着禁用，不接住正面的触摸。
+                                            backActions = { live ->
                                                 RewriteBar(
                                                     wordId = state.word.id,
                                                     mark = rewriteMark,
@@ -628,7 +630,7 @@ fun LearningScreen(
                                                     onMark = viewModel::markRewrite,
                                                     onCancel = viewModel::cancelRewrite,
                                                     onUndo = viewModel::undoRewrite,
-                                                    enabled = !isAnswering,
+                                                    enabled = live && !isAnswering,
                                                     progress = rewriteProgress,
                                                     justUpdated = rewriteJustUpdated
                                                 )
@@ -1631,10 +1633,13 @@ private fun WordCard(
     onFlipChanged: (Boolean) -> Unit,
     starEnabled: Boolean,
     cardBackConfig: CardBackConfig,
-    backActions: (@Composable () -> Unit)? = null,
+    backActions: (@Composable (Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var isFlipped by remember(word.id) { mutableStateOf(false) }
+    // 卡背延后到换词动画（最长 320ms，见 wordCardTransition）结束后的静止帧再首次组合。
+    // 翻面时它已经在树里，跨 90° 的那一帧就只剩 layer 的 alpha 切换，不再付首次组合 + 测量。
+    var backReady by remember(word.id) { mutableStateOf(false) }
     val normalizedWordLength = word.word.trim().length
     val displayWord = remember(word.word) { word.word.adaptiveWordText() }
     val typography = MaterialTheme.typography
@@ -1684,13 +1689,21 @@ private fun WordCard(
         onFlipChanged(false)
         backContentScrollState.scrollTo(0)
     }
+    // 换词时复位；等卡片切换动画彻底静止后再挂卡背内容（不跟动画抢同一帧）。
+    LaunchedEffect(word.id) {
+        backReady = false
+        delay(400)
+        backReady = true
+    }
     val density = LocalDensity.current
-    val rotation by animateFloatAsState(
+    val rotation = animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
         animationSpec = tween(durationMillis = 300),
         label = "wordCardRotation"
     )
-    val showFront = rotation <= 90f
+    // 只在跨过 90° 时翻转一次，而不是每帧：composition 里读的是它，rotation 本体只进 layer lambda。
+    val showFront by remember { derivedStateOf { rotation.value <= 90f } }
+    val backVisible = !showFront
 
     val frontBrush = Brush.verticalGradient(
         colors = listOf(
@@ -1772,50 +1785,59 @@ private fun WordCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .fillMaxHeight()
                         .graphicsLayer {
-                            rotationY = rotation
+                            // 读值留在 layer lambda 里：翻面这 300ms 每帧只重画，不重组。
+                            rotationY = rotation.value
                             cameraDistance = 12f * density.density
                         },
-                    contentAlignment = if (showFront) Alignment.Center else Alignment.TopCenter
+                    contentAlignment = Alignment.TopCenter
                 ) {
-                    if (showFront) {
-                        Column(
+                    // 正面常驻：背面露出时只把 alpha 归零，不再整棵释放/重建。
+                    // align(Center)：内层 Box 的 contentAlignment 已改 TopCenter（给卡背用），
+                    // 正面保持原来「垂直居中」的位置，不跟卡背抢同一个默认对齐。
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                            .graphicsLayer { alpha = if (backVisible) 0f else 1f },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
+                    ) {
+                        AdaptiveWordText(
+                            text = displayWord,
+                            preferredStyle = frontWordStyle,
+                            fallbackStyles = frontFallbackStyles,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
-                        ) {
-                            AdaptiveWordText(
-                                text = displayWord,
-                                preferredStyle = frontWordStyle,
-                                fallbackStyles = frontFallbackStyles,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 2.dp),
-                                textAlign = TextAlign.Center,
-                                maxLines = wordMaxLines
-                            )
-                            if (word.phonetic.isNotBlank()) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                ) {
-                                    Text(
-                                        text = word.phonetic,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
+                                .padding(horizontal = 2.dp),
+                            textAlign = TextAlign.Center,
+                            maxLines = wordMaxLines
+                        )
+                        if (word.phonetic.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                            ) {
+                                Text(
+                                    text = word.phonetic,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
                             }
-                            Text(
-                                text = "轻触卡片查看释义与例句",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
-                            )
                         }
-                    } else {
+                        Text(
+                            text = "轻触卡片查看释义与例句",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    // 背面同样常驻（词稳定 400ms 后才挂上），反贴 180°，跟正面共用同一次 3D 旋转。
+                    // 不可见时 interactive = false：滚动与重写条都不吃触摸，两面不会各响应一次。
+                    if (backReady || isFlipped) {
                         // 1.4.3.2：重写区随卡背内容一起滚，排在正文最后，不再固定贴卡片底边。
                         CardBackBlocks(
                             config = cardBackConfig,
@@ -1823,6 +1845,7 @@ private fun WordCard(
                             displayWord = displayWord,
                             backWordStyle = backWordStyle,
                             scrollState = backContentScrollState,
+                            interactive = backVisible,
                             backActions = backActions
                         )
                     }
@@ -1877,14 +1900,19 @@ private fun CardBackBlocks(
     displayWord: String,
     backWordStyle: TextStyle,
     scrollState: androidx.compose.foundation.ScrollState,
-    backActions: (@Composable () -> Unit)? = null
+    interactive: Boolean,
+    backActions: (@Composable (Boolean) -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp, vertical = 12.dp)
-            .graphicsLayer { rotationY = 180f }
-            .verticalScroll(scrollState),
+            .graphicsLayer {
+                rotationY = 180f
+                // 不可见时只把 alpha 归零：它在树里但既不画、也不吃触摸。
+                alpha = if (interactive) 1f else 0f
+            }
+            .verticalScroll(scrollState, enabled = interactive),
         verticalArrangement = Arrangement.spacedBy(config.spacingDp.dp)
     ) {
         config.renderableBlocks.forEach { block ->
@@ -1901,13 +1929,14 @@ private fun CardBackBlocks(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // 吞掉空白区的点击，免得点状态文字时把卡片翻回正面
+                    // 吞掉空白区的点击，免得点状态文字时把卡片翻回正面（背面不可见时不吞）
                     .clickable(
+                        enabled = interactive,
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { }
             ) {
-                backActions()
+                backActions(interactive)
             }
         }
     }

@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kaoyan.wordhelper.KaoyanWordApp
 import com.kaoyan.wordhelper.data.entity.Book
+import com.kaoyan.wordhelper.data.entity.BookDailyStats
 import com.kaoyan.wordhelper.data.model.DailyStatsAggregate
 import com.kaoyan.wordhelper.data.model.AIPresets
 import com.kaoyan.wordhelper.data.model.MethodCount
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -183,6 +185,25 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         } else {
             currentBookFlow.flatMapLatest { book ->
                 if (book == null) flowOf(emptyList()) else repository.getBookMethodCounts(book.id)
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * 当前词书的一周趋势（1.4.5）。
+     * 1.4.5 之前没有按书记账，所以曲线从升级当天开始——界面要写「从今天起」，
+     * 不然看起来像历史数据丢了。
+     */
+    val bookLineData: StateFlow<List<LineChartEntry>> = _statsScope.flatMapLatest { scope ->
+        if (scope != StatsScope.BOOK) {
+            flowOf(emptyList())
+        } else {
+            currentBookFlow.flatMapLatest { book ->
+                if (book == null) flowOf(emptyList())
+                else flow {
+                    val rows = repository.getBookDailyStats(book.id, weekRange.first.toString())
+                    emit(buildBookLineData(rows))
+                }
             }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -378,6 +399,24 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                     date = cursor,
                     newCount = aggregate?.newWordsCount ?: 0,
                     reviewCount = aggregate?.reviewWordsCount ?: 0
+                )
+            )
+            cursor = cursor.plusDays(1)
+        }
+        return result
+    }
+
+    private fun buildBookLineData(rows: List<BookDailyStats>): List<LineChartEntry> {
+        val map = rows.mapNotNull { row -> parseDate(row.date)?.let { it to row } }.toMap()
+        val result = mutableListOf<LineChartEntry>()
+        var cursor = weekRange.first
+        while (!cursor.isAfter(weekRange.second)) {
+            val row = map[cursor]
+            result.add(
+                LineChartEntry(
+                    date = cursor,
+                    newCount = row?.newCount ?: 0,
+                    reviewCount = row?.reviewCount ?: 0
                 )
             )
             cursor = cursor.plusDays(1)

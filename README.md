@@ -7,6 +7,19 @@
 - 上游 LICENSE 原样保留在 `app/src_repo/LICENSE`，本仓库的改动汇总见文末「本仓库改了什么」
 
 
+## 协作纪律
+
+1. **只说不做**：未确认不动产品代码、不装包、不发版。读代码、查资料、只读探测不用问。
+   「开工」= 改代码 / 装包 / 发版。
+2. **先 grill 再开工**：需求模糊、动作不可逆、或估计超过半天时，先问到边界清楚；
+   指令明确的小事直接做，别反问。
+3. **代码与文件夹卫生**：临时文件只进 `_recon/`；一个功能一条链路、能独立回滚；
+   不为了省事复制第二份实现凑合，避免屎山。
+4. **两道闸**：新功能做完，先叫**测试鱼**（独立上下文，实际操作，测新功能稳定性 + 回归老功能），
+   再叫**评审鱼**（另一个独立上下文，打分：是否反人类、是否要用户理解内部概念、
+   是否有跨书 / 跨端隐式影响、是否给后续迁移埋雷），两份都写成报告文件、P0/P1 分级，
+   过了才交付。
+
 ## 自测与调查题目
 
 ### A. 20 词自测要看什么
@@ -75,9 +88,9 @@ Gradle 发行版走腾讯云镜像，两者都不改项目源码。
 |---|---|
 | 签名 | `_toolchain/signing/wordhelper.jks`（别名 `wordhelper`），**这把 key 不能换、不能丢** |
 | 包名 | `com.kaoyan.wordhelper`，与官方版相同 |
-| 版本号 | `versionCode` 与 `versionName` 同步维护（当前 `versionCode 9 / versionName 1.4.4`，DB 16） |
+| 版本号 | `versionCode` 与 `versionName` 同步维护（当前 `versionCode 10 / versionName 1.4.5`，DB 17） |
 
-数据库版本只升不降，每次升级都带迁移。当前 15 → 16（`tb_word_memory` 加 `method` 列；新建 `tb_sync_op` / `tb_sync_state`，都给学习记录同步用）。
+数据库版本只升不降，每次升级都带迁移。当前 16 → 17（新建 `tb_book_memory` 按书存记忆思路；新建 `tb_book_daily_stats` 按书记每日学习量；`tb_rewrite_queue` 加 `book_id`）。15 → 17 的完整链路已在真机备份上验过（数据零丢失、`integrity_check=ok`）。
 
 > 唯一的例外：官方版用的是作者的签名，与本项目不同，所以**从官方版切过来必须卸载一次**，
 > 学习进度会清空。切过来之后，后续版本都能互相覆盖。
@@ -163,11 +176,11 @@ export MSYS2_ARG_CONV_EXCL='*'
    ```
    卡背编辑器已启动
      浏览器打开：http://127.0.0.1:8765/
-     手机填这个地址：http://192.168.1.23:8765/cardback.json
+     手机：粘贴这一行 → http://192.168.1.23:8765#sHVqPup2Vn5M8YsAni-o-g
    ```
    同时会自动打开浏览器。端口被占用时会说人话退出，不会去动发布目录。
 2. **在浏览器里改** — 左边组件库（可加/删/显隐/改标题/改颜色/改字号），中间是块列表（拖动调顺序，或用 `Alt+↑/↓`），右边是实时预览。改完点「发布」。
-3. **手机上拉一次** — 「我的」→「卡背结构地址」填 `192.168.1.23:8765`（省事写法：不用写 `http://`，也不用写路径，会自动补成 `http://192.168.1.23:8765/cardback.json`；填完整 URL 则原样使用，留给以后远程接口）。保存后去「词库」，点「当前词书：六级记忆卡」那一行**最右侧的刷新图标**，卡背立刻变成新结构——**不用重装、不用重启 App**。
+3. **手机上拉一次** — 「我的」→「卡背结构地址」**整行粘贴**上面那行「手机：粘贴这一行」：`http://192.168.1.23:8765#<口令>`。`#` 后面是口令，手机自己拆开用；也可以只粘 `192.168.1.23:8765`（不带口令，那就连不上——2026-11 起电脑端要口令）。保存后去「词库」，点「当前词书：六级记忆卡」那一行**最右侧的刷新图标**，卡背立刻变成新结构——**不用重装、不用重启 App**。
 
 之后想再改，回浏览器改完点发布，手机上再点一次刷新就行。
 
@@ -265,10 +278,10 @@ export MSYS2_ARG_CONV_EXCL='*'
 - **一次性清空学习记录**：升级后第一次启动清 `tb_progress / tb_early_review_ref / tb_new_word_ref / tb_daily_stats / tb_study_log / word_ml_stats / training_samples`，并清当天新词计划；DataStore 标记 `cleanup_132_done`，之后正常背词不会被清（**不可逆**）
 - **20 词测试书**：`assets/test20_cards.json` 从六级卡抽 20 词（带记忆思路），书名「测试·20词」，只建书不切当前书、可删、删了不复活
 - 完整词库两本没有删；生词本引用随记录清理一起清空
-- 当前 `versionCode 8 / versionName 1.4.3.2`
+- 当前 `versionCode 10 / versionName 1.4.5`（DB 17）
 - APK：`dist/english-app-1.4.3.2.apk`（33,139,773 B，md5 `e3bd6b57c4fb9a0016aac6ccb5be6183`）
 
-## 1.4.4 方向（尚未开工，等用户拍板）
+## 1.4.4 / 1.4.5 已完成（下面是当时列的候选，留作历史）
 
 候选按优先级（详见 `HANDOFF.md` §9）：
 
@@ -287,9 +300,11 @@ export MSYS2_ARG_CONV_EXCL='*'
 
 ## 版本号约定
 
-- 当前 `versionCode 8 / versionName 1.4.3.2`（重写条竖排随滚 + 清记录 + 20 词测试书）
-- 上一版 `versionCode 7 / versionName 1.4.3.1`（重写条进卡背 + 进度条 + 原地换文）
+- 当前 `versionCode 10 / versionName 1.4.5`（DB 17：翻面手感 + 整行口令 + 按书记忆 + 按书曲线 + 自动备份）
+- 上一版 `versionCode 9 / versionName 1.4.4`（DB 16：方法标签 + 统计双视图 + 局域网同步 + 口令收口 + 提示词放宽）
+- 再上一版 `versionCode 8 / versionName 1.4.3.2`（重写条竖排随滚 + 清记录 + 20 词测试书）
+- 再上一版 `versionCode 7 / versionName 1.4.3.1`（重写条进卡背 + 进度条 + 原地换文）
 - 再上一版 `versionCode 6 / versionName 1.4.3`（重写记忆思路）
 - 再上一版 `versionCode 5 / versionName 1.4.2`（卡背 JSON 清单 + 电脑端编辑器）
-- **下一次发版 `versionCode` +1（→9）**；内部验证包不要升号，同号覆盖安装即可
-- 数据库版本 15；本次加 `tb_rewrite_queue` 与 `tb_word_memory.source/rev/prev_approach`，迁移 `MIGRATION_14_15`
+- **下一次发版 `versionCode` +1（→11）**；内部验证包不要升号，同号覆盖安装即可
+- 数据库版本 17；1.4.4 加 `tb_word_memory.method` 与两张同步表（`MIGRATION_15_16`）；1.4.5 加 `tb_book_memory`、`tb_book_daily_stats` 与 `tb_rewrite_queue.book_id`（`MIGRATION_16_17`）

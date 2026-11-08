@@ -2,9 +2,11 @@ package com.kaoyan.wordhelper.data.repository
 
 import com.google.gson.Gson
 import com.kaoyan.wordhelper.data.dao.BookDao
+import com.kaoyan.wordhelper.data.dao.BookMemoryDao
 import com.kaoyan.wordhelper.data.dao.RewriteQueueDao
 import com.kaoyan.wordhelper.data.dao.WordDao
 import com.kaoyan.wordhelper.data.dao.WordMemoryDao
+import com.kaoyan.wordhelper.data.entity.BookMemory
 import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
 import com.kaoyan.wordhelper.data.entity.RewriteStatus
 import com.kaoyan.wordhelper.data.entity.WordMemory
@@ -12,6 +14,7 @@ import com.kaoyan.wordhelper.data.model.RewriteModel
 import com.kaoyan.wordhelper.data.model.RewriteModels
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -66,6 +69,8 @@ class RewriteRepository(
     private val settingsRepository: SettingsRepository,
     private val wordDao: WordDao,
     private val wordMemoryDao: WordMemoryDao,
+    /** 1.4.5 起卡背思路按书存，读的时候先看这本书有没有自己的版本。 */
+    private val bookMemoryDao: BookMemoryDao,
     private val queueDao: RewriteQueueDao,
     /** 只为把书名带上去：记录页按书筛，可书只在手机库里。 */
     private val bookDao: BookDao
@@ -99,14 +104,34 @@ class RewriteRepository(
     /** 有没有填电脑地址；没填就别往队列里塞东西。 */
     suspend fun hasAddress(): Boolean = baseOrigin() != null
 
-    /** 当前词在库里最新的思路，用于同步完原地刷新卡背。 */
-    suspend fun approachOf(wordId: Long): String? = wordMemoryDao.getByWordId(wordId)?.approach
+    /** 当前词在库里最新的思路，用于同步完原地刷新卡背。bookId=0 时退回全局那份。 */
+    suspend fun approachOf(wordId: Long, bookId: Long = 0L): String? {
+        if (bookId > 0L) {
+            val own = bookMemoryDao.getForBook(wordId, bookId)?.approach.orEmpty()
+            if (own.isNotBlank()) return own
+        }
+        return wordMemoryDao.getByWordId(wordId)?.approach
+    }
 
     /**
      * 卡背直接订阅库里的记忆思路：电脑端结果一旦落库就换文，
      * 不必依赖「同步那一刻正好刷新了词对象」这样的时序。
+     * 这本书有自己的版本就用它，没有就用全局（老数据不用回填）。
      */
-    fun observeApproach(wordId: Long): Flow<String?> = wordMemoryDao.observeApproach(wordId)
+    fun observeApproach(wordId: Long, bookId: Long = 0L): Flow<String?> {
+        val global = wordMemoryDao.observeApproach(wordId)
+        if (bookId <= 0L) return global
+        return bookMemoryDao.observeApproachForBook(wordId, bookId)
+            .combine(global) { own, fallback -> own?.takeIf { it.isNotBlank() } ?: fallback }
+    }
+
+    /** 这本书当前生效的方法标签（用于重写完后原地换胶囊）。 */
+    suspend fun methodOf(wordId: Long, bookId: Long = 0L): String {
+        if (bookId > 0L) {
+            bookMemoryDao.methodForBook(wordId, bookId)?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        return wordMemoryDao.getByWordId(wordId)?.method.orEmpty()
+    }
 
     /**
      * 打标记并立刻尝试上传。返回 true 表示已发到电脑（status=queued）；
@@ -116,7 +141,8 @@ class RewriteRepository(
         wordId: Long,
         word: String,
         model: String,
-        instruction: String
+        instruction: String,
+        bookId: Long = 0L
     ): Boolean {
         val now = System.currentTimeMillis()
         val existing = queueDao.getByWordId(wordId)
@@ -129,6 +155,7 @@ class RewriteRepository(
         queueDao.upsert(
             RewriteQueueItem(
                 wordId = wordId,
+                bookId = bookId,
                 word = word,
                 instruction = instruction.trim(),
                 model = model,
@@ -151,7 +178,23 @@ class RewriteRepository(
     }
 
     /** 撤销一次重写；返回恢复后的旧思路，没有可撤销版本时返回 null。 */
-    suspend fun undo(wordId: Long): String? {
+    suspend fun undo(wordId: Long, bookId: Long = 0L): String? {
+        if (bookId > 0L) {
+            val own = bookMemoryDao.getForBook(wordId, bookId) ?: return null
+            val prev = own.prevApproach?.takeIf { it.isNotBlank() } ?: return null
+            val nextRev = (own.rev - 1).coerceAtLeast(0)
+            bookMemoryDao.upsert(
+                own.copy(
+                    approach = prev,
+                    prevApproach = null,
+                    rev = nextRev,
+                    source = if (nextRev == 0) WordMemory.SOURCE_SEED else WordMemory.SOURCE_USER,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+            queueDao.delete(wordId)
+            return prev
+        }
         val memory = wordMemoryDao.getByWordId(wordId) ?: return null
         val prev = memory.prevApproach?.takeIf { it.isNotBlank() } ?: return null
         val nextRev = (memory.rev - 1).coerceAtLeast(0)
@@ -352,6 +395,34 @@ class RewriteRepository(
             .joinToString("\n")
             .ifBlank { existing?.approach.orEmpty() }
 
+        val method = dto.method.orEmpty().trim().lowercase()
+            .takeIf { it.isNotEmpty() }
+            ?: existing?.method.orEmpty()
+
+        // 1.4.5：这条标记是在哪本书里点的，就只改哪本书的卡背。
+        // bookId=0 是老队列/换机恢复，沿用旧行为写全局那份。
+        val bookId = mark?.bookId ?: 0L
+        if (bookId > 0L) {
+            val own = bookMemoryDao.getForBook(wordId, bookId)
+            bookMemoryDao.upsert(
+                BookMemory(
+                    wordId = wordId,
+                    bookId = bookId,
+                    approach = approach,
+                    collocations = own?.collocations?.takeIf { it.isNotBlank() }
+                        ?: existing?.collocations.orEmpty(),
+                    method = method,
+                    updatedAt = now,
+                    source = WordMemory.SOURCE_USER,
+                    rev = dto.rev ?: ((own?.rev ?: 0) + 1),
+                    prevApproach = (own?.approach?.takeIf { it.isNotBlank() } ?: prev)
+                        .takeIf { it.isNotBlank() }
+                )
+            )
+            queueDao.updateStatus(wordId, RewriteStatus.DONE, null, now)
+            return wordId
+        }
+
         wordMemoryDao.upsert(
             WordMemory(
                 wordId = wordId,
@@ -362,9 +433,7 @@ class RewriteRepository(
                 rev = dto.rev ?: ((existing?.rev ?: 0) + 1),
                 prevApproach = prev.takeIf { it.isNotBlank() },
                 // 重写出来的是「哪一招」也一起换掉；电脑端没给就保留原标签，别把卡背标签弄空。
-                method = dto.method.orEmpty().trim().lowercase()
-                    .takeIf { it.isNotEmpty() }
-                    ?: existing?.method.orEmpty()
+                method = method
             )
         )
         queueDao.updateStatus(wordId, RewriteStatus.DONE, null, now)

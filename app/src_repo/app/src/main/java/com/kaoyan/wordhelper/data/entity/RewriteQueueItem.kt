@@ -20,6 +20,14 @@ data class RewriteQueueItem(
     val id: Long = 0,
     @ColumnInfo(name = "word_id")
     val wordId: Long,
+    /**
+     * 在「哪本书」里点的重写（1.4.5 / DB17）。
+     *
+     * 卡背思路从这一版起按书存：同一个词在两本书里被重写，只改自己那本。
+     * 老队列没有这个字段（迁移填 0），0 表示沿用旧行为、写全局那份。
+     */
+    @ColumnInfo(name = "book_id")
+    val bookId: Long = 0,
     /** 冗余存一份单词，电脑端换机恢复时不必再查词表。 */
     val word: String,
     /** 用户写的「哪里有问题」；空 = 整段重写。 */
