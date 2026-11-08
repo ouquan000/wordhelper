@@ -5,22 +5,54 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kaoyan.wordhelper.KaoyanWordApp
+import com.kaoyan.wordhelper.data.entity.Book
 import com.kaoyan.wordhelper.data.model.DailyStatsAggregate
 import com.kaoyan.wordhelper.data.model.AIPresets
+import com.kaoyan.wordhelper.data.model.MethodCount
 import com.kaoyan.wordhelper.data.repository.DarkMode
 import com.kaoyan.wordhelper.data.repository.UserSettings
 import com.kaoyan.wordhelper.util.DatabaseBackupManager
 import com.kaoyan.wordhelper.util.DateUtils
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
+
+/** 学习统计卡片的两种口径。 */
+enum class StatsScope {
+    /** 全局：tb_daily_stats 的事件次数，跨全部词书。 */
+    GLOBAL,
+
+    /** 当前词书：tb_progress 的去重词数，只算正在学的这一本。 */
+    BOOK
+}
+
+/**
+ * 「当前词书」视图的指标。
+ * 与 ProfileStats 是两套口径（这里是「词」，全局是「次」），**不能相加、不能互相换算**。
+ */
+data class BookStats(
+    val bookName: String = "",
+    val hasBook: Boolean = false,
+    val learnedCount: Int = 0,
+    val masteredCount: Int = 0,
+    val dueCount: Int = 0,
+    /** 无复习记录时为 null，UI 显示「—」而不是 NaN。 */
+    val accuracyPercent: Int? = null,
+    val todayTouchedCount: Int = 0
+)
 
 data class ProfileStats(
     val streakDays: Int,
@@ -42,6 +74,7 @@ data class AiLabSummary(
     val isConfigured: Boolean = false
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = (application as KaoyanWordApp).repository
     private val settingsRepository = (application as KaoyanWordApp).settingsRepository
@@ -56,6 +89,38 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         (application as KaoyanWordApp).rewriteRepository.observeOpenCount()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
+    // ---- 学习记录同步（1.4.4）：手机本地排队，用户点一下才和电脑对一次。
+    private val syncRepository = (application as KaoyanWordApp).syncRepository
+
+    private val _syncPending = MutableStateFlow(0)
+
+    /** 还没发出去的进度条数；0 = 手机就是最新的。 */
+    val syncPending: StateFlow<Int> = _syncPending.asStateFlow()
+
+    private val _syncing = MutableStateFlow(false)
+    val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
+
+    private val _syncMessage = MutableStateFlow<String?>(null)
+    val syncMessage: StateFlow<String?> = _syncMessage.asStateFlow()
+
+    fun refreshSyncPending() {
+        viewModelScope.launch {
+            _syncPending.value = runCatching { syncRepository.pendingCount() }.getOrDefault(0)
+        }
+    }
+
+    /** 手动同步一次：先拉后推再拉；冲突按最后复习时间判，不弹窗。 */
+    fun syncLearningRecords() {
+        if (_syncing.value) return
+        _syncing.value = true
+        viewModelScope.launch {
+            val result = syncRepository.syncOnce()
+            _syncMessage.value = result.getOrElse { it.message ?: "同步失败，稍后再试" }
+            _syncPending.value = runCatching { syncRepository.pendingCount() }.getOrDefault(0)
+            _syncing.value = false
+        }
+    }
+
     private val weekRange = DateUtils.learningDateRange(days = 7)
 
     private val heatmapRange = DateUtils.learningHeatmapRange()
@@ -66,6 +131,65 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     val stats: StateFlow<ProfileStats> = combine(weekStatsFlow, heatmapStatsFlow) { weekAggregates, heatmapAggregates ->
         buildStats(weekAggregates, heatmapAggregates)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyStats())
+
+    /** 学习统计卡片的当前口径，切到「当前词书」时由 [bookStats] 提供数字。 */
+    private val _statsScope = MutableStateFlow(StatsScope.GLOBAL)
+    val statsScope: StateFlow<StatsScope> = _statsScope.asStateFlow()
+
+    /** 「当前词书」= 正在学的那本；没有激活词书时退回第一本非「生词本」，再退回第一本。 */
+    private val currentBookFlow: Flow<Book?> = combine(
+        repository.getActiveBookFlow(),
+        repository.getAllBooks()
+    ) { active, books ->
+        active ?: books.firstOrNull { it.type != Book.TYPE_NEW_WORDS } ?: books.firstOrNull()
+    }
+
+    /**
+     * 「当前词书」视图的 5 个指标。
+     * 全部走 DAO 的 COUNT/AVG 聚合（每本 5000+ 词），切勿换成把整本 Progress 实体化再数。
+     */
+    val bookStats: StateFlow<BookStats> = currentBookFlow.flatMapLatest { book ->
+        if (book == null) {
+            flowOf(BookStats())
+        } else {
+            val (dayStart, dayEnd) = learningDayRange()
+            combine(
+                repository.getLearnedCount(book.id),
+                repository.getMasteredCount(book.id),
+                repository.getBookDueCount(book.id),
+                repository.getBookAccuracy(book.id),
+                repository.getBookTodayTouchedCount(book.id, dayStart, dayEnd)
+            ) { learned, mastered, due, accuracy, todayTouched ->
+                BookStats(
+                    bookName = book.name,
+                    hasBook = true,
+                    learnedCount = learned,
+                    masteredCount = mastered,
+                    dueCount = due,
+                    accuracyPercent = accuracy?.let { percentOf(it) },
+                    todayTouchedCount = todayTouched
+                )
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BookStats())
+
+    /**
+     * 「按记忆方法」分布，跟着统计口径一起切：
+     * 全局 = 已学词按 method 去重计数；当前词书 = 只数这一本。
+     */
+    val methodCounts: StateFlow<List<MethodCount>> = _statsScope.flatMapLatest { scope ->
+        if (scope == StatsScope.GLOBAL) {
+            repository.getGlobalMethodCounts()
+        } else {
+            currentBookFlow.flatMapLatest { book ->
+                if (book == null) flowOf(emptyList()) else repository.getBookMethodCounts(book.id)
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun setStatsScope(scope: StatsScope) {
+        _statsScope.value = scope
+    }
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
@@ -127,10 +251,27 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** 1.4.4：两本内置大词库默认隐藏，开回来才显示并重新导入。 */
+    val showBuiltinFullBooks: StateFlow<Boolean> = settingsRepository.showBuiltinFullBooks
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun updateShowBuiltinFullBooks(show: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateShowBuiltinFullBooks(show)
+        }
+    }
+
     /** 卡背结构地址（1.4.2）；留空就只用手机本地结构。 */
     fun updateCardBackUrl(url: String) {
         viewModelScope.launch {
             settingsRepository.updateCardBackUrl(url)
+        }
+    }
+
+    /** 电脑端口令（1.4.4 安全收口）；空 = 不带头，电脑本机访问才够用。 */
+    fun updateCardBackToken(token: String) {
+        viewModelScope.launch {
+            settingsRepository.updateCardBackToken(token)
         }
     }
 
@@ -307,6 +448,26 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         return runCatching { LocalDate.parse(raw, DATE_FORMATTER) }.getOrNull()
     }
 
+    /** 0f..1f 的正确率 → 0..100 的整数百分比；先夹范围，避免异常数据出现负值或超过 100%。 */
+    private fun percentOf(ratio: Float): Int {
+        return (ratio.coerceIn(0f, 1f) * 100f).roundToInt()
+    }
+
+    /**
+     * 当前学习日的毫秒区间 [起, 止)。
+     * 学习日以 04:00 为界（与 DateUtils 的 DAY_REFRESH_HOUR 同一口径）；DateUtils 没有对外暴露
+     * 这个换算，所以在这里补一个——改刷新小时时两处要一起改。
+     */
+    private fun learningDayRange(): Pair<Long, Long> {
+        val zone = ZoneId.systemDefault()
+        val start = DateUtils.currentLearningDate(zoneId = zone)
+            .atTime(LEARNING_DAY_REFRESH_HOUR, 0)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        return start to (start + ONE_DAY_MILLIS)
+    }
+
     private fun emptyStats(): ProfileStats {
         return ProfileStats(
             streakDays = 0,
@@ -325,5 +486,10 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     companion object {
         private val DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE
+
+        /** 学习日刷新小时，必须与 DateUtils 的 DAY_REFRESH_HOUR 保持一致。 */
+        private const val LEARNING_DAY_REFRESH_HOUR = 4
+
+        private const val ONE_DAY_MILLIS = 24L * 60 * 60 * 1000
     }
 }

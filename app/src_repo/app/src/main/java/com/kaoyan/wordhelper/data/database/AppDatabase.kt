@@ -15,6 +15,7 @@ import com.kaoyan.wordhelper.data.dao.NewWordRefDao
 import com.kaoyan.wordhelper.data.dao.ProgressDao
 import com.kaoyan.wordhelper.data.dao.RewriteQueueDao
 import com.kaoyan.wordhelper.data.dao.StudyLogDao
+import com.kaoyan.wordhelper.data.dao.SyncDao
 import com.kaoyan.wordhelper.data.dao.WordDao
 import com.kaoyan.wordhelper.data.dao.WordMemoryDao
 import com.kaoyan.wordhelper.data.dao.AICacheDao
@@ -35,6 +36,8 @@ import com.kaoyan.wordhelper.data.entity.NewWordRef
 import com.kaoyan.wordhelper.data.entity.Progress
 import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
 import com.kaoyan.wordhelper.data.entity.StudyLog
+import com.kaoyan.wordhelper.data.entity.SyncOp
+import com.kaoyan.wordhelper.data.entity.SyncState
 import com.kaoyan.wordhelper.data.model.PresetBookCatalog
 import com.kaoyan.wordhelper.data.model.WordDraft
 import com.kaoyan.wordhelper.data.entity.WordEntity
@@ -58,9 +61,11 @@ import kotlinx.coroutines.launch
         TrainingSample::class,
         WordMLStats::class,
         WordMemory::class,
-        RewriteQueueItem::class
+        RewriteQueueItem::class,
+        SyncOp::class,
+        SyncState::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -79,6 +84,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun wordMLStatsDao(): WordMLStatsDao
     abstract fun wordMemoryDao(): WordMemoryDao
     abstract fun rewriteQueueDao(): RewriteQueueDao
+    abstract fun syncDao(): SyncDao
 
     companion object {
         @Volatile
@@ -110,7 +116,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_11_12,
                     MIGRATION_12_13,
                     MIGRATION_13_14,
-                    MIGRATION_14_15
+                    MIGRATION_14_15,
+                    MIGRATION_15_16
                 )
                 .build()
         }
@@ -685,6 +692,35 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS index_tb_rewrite_queue_word_id " +
                         "ON tb_rewrite_queue (word_id)"
+                )
+            }
+        }
+
+        /**
+         * 1.4.4：①卡背方法标签（tb_word_memory.method）②同步队列与游标（照抄墨墨的两张表）。
+         */
+        @VisibleForTesting
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureColumnExists(db, "tb_word_memory", "method", "TEXT NOT NULL DEFAULT ''")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS tb_sync_op (
+                        op_id TEXT NOT NULL PRIMARY KEY,
+                        payload TEXT NOT NULL,
+                        created_at INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS tb_sync_state (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        server_rev INTEGER NOT NULL,
+                        device_id TEXT NOT NULL,
+                        last_sync_at INTEGER NOT NULL
+                    )
+                    """.trimIndent()
                 )
             }
         }

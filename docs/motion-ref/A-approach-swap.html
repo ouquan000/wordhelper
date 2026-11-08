@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A · 换文 — 卡背动效参考</title>
+  <!-- ===== 动效参数：只改这一块，照着翻成 Compose ===== -->
+  <script>
+  /* ============================================================
+     MOTION — 只改这里就能调（A：换文）
+     ============================================================ */
+  const MOTION = {
+    staggerMs: 140,      // 逐行错峰（要求 120–180）
+    outMs: 120,          // 旧文淡出时长
+    outShiftPx: -6,      // 旧文退出时的轻微上移
+    gapMs: 40,           // 同一行「退完 → 换字」的间隔
+    inMs: 300,           // 新文淡入时长
+    inShiftPx: 10,       // 新文起点（在下方 10px，向上归位）
+    blurPx: 1.5,         // 入场时的轻微模糊（负责把「换字」缝起来）
+    ease: 'cubic-bezier(.23, 1, .32, 1)'
+  };
+  </script>
+<style>
+  :root{
+    --paper:#F7F2E6;
+    --paper-card:#FCF8EF;
+    --page:#E7DFCE;
+    --ink:#241F18;
+    --ink-2:#6C6354;
+    --ink-3:#9C9282;
+    --rule:#DCD2BF;
+    --accent:#A6462B;
+    --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Songti SC","SimSun",serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --ease:cubic-bezier(.23,1,.32,1);
+    --out-dur:120ms;
+    --in-dur:300ms;
+    --out-shift:-6px;
+    --in-shift:10px;
+    --in-blur:1.5px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1100px 620px at 12% -12%, #F3EBDA 0%, rgba(243,235,218,0) 62%),
+      var(--page);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+    padding:52px 0 88px;
+  }
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:9;opacity:.55;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E");
+  }
+  .page{max-width:1040px;margin:0 auto;padding:0 32px}
+  .masthead{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:40px}
+  .kicker{font:11px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--ink-3)}
+  h1{font-family:var(--serif);font-weight:500;font-size:46px;line-height:1.05;letter-spacing:-.012em;margin:14px 0 12px}
+  .lede{max-width:580px;margin:0;color:var(--ink-2);font-size:14.5px;line-height:1.78}
+  .back-link{flex:none;font-size:12.5px;color:var(--ink-2);text-decoration:none;border-bottom:1px solid rgba(60,45,20,.25);padding-bottom:2px;margin-bottom:6px}
+  .back-link:hover{color:var(--ink);border-color:var(--ink)}
+
+  .layout{display:grid;grid-template-columns:372px minmax(0,1fr);gap:64px;align-items:start}
+
+  /* ---------- device ---------- */
+  .device{
+    width:372px;padding:6px;border-radius:38px;
+    background:linear-gradient(155deg,#332C22 0%,#171410 55%,#0E0C09 100%);
+    box-shadow:0 44px 70px -42px rgba(36,25,8,.8),0 2px 6px rgba(36,25,8,.22),inset 0 1px 0 rgba(255,255,255,.10);
+  }
+  .screen{width:360px;border-radius:32px;overflow:hidden;background:var(--paper)}
+  .appbar{height:50px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid rgba(60,45,20,.08)}
+  .chev{font-size:20px;line-height:1;color:var(--ink-3);margin-top:-2px}
+  .ttl{font-size:13.5px;color:var(--ink-2);letter-spacing:.02em}
+  .cnt{margin-left:auto;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .progress{height:2px;background:rgba(60,45,20,.07)}
+  .progress i{display:block;height:100%;width:16%;background:var(--accent);opacity:.55}
+
+  .card{
+    margin:14px;background:var(--paper-card);
+    border:1px solid #E4DAC6;border-radius:22px;
+    padding:18px 18px 16px;
+    box-shadow:0 12px 26px -22px rgba(50,35,10,.55);
+  }
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;
+    background:#EFE6D4;color:#6F6353;font-size:11.5px;letter-spacing:.03em;
+  }
+  .chip b{display:block;width:5px;height:5px;border-radius:50%;background:#B4915C}
+  .word{font-family:var(--serif);font-weight:500;font-size:40px;line-height:1.08;letter-spacing:-.015em;margin:16px 0 6px}
+  .ipa{font-size:13.5px;color:var(--ink-3);letter-spacing:.02em}
+  .rule{height:1px;background:var(--rule);margin:15px 0 16px}
+  .label{font-size:12.5px;font-weight:600;letter-spacing:.05em;color:var(--accent);margin:0 0 7px;opacity:.9}
+  .meaning{margin:0;font-size:16px;line-height:1.6;color:var(--ink)}
+  .lines{display:flex;flex-direction:column;gap:4px;margin:2px 0 0}
+  .line{display:grid;grid-template-columns:19px minmax(0,1fr);gap:8px;align-items:start}
+  .num{font-size:14px;line-height:25px;color:var(--accent);opacity:.72;font-variant-numeric:tabular-nums;user-select:none}
+  .line-txt{
+    margin:0;min-height:50px;font-size:15px;line-height:1.66;color:var(--ink);
+    transition:opacity var(--in-dur) var(--ease),transform var(--in-dur) var(--ease),filter var(--in-dur) var(--ease);
+    will-change:opacity,transform;
+  }
+  .line-txt.is-out{opacity:0;transform:translateY(var(--out-shift));filter:blur(.6px);transition-duration:var(--out-dur)}
+  .line-txt.is-in{opacity:0;transform:translateY(var(--in-shift));filter:blur(var(--in-blur));transition:none}
+
+  .rw{margin-top:14px;padding-top:14px;border-top:1px solid var(--rule)}
+  .rw-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .rw-k{font-size:12.5px;color:var(--ink-2);letter-spacing:.04em}
+  .rw-m{font-size:11.5px;color:var(--ink-3)}
+  .btn-swap{
+    width:100%;height:42px;border-radius:11px;border:1px solid #CBB99D;background:#FBF6EA;color:var(--ink);
+    font-family:var(--sans);font-size:14px;font-weight:500;letter-spacing:.02em;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    transition:transform 160ms var(--ease),background-color 160ms ease,border-color 160ms ease;
+  }
+  .btn-swap:hover{background:#F4EAD8;border-color:#BFA987}
+  .btn-swap:active{transform:scale(.98)}
+  .btn-swap .ico{font-size:15px;color:var(--accent)}
+  .rw-hint{margin:9px 0 0;font-size:11.5px;color:var(--ink-3);letter-spacing:.01em}
+
+  /* ---------- controls ---------- */
+  .ctrl{display:flex;gap:10px;width:372px;margin-top:18px}
+  .btn-replay{
+    flex:1;height:46px;border-radius:13px;border:0;background:var(--ink);color:#FAF4E7;
+    font-family:var(--sans);font-size:14px;font-weight:500;letter-spacing:.03em;cursor:pointer;
+    transition:transform 160ms var(--ease),background-color 160ms ease;
+  }
+  .btn-replay:hover{background:#352C21}
+  .btn-replay:active{transform:scale(.98)}
+  .chip-slow{
+    height:46px;padding:0 16px;border-radius:13px;border:1px solid rgba(60,45,20,.22);
+    background:transparent;color:var(--ink-2);font-family:var(--sans);font-size:12.5px;cursor:pointer;
+    transition:transform 160ms var(--ease),background-color 160ms ease,color 160ms ease,border-color 160ms ease;
+  }
+  .chip-slow[aria-pressed="true"]{background:var(--ink);color:#FAF4E7;border-color:var(--ink)}
+  .chip-slow:active{transform:scale(.97)}
+  .under{margin:12px 0 0;width:372px;font-size:11.5px;color:var(--ink-3);line-height:1.7}
+
+  /* ---------- notes ---------- */
+  .panel{margin-bottom:34px}
+  .panel h2{font:600 10.5px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--ink-3);margin:0 0 14px}
+  .spec{margin:0;display:grid}
+  .spec div{display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:10px 0;border-top:1px solid rgba(60,45,20,.13)}
+  .spec div:last-child{border-bottom:1px solid rgba(60,45,20,.13)}
+  .spec dt{font-size:12.5px;color:var(--ink-2)}
+  .spec dd{margin:0;font:12px/1.5 var(--mono);color:var(--ink);font-variant-numeric:tabular-nums;text-align:right}
+  pre{margin:0;background:#1D1913;color:#F2EAD8;padding:15px 17px;border-radius:12px;font:11.5px/1.7 var(--mono);overflow:auto;tab-size:2}
+  pre .c{color:#948A76}
+  ul.why{margin:0;padding:0;list-style:none}
+  ul.why li{position:relative;padding:0 0 10px 16px;font-size:13px;line-height:1.72;color:var(--ink-2)}
+  ul.why li::before{content:"";position:absolute;left:0;top:.66em;width:5px;height:1px;background:var(--accent);opacity:.7}
+  ul.why b{color:var(--ink);font-weight:500}
+  .nav{display:flex;gap:18px;flex-wrap:wrap;border-top:1px solid rgba(60,45,20,.13);padding-top:16px}
+  .nav a{font-size:12.5px;color:var(--ink-2);text-decoration:none}
+  .nav a:hover{color:var(--accent)}
+  .foot{margin-top:44px;font-size:11.5px;color:var(--ink-3);letter-spacing:.02em}
+
+  @media (max-width:900px){
+    .layout{grid-template-columns:1fr;justify-items:start;gap:44px}
+    .masthead{display:block}
+    h1{font-size:38px}
+    .back-link{display:inline-block;margin-top:14px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .line-txt{transition:opacity 180ms ease !important}
+    .line-txt.is-out{transform:none;filter:none}
+    .line-txt.is-in{transform:none;filter:none}
+    .btn-swap,.btn-replay,.chip-slow{transition:background-color 160ms ease}
+  }
+</style>
+
+</head>
+<body>
+<main class="page">
+  <header class="masthead">
+    <div>
+      <div class="kicker">Motion ref · 01 / 03</div>
+      <h1>换文</h1>
+      <p class="lede">卡背被整段重写后，三行推导逐行替换：旧文先退，新文从下方 10px 处淡入归位。数字 ①②③ 不动，只换内容——动的是文字，不是版面。</p>
+    </div>
+    <a class="back-link" href="./index.html">← 全部 demo</a>
+  </header>
+
+  <div class="layout">
+    <section>
+      <div class="device">
+        <div class="screen">
+          <div class="appbar">
+            <span class="chev">‹</span>
+            <span class="ttl">六级记忆卡</span>
+            <span class="cnt">3 / 20</span>
+          </div>
+          <div class="progress"><i></i></div>
+
+          <article class="card">
+            <span class="chip"><b></b>未安排</span>
+            <h2 class="word">meticulous</h2>
+            <div class="ipa">/məˈtɪkjələs/</div>
+            <div class="rule"></div>
+
+            <div class="label">释义</div>
+            <p class="meaning">adj. 一丝不苟的；极为仔细的</p>
+
+            <div class="label" style="margin-top:15px">记忆思路</div>
+            <div class="lines" id="lines" aria-live="polite">
+              <div class="line">
+                <span class="num" aria-hidden="true">①</span>
+                <p class="line-txt">met 来自拉丁语 metus，本义是「怕」。怕出错，才会抠到每一处。</p>
+              </div>
+              <div class="line">
+                <span class="num" aria-hidden="true">②</span>
+                <p class="line-txt">所以 meticulous 不是「认真」，是「怕到不敢放过任何细节」。</p>
+              </div>
+              <div class="line">
+                <span class="num" aria-hidden="true">③</span>
+                <p class="line-txt">画面：交卷前把答题卡擦了三遍，还是觉得不干净的那个人。</p>
+              </div>
+            </div>
+
+            <div class="rw">
+              <div class="rw-top">
+                <span class="rw-k">重写思路</span>
+                <span class="rw-m">DeepSeek V4.1 Flash ▾</span>
+              </div>
+              <button class="btn-swap" id="swapBtn" type="button">
+                <span>换一组思路</span><span class="ico" aria-hidden="true">↻</span>
+              </button>
+              <p class="rw-hint">模拟重写完成后的整段替换 · 留空＝整段重写</p>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <button class="btn-replay" id="replay" type="button">重播 ↻</button>
+        <button class="chip-slow" id="slow" aria-pressed="false" type="button">慢放 ×2.5</button>
+      </div>
+      <p class="under">打开后自动换一次；再按「重播」会换回另一组。慢放只是把同一段动画拉长，不改曲线与位移。</p>
+    </section>
+
+    <aside>
+      <section class="panel">
+        <h2>参数</h2>
+        <dl class="spec">
+          <div><dt>逐行错峰</dt><dd>140 ms</dd></div>
+          <div><dt>旧文退出</dt><dd>120 ms · −6 px</dd></div>
+          <div><dt>新文入场</dt><dd>300 ms · +10 px → 0</dd></div>
+          <div><dt>缓动</dt><dd>cubic-bezier(.23, 1, .32, 1)</dd></div>
+          <div><dt>入场模糊</dt><dd>1.5 px → 0</dd></div>
+          <div><dt>末行结束</dt><dd>≈ 720 ms</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <h2>Compose 示意</h2>
+<pre>val enter = fadeIn(tween(<span style="color:#E8C08A">300</span>)) +
+    slideInVertically(tween(<span style="color:#E8C08A">300</span>)) { <span style="color:#E8C08A">10.dp</span> }
+val exit  = fadeOut(tween(<span style="color:#E8C08A">120</span>))
+
+Row {
+  <span class="c">// ① ② ③ 固定；只让正文 AnimatedVisibility</span>
+  AnimatedVisibility(visible = shown, enter = enter, exit = exit) {
+    Text(line)
+  }
+}
+<span class="c">// 每行 delay = index * 140ms，先出后进，串行</span></pre>
+      </section>
+
+      <section class="panel">
+        <h2>为什么这样</h2>
+        <ul class="why">
+          <li><b>数字不动。</b>①②③ 是行的锚点；它们一跳，观感就从「文字在换」变成「整块在闪」。</li>
+          <li><b>同一行先退后进。</b>两段不同文字若同时占同一块像素，会短暂重影；串行 40ms 就够错开。</li>
+          <li><b>位移只有 10px。</b>再大就像卡片在动。淡入占主导，位移只负责「从下面落位」的方向感。</li>
+          <li><b>只错峰三行。</b>错峰能让眼睛顺着 ①②③ 读完；行数再长就会显得慢。</li>
+        </ul>
+      </section>
+
+      <nav class="nav">
+        <a href="./A-approach-swap.html" style="color:var(--ink)">A 换文</a>
+        <a href="./B-flip-spring.html">B 翻面</a>
+        <a href="./C-bar-reveal.html">C 重写条</a>
+        <a href="./index.html">索引</a>
+      </nav>
+      <p class="foot">自包含单文件 · 无外部字体 / 图片 / 脚本 · 参数见源码顶部 <code>MOTION</code></p>
+    </aside>
+  </div>
+</main>
+
+<script>
+
+const SETS = [
+  [
+    'met 来自拉丁语 metus，本义是「怕」。怕出错，才会抠到每一处。',
+    '所以 meticulous 不是「认真」，是「怕到不敢放过任何细节」。',
+    '画面：交卷前把答题卡擦了三遍，还是觉得不干净的那个人。'
+  ],
+  [
+    '拆开记：meti 听着像「每提」——每提一个问题，都要追到底。',
+    '和 careful 比：careful 只是小心，它是连 0.1 毫米都要对齐。',
+    '画面：实验室里把移液枪擦了又擦、记到小数点后三位的人。'
+  ]
+];
+
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rows = Array.from(document.querySelectorAll('.line'));
+const swapBtn = document.getElementById('swapBtn');
+const replayBtn = document.getElementById('replay');
+const slowBtn = document.getElementById('slow');
+
+let setIndex = 0;
+let runId = 0;
+let busy = false;
+let busyTimer = 0;
+let timers = [];
+let slow = false;
+
+function later(fn, ms){
+  const id = setTimeout(fn, ms);
+  timers.push(id);
+  return id;
+}
+function clearTimers(){
+  timers.forEach(clearTimeout);
+  timers = [];
+}
+
+function applyVars(){
+  const r = document.documentElement.style;
+  r.setProperty('--out-dur', MOTION.outMs + 'ms');
+  r.setProperty('--in-dur', MOTION.inMs + 'ms');
+  r.setProperty('--out-shift', MOTION.outShiftPx + 'px');
+  r.setProperty('--in-shift', MOTION.inShiftPx + 'px');
+  r.setProperty('--in-blur', MOTION.blurPx + 'px');
+  r.setProperty('--ease', MOTION.ease);
+}
+
+function settle(){
+  clearTimers();
+  clearTimeout(busyTimer);
+  busy = false;
+  rows.forEach((row, i) => {
+    const t = row.querySelector('.line-txt');
+    t.classList.remove('is-in', 'is-out');
+    t.textContent = SETS[setIndex][i];
+  });
+}
+
+function reducedSwap(){
+  clearTimers();
+  setIndex = 1 - setIndex;
+  rows.forEach((row, i) => {
+    const t = row.querySelector('.line-txt');
+    t.classList.remove('is-in', 'is-out');
+    t.textContent = SETS[setIndex][i];
+    t.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 170, easing: 'ease-out' });
+  });
+}
+
+function startRun(){
+  if (reduce){ reducedSwap(); return; }
+
+  busy = true;
+  const run = ++runId;
+  clearTimers();
+  setIndex = 1 - setIndex;
+  const next = SETS[setIndex];
+  const s = slow ? 2.5 : 1;
+  const stagger = MOTION.staggerMs * s;
+  const outMs = MOTION.outMs * s;
+  const gapMs = MOTION.gapMs * s;
+  const inMs = MOTION.inMs * s;
+
+  rows.forEach((row, i) => {
+    const t = row.querySelector('.line-txt');
+    later(() => {
+      if (run !== runId) return;
+      t.classList.remove('is-in');
+      void t.offsetWidth;
+      t.classList.add('is-out');
+
+      later(() => {
+        if (run !== runId) return;
+        t.textContent = next[i];
+        t.classList.remove('is-out');
+        t.classList.add('is-in');
+        void t.offsetWidth;
+        t.classList.remove('is-in');
+      }, outMs + gapMs);
+    }, i * stagger);
+  });
+
+  const total = (rows.length - 1) * stagger + outMs + gapMs + inMs;
+  busyTimer = setTimeout(() => { if (run === runId) busy = false; }, total + 80);
+}
+
+function trigger(){
+  if (busy){
+    settle();
+    later(startRun, 60);
+    return;
+  }
+  startRun();
+}
+
+swapBtn.addEventListener('click', trigger);
+replayBtn.addEventListener('click', trigger);
+
+slowBtn.addEventListener('click', () => {
+  slow = !slow;
+  slowBtn.setAttribute('aria-pressed', String(slow));
+  slowBtn.textContent = slow ? '恢复 ×1' : '慢放 ×2.5';
+  applyVars();
+});
+
+applyVars();
+
+// 打开即演示一次，不必先找按钮
+later(() => {
+  if (!reduce) startRun();
+}, 900);
+</script>
+</body>
+</html>

@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B · 翻面 — 卡背动效参考</title>
+  <!-- ===== 动效参数：只改这一块，照着翻成 Compose ===== -->
+  <script>
+  /* ============================================================
+     MOTION — 只改这里就能调（B：翻面 spring）
+     ============================================================ */
+  const MOTION = {
+    fromDeg: 0,
+    toDeg: 180,
+    dampingRatio: 0.82,   // 要求 0.80–0.90：过冲 ≈ 1.1% ≈ 2°
+    stiffness: 200,       // mass = 1 → ωn ≈ 14.1 rad/s
+    mass: 1,
+    perspectivePx: 1400,
+    autoFlipDelayMs: 900,
+    settleAngleDeg: 0.15  // 小于这个偏差 + 速度足够小就停
+  };
+  </script>
+<style>
+  :root{
+    --paper:#F7F2E6;
+    --paper-card:#FCF8EF;
+    --page:#E7DFCE;
+    --ink:#241F18;
+    --ink-2:#6C6354;
+    --ink-3:#9C9282;
+    --rule:#DCD2BF;
+    --accent:#A6462B;
+    --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Songti SC","SimSun",serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --ease:cubic-bezier(.23,1,.32,1);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1100px 620px at 12% -12%, #F3EBDA 0%, rgba(243,235,218,0) 62%),
+      var(--page);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+    padding:52px 0 88px;
+  }
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:9;opacity:.55;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E");
+  }
+  .page{max-width:1040px;margin:0 auto;padding:0 32px}
+  .masthead{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:40px}
+  .kicker{font:11px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--ink-3)}
+  h1{font-family:var(--serif);font-weight:500;font-size:46px;line-height:1.05;letter-spacing:-.012em;margin:14px 0 12px}
+  .lede{max-width:580px;margin:0;color:var(--ink-2);font-size:14.5px;line-height:1.78}
+  .back-link{flex:none;font-size:12.5px;color:var(--ink-2);text-decoration:none;border-bottom:1px solid rgba(60,45,20,.25);padding-bottom:2px;margin-bottom:6px}
+  .back-link:hover{color:var(--ink);border-color:var(--ink)}
+  .layout{display:grid;grid-template-columns:372px minmax(0,1fr);gap:64px;align-items:start}
+
+  /* ---------- device ---------- */
+  .device{
+    width:372px;padding:6px;border-radius:38px;
+    background:linear-gradient(155deg,#332C22 0%,#171410 55%,#0E0C09 100%);
+    box-shadow:0 44px 70px -42px rgba(36,25,8,.8),0 2px 6px rgba(36,25,8,.22),inset 0 1px 0 rgba(255,255,255,.10);
+  }
+  .screen{width:360px;border-radius:32px;overflow:hidden;background:var(--paper)}
+  .appbar{height:50px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid rgba(60,45,20,.08)}
+  .chev{font-size:20px;line-height:1;color:var(--ink-3);margin-top:-2px}
+  .ttl{font-size:13.5px;color:var(--ink-2);letter-spacing:.02em}
+  .cnt{margin-left:auto;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .progress{height:2px;background:rgba(60,45,20,.07)}
+  .progress i{display:block;height:100%;width:16%;background:var(--accent);opacity:.55}
+
+  /* ---------- flip stage ---------- */
+  .stage{
+    padding:36px 16px 34px;
+    background:
+      radial-gradient(130% 85% at 50% 6%, #F8F1E1 0%, rgba(248,241,225,0) 58%),
+      #F0E6D2;
+  }
+  .card-wrap{position:relative;width:328px;height:470px;margin:0 auto;cursor:pointer;outline:none}
+  .card-wrap:focus-visible{outline:2px solid var(--accent);outline-offset:6px;border-radius:24px}
+  .shadow{
+    position:absolute;left:50%;bottom:-9px;width:78%;height:22px;
+    transform:translateX(-50%) scaleX(1);transform-origin:center;
+    background:rgba(54,38,12,.30);filter:blur(13px);border-radius:50%;z-index:0;
+    will-change:transform,opacity;
+  }
+  .scene{position:absolute;inset:0;perspective:1400px;z-index:1}
+  .card3d{position:relative;width:100%;height:100%;transform-style:preserve-3d;will-change:transform;transform:rotateY(0deg)}
+
+  .face{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    padding:20px 21px 18px;border-radius:23px;
+    background:linear-gradient(180deg,#FDF9F1 0%,#FAF5E9 100%);
+    border:1px solid #D9C9AB;
+    box-shadow:0 24px 44px -30px rgba(72,52,20,.55), 0 2px 4px rgba(72,52,20,.10), 0 1px 0 rgba(255,255,255,.9) inset;
+    backface-visibility:hidden;-webkit-backface-visibility:hidden;
+    overflow:hidden;
+  }
+  .face.back{transform:rotateY(180deg)}
+
+  .face-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;
+    background:#EFE6D4;color:#6F6353;font-size:11.5px;letter-spacing:.03em;
+  }
+  .chip b{display:block;width:5px;height:5px;border-radius:50%;background:#B4915C}
+  .idx{font-size:11px;color:var(--ink-3);letter-spacing:.08em;font-variant-numeric:tabular-nums}
+
+  .front-mid{margin:auto 0;padding-bottom:6px}
+  .word{font-family:var(--serif);font-weight:500;font-size:42px;line-height:1.1;letter-spacing:-.015em;margin:0 0 8px}
+  .ipa{font-size:13.5px;color:var(--ink-3);letter-spacing:.02em}
+  .rule{height:1px;background:var(--rule);margin:20px 0 16px}
+  .front-q{margin:0;font-size:13.5px;line-height:1.85;color:var(--ink-2)}
+  .front-q em{font-style:normal;color:var(--accent);font-family:var(--serif);font-size:15px}
+
+  .face-foot{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    border-top:1px solid var(--rule);padding-top:12px;
+    font-size:11.5px;color:var(--ink-3);letter-spacing:.02em;
+  }
+  .flip-ico{font-size:15px;color:var(--accent);opacity:.8}
+
+  .label{font-size:12.5px;font-weight:600;letter-spacing:.05em;color:var(--accent);margin:2px 0 7px;opacity:.9}
+  .meaning{margin:0 0 16px;font-size:15.5px;line-height:1.6}
+  .lines{display:flex;flex-direction:column;gap:7px}
+  .line{display:grid;grid-template-columns:18px minmax(0,1fr);gap:8px;align-items:start}
+  .num{font-size:13.5px;line-height:24px;color:var(--accent);opacity:.72;font-variant-numeric:tabular-nums}
+  .line p{margin:0;font-size:14px;line-height:1.7}
+
+
+  /* reduced-motion: crossfade instead of 3D */
+  .scene.reduce .face{backface-visibility:visible;-webkit-backface-visibility:visible;transform:none;transition:opacity 180ms ease}
+  .scene.reduce .back{opacity:0}
+  .scene.reduce.is-back .back{opacity:1}
+  .scene.reduce.is-back .front{opacity:0}
+
+  /* ---------- controls ---------- */
+  .ctrl{display:flex;gap:10px;width:372px;margin-top:18px}
+  .btn-replay{
+    flex:1;height:46px;border-radius:13px;border:0;background:var(--ink);color:#FAF4E7;
+    font-family:var(--sans);font-size:14px;font-weight:500;letter-spacing:.03em;cursor:pointer;
+    transition:transform 160ms var(--ease),background-color 160ms ease;
+  }
+  .btn-replay:hover{background:#352C21}
+  .btn-replay:active{transform:scale(.98)}
+  .chip-slow{
+    height:46px;padding:0 16px;border-radius:13px;border:1px solid rgba(60,45,20,.22);
+    background:transparent;color:var(--ink-2);font-family:var(--sans);font-size:12.5px;cursor:pointer;
+    transition:transform 160ms var(--ease),background-color 160ms ease,color 160ms ease,border-color 160ms ease;
+  }
+  .chip-slow[aria-pressed="true"]{background:var(--ink);color:#FAF4E7;border-color:var(--ink)}
+  .chip-slow:active{transform:scale(.97)}
+  .under{margin:12px 0 0;width:372px;font-size:11.5px;color:var(--ink-3);line-height:1.7}
+
+  /* ---------- notes ---------- */
+  .panel{margin-bottom:34px}
+  .panel h2{font:600 10.5px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--ink-3);margin:0 0 14px}
+  .spec{margin:0;display:grid}
+  .spec div{display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:10px 0;border-top:1px solid rgba(60,45,20,.13)}
+  .spec div:last-child{border-bottom:1px solid rgba(60,45,20,.13)}
+  .spec dt{font-size:12.5px;color:var(--ink-2)}
+  .spec dd{margin:0;font:12px/1.5 var(--mono);color:var(--ink);font-variant-numeric:tabular-nums;text-align:right}
+  pre{margin:0;background:#1D1913;color:#F2EAD8;padding:15px 17px;border-radius:12px;font:11.5px/1.7 var(--mono);overflow:auto;tab-size:2}
+  pre .c{color:#948A76}
+  ul.why{margin:0;padding:0;list-style:none}
+  ul.why li{position:relative;padding:0 0 10px 16px;font-size:13px;line-height:1.72;color:var(--ink-2)}
+  ul.why li::before{content:"";position:absolute;left:0;top:.66em;width:5px;height:1px;background:var(--accent);opacity:.7}
+  ul.why b{color:var(--ink);font-weight:500}
+  .nav{display:flex;gap:18px;flex-wrap:wrap;border-top:1px solid rgba(60,45,20,.13);padding-top:16px}
+  .nav a{font-size:12.5px;color:var(--ink-2);text-decoration:none}
+  .nav a:hover{color:var(--accent)}
+  .foot{margin-top:44px;font-size:11.5px;color:var(--ink-3);letter-spacing:.02em}
+
+  @media (max-width:900px){
+    .layout{grid-template-columns:1fr;justify-items:start;gap:44px}
+    .masthead{display:block}
+    h1{font-size:38px}
+    .back-link{display:inline-block;margin-top:14px}
+  }
+</style>
+
+</head>
+<body>
+<main class="page">
+  <header class="masthead">
+    <div>
+      <div class="kicker">Motion ref · 02 / 03</div>
+      <h1>翻面</h1>
+      <p class="lede">卡片绕 Y 轴翻 180°，落定前有约 2° 的过冲——由阻尼比 0.82 自然产生，不是手调的关键帧。只转一个轴，不叠缩放、不叠抖动。</p>
+    </div>
+    <a class="back-link" href="./index.html">← 全部 demo</a>
+  </header>
+
+  <div class="layout">
+    <section>
+      <div class="device">
+        <div class="screen">
+          <div class="appbar">
+            <span class="chev">‹</span>
+            <span class="ttl">六级记忆卡</span>
+            <span class="cnt">3 / 20</span>
+          </div>
+          <div class="progress"><i></i></div>
+
+          <div class="stage">
+            <div class="card-wrap" id="cardWrap" role="button" tabindex="0"
+                 aria-label="翻转单词卡" aria-pressed="false">
+              <div class="shadow" id="shadow"></div>
+              <div class="scene" id="scene">
+                <div class="card3d" id="card3d">
+                  <section class="face front">
+                    <div class="face-top">
+                      <span class="chip"><b></b>未安排</span>
+                      <span class="idx">正面</span>
+                    </div>
+                    <div class="front-mid">
+                      <h2 class="word">meticulous</h2>
+                      <div class="ipa">/məˈtɪkjələs/</div>
+                      <div class="rule"></div>
+                      <p class="front-q">先别翻：<em>metus</em> 和「怕」<br>能拼出什么关系？</p>
+                    </div>
+                    <div class="face-foot">
+                      <span>点一下看卡背</span><span class="flip-ico" aria-hidden="true">⤾</span>
+                    </div>
+                  </section>
+
+                  <section class="face back">
+                    <div class="face-top">
+                      <span class="chip"><b></b>卡背</span>
+                      <span class="idx">记忆思路</span>
+                    </div>
+                    <div class="label" style="margin-top:16px">释义</div>
+                    <p class="meaning">adj. 一丝不苟的；极为仔细的</p>
+                    <div class="label">记忆思路</div>
+                    <div class="lines">
+                      <div class="line"><span class="num">①</span><p>met 来自拉丁语 metus＝怕；怕出错，才会抠到每一处。</p></div>
+                      <div class="line"><span class="num">②</span><p>不是「认真」，是「怕到不敢放过任何细节」。</p></div>
+                      <div class="line"><span class="num">③</span><p>画面：交卷前把答题卡擦了三遍的人。</p></div>
+                    </div>
+                    <div class="face-foot" style="margin-top:auto">
+                      <span>点一下翻回正面</span><span class="flip-ico" aria-hidden="true">⤿</span>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <button class="btn-replay" id="replay" type="button">重播 ↻</button>
+        <button class="chip-slow" id="slow" aria-pressed="false" type="button">慢放 ×2.5</button>
+      </div>
+      <p class="under">打开后自动翻一次；点卡片可来回翻，中途再点会带着速度反向。慢放只拉长时间轴，过冲量不变。</p>
+    </section>
+
+    <aside>
+      <section class="panel">
+        <h2>参数</h2>
+        <dl class="spec">
+          <div><dt>阻尼比 ζ</dt><dd>0.82</dd></div>
+          <div><dt>刚度 / 质量</dt><dd>stiffness 200 · mass 1</dd></div>
+          <div><dt>旋转</dt><dd>0° → 180°（仅 rotateY）</dd></div>
+          <div><dt>过冲</dt><dd>≈ 1.1% ≈ 2.0°</dd></div>
+          <div><dt>穿过 90°</dt><dd>≈ 250 ms</dd></div>
+          <div><dt>稳定</dt><dd>≈ 520 ms</dd></div>
+          <div><dt>透视</dt><dd>1400 px</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <h2>Compose 示意</h2>
+<pre>val angle by animateFloatAsState(
+  targetValue = if (back) <span style="color:#E8C08A">180f</span> else <span style="color:#E8C08A">0f</span>,
+  animationSpec = spring(
+    dampingRatio = <span style="color:#E8C08A">0.82f</span>,   <span class="c">// 0.8–0.9</span>
+    stiffness = <span style="color:#E8C08A">200f</span>      <span class="c">// mass = 1</span>
+  ), label = "flip"
+)
+Card(Modifier.graphicsLayer {
+  rotationY = angle
+  cameraDistance = <span style="color:#E8C08A">12f</span> * density
+})</pre>
+      </section>
+
+      <section class="panel">
+        <h2>为什么这样</h2>
+        <ul class="why">
+          <li><b>过冲是结果，不是参数。</b>ζ=0.82 时二阶欠阻尼的峰值为 1.1%，180° 上就是 2°——看得出「落定」，但不至于晃。</li>
+          <li><b>只转一个轴。</b>晕来自多轴叠加和长尾摆动；这里 X/Z 恒为 0，稳定后直接停。</li>
+          <li><b>阴影跟着 |cosθ| 收窄。</b>90° 边缘对齐时阴影也变成一条线，这一下让翻转「有厚度」。</li>
+          <li><b>可打断。</b>中途再点，弹簧带着当前速度反向，不会从头播一遍——这是 CSS keyframes 做不到的。</li>
+        </ul>
+      </section>
+
+      <nav class="nav">
+        <a href="./A-approach-swap.html">A 换文</a>
+        <a href="./B-flip-spring.html" style="color:var(--ink)">B 翻面</a>
+        <a href="./C-bar-reveal.html">C 重写条</a>
+        <a href="./index.html">索引</a>
+      </nav>
+      <p class="foot">自包含单文件 · 无外部字体 / 图片 / 脚本 · 参数见源码顶部 <code>MOTION</code></p>
+    </aside>
+  </div>
+</main>
+
+<script>
+
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const wrap = document.getElementById('cardWrap');
+const scene = document.getElementById('scene');
+const card3d = document.getElementById('card3d');
+const shadow = document.getElementById('shadow');
+const replayBtn = document.getElementById('replay');
+const slowBtn = document.getElementById('slow');
+
+const RANGE = MOTION.toDeg - MOTION.fromDeg;
+const EPS_ANGLE = MOTION.settleAngleDeg / Math.abs(RANGE);
+const EPS_VEL = 0.002;
+
+let x = 0;            // 0..1 归一化进度（允许轻微过冲）
+let v = 0;
+let target = 0;
+let raf = 0;
+let last = 0;
+let slow = false;
+let autoTimer = 0;
+let replayTimer = 0;
+
+scene.style.perspective = MOTION.perspectivePx + 'px';
+if (reduce) scene.classList.add('reduce');
+
+function apply(){
+  if (reduce){
+    scene.classList.toggle('is-back', x > 0.5);
+  } else {
+    const deg = MOTION.fromDeg + RANGE * x;
+    card3d.style.transform = 'rotateY(' + deg.toFixed(2) + 'deg)';
+    const c = Math.abs(Math.cos(x * Math.PI));
+    shadow.style.transform = 'translateX(-50%) scaleX(' + (0.07 + 0.93 * c).toFixed(3) + ')';
+    shadow.style.opacity = (0.4 + 0.6 * c).toFixed(3);
+  }
+  wrap.setAttribute('aria-pressed', x > 0.5 ? 'true' : 'false');
+}
+
+function tick(now){
+  if (!last) last = now;
+  let dt = Math.min((now - last) / 1000, 1 / 30);
+  last = now;
+  if (slow) dt /= 2.5;
+
+  const wn = Math.sqrt(MOTION.stiffness / MOTION.mass);
+  const zeta = MOTION.dampingRatio;
+  const steps = 4;
+  const h = dt / steps;
+  for (let i = 0; i < steps; i++){
+    const a = -2 * zeta * wn * v - wn * wn * (x - target);
+    v += a * h;
+    x += v * h;
+  }
+
+  if (Math.abs(v) < EPS_VEL && Math.abs(x - target) < EPS_ANGLE){
+    x = target; v = 0; last = 0; raf = 0; apply();
+    return;
+  }
+  apply();
+  raf = requestAnimationFrame(tick);
+}
+
+function start(){
+  if (reduce) return;
+  if (!raf){ last = 0; raf = requestAnimationFrame(tick); }
+}
+
+function flipTo(t){
+  clearTimeout(autoTimer);
+  target = t;
+  if (reduce){
+    x = t; v = 0; apply();
+    return;
+  }
+  start();
+}
+
+function flipToggle(){
+  clearTimeout(autoTimer);
+  flipTo(target === 1 ? 0 : 1);
+}
+
+function replay(){
+  clearTimeout(autoTimer); clearTimeout(replayTimer);
+  if (reduce){
+    x = 0; target = 0; apply();
+    replayTimer = setTimeout(() => flipTo(1), 240);
+    return;
+  }
+  cancelAnimationFrame(raf); raf = 0; last = 0;
+  x = 0; v = 0; target = 0; apply();
+  replayTimer = setTimeout(() => flipTo(1), 300);
+}
+
+wrap.addEventListener('click', flipToggle);
+wrap.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); flipToggle(); }
+});
+replayBtn.addEventListener('click', replay);
+slowBtn.addEventListener('click', () => {
+  slow = !slow;
+  slowBtn.setAttribute('aria-pressed', String(slow));
+  slowBtn.textContent = slow ? '恢复 ×1' : '慢放 ×2.5';
+});
+
+apply();
+autoTimer = setTimeout(() => { if (!reduce) flipTo(1); }, MOTION.autoFlipDelayMs);
+</script>
+</body>
+</html>

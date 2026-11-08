@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import hmac
 import html
 import ipaddress
 import json
@@ -21,17 +22,19 @@ import math
 import mimetypes
 import os
 import re
+import secrets
 import shutil
 import socket
 import subprocess
 import sys
 import threading
+import time
 import traceback
 import urllib.request
 import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 # ---------------------------------------------------------------- 常量
 
@@ -51,6 +54,36 @@ HISTORY_DIR = os.path.join(PUBLISHED_DIR, "history")
 CONFIG_PATH = os.path.join(PUBLISHED_DIR, "cardback.json")
 STATE_PATH = os.path.join(PUBLISHED_DIR, "state.json")
 INDEX_PATH = os.path.join(BUNDLE_DIR, "index.html")
+
+# ---- 学习进度同步（1.4.4）：手机把 tb_progress 的结果态当 op 发过来，别的设备按 rev 拉。
+# 存储和读写规则都在 sync_store.py 里；这里只做 HTTP 壳。
+SYNC_PATH = os.path.join(BASE_DIR, "sync.json")
+_SYNC = None
+
+
+def sync_db():
+    """惰性打开，别在 import 阶段就写文件（测试和 exe 打包都省事）。"""
+    global _SYNC
+    if _SYNC is None:
+        import sync_store
+
+        _SYNC = sync_store.SyncStore(SYNC_PATH)
+    return _SYNC
+
+# ---- 口令（1.4.4）：一台电脑一个，首次启动生成后落盘，之后一直复用。
+# 手机每个请求都带 X-Cardback-Token；本机 127.0.0.1 / ::1 免票，
+# 所以电脑上开着编辑器点发布不受影响。
+TOKEN_PATH = os.path.join(BASE_DIR, ".cardback_token")
+TOKEN_HEADER = "X-Cardback-Token"
+TOKEN_LENGTH = 16  # secrets.token_urlsafe(16) → 22 个字符
+TOKEN = ""  # 启动时填；见 ensure_token()
+
+# ---- 限流：只卡「会调模型 / 会改数据」的写请求，读接口不限（手机轮询不受影响）。
+# (窗口秒数, 窗口内次数)；本机也计，否则额度漏了照样能刷穿。
+RATE_BUDGETS = ((60, 20), (86400, 200))
+RATE_LIMITED_PATHS = ("/api/publish", "/api/rollback")
+_RATE_LOCK = threading.Lock()
+_RATE_HITS = {}
 
 # 契约 §2：1.4.2 手机端认识的 11 种块。
 # REWRITE_BUTTON 是 1.4.3 预留，不在集合里 —— 发布时放行并给 warning。
@@ -114,6 +147,131 @@ _LAN_NETS = tuple(
 LAN_URL = "http://127.0.0.1:%d/cardback.json" % PORT
 
 _LOCK = threading.RLock()
+
+
+# ---------------------------------------------------------------- 口令与限流
+
+
+def ensure_token():
+    """读已有口令；没有就生成一个落盘（和数据同目录，用户找得到）。"""
+    global TOKEN
+    if TOKEN:
+        return TOKEN
+    try:
+        with open(TOKEN_PATH, "r", encoding="utf-8") as fh:
+            existing = fh.read().strip()
+    except FileNotFoundError:
+        existing = ""
+    except OSError as exc:
+        print("  读口令文件失败（这次用临时口令）：%s" % exc, flush=True)
+        existing = ""
+    if existing:
+        TOKEN = existing
+        return TOKEN
+
+    token = secrets.token_urlsafe(TOKEN_LENGTH)
+    try:
+        with open(TOKEN_PATH, "w", encoding="utf-8") as fh:
+            fh.write(token + "\n")
+        try:
+            os.chmod(TOKEN_PATH, 0o600)
+        except OSError:
+            pass  # Windows 上 chmod 基本无效，失败无所谓
+    except OSError as exc:
+        print("  口令写不进 %s（这次只在内存里）：%s" % (TOKEN_PATH, exc), flush=True)
+    TOKEN = token
+    return TOKEN
+
+
+def _token_ok(supplied):
+    expected = ensure_token()
+    if not supplied or not supplied.strip() or not expected:
+        return False
+    # 定时比较：别让响应时间泄露口令前缀
+    return hmac.compare_digest(supplied.strip(), expected)
+
+
+def _is_loopback_peer(peer):
+    try:
+        return ipaddress.ip_address(peer).is_loopback
+    except ValueError:
+        return peer in ("localhost", "localhost.")
+
+
+def _origin_host_ok(host):
+    host = (host or "").strip().lower().strip("[]")
+    if not host:
+        return False
+    if host in ("localhost", "127.0.0.1", "::1"):
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    # 本机/局域网里的页面才算「同源」；公网域名一律不认——那正是 CSRF 的来源。
+    return addr.is_private or addr.is_loopback or addr.is_link_local
+
+
+def _origin_ok(origin):
+    text = (origin or "").strip().rstrip("/")
+    if not text:
+        return False
+    if text.lower() == "null":
+        return True  # file:// 打开的页面，浏览器给的就是 null
+    try:
+        parts = urlsplit(text)
+    except ValueError:
+        return False
+    scheme = parts.scheme.lower()
+    if scheme not in ("http", "https"):
+        return False
+    try:
+        port = parts.port
+    except ValueError:
+        return False
+    if port is None:
+        port = 443 if scheme == "https" else 80
+    if port != PORT:
+        return False
+    return _origin_host_ok(parts.hostname)
+
+
+def _rate_limited(method, path):
+    """要记一笔限流的请求：会改数据或触发模型的写请求（记录页的只读轮询不算）。"""
+    return (method == "POST" and path.startswith("/rewrite")) or path in RATE_LIMITED_PATHS
+
+
+def _prune_rate(now):
+    for peer in list(_RATE_HITS):
+        windows = _RATE_HITS[peer]["windows"]
+        if all(
+            now - (slot[0] + RATE_BUDGETS[i][0]) > RATE_BUDGETS[i][0]
+            for i, slot in enumerate(windows)
+        ):
+            _RATE_HITS.pop(peer, None)
+
+
+def rate_limit_take(peer, now=None):
+    """按 IP 记一笔。返回 (ok, retry_after_seconds, 窗口名)。"""
+    now = time.time() if now is None else now
+    with _RATE_LOCK:
+        if len(_RATE_HITS) > 256:
+            _prune_rate(now)
+        entry = _RATE_HITS.get(peer)
+        if entry is None:
+            entry = {"windows": [[0, 0] for _ in RATE_BUDGETS]}
+            _RATE_HITS[peer] = entry
+        for index, (window, limit) in enumerate(RATE_BUDGETS):
+            slot = entry["windows"][index]
+            start = int(now // window) * window
+            if slot[0] != start:
+                slot[0] = start
+                slot[1] = 0
+            if slot[1] >= limit:
+                return False, max(1, int(start + window - now)), ("分钟" if window < 3600 else "天")
+        for index, _budget in enumerate(RATE_BUDGETS):
+            entry["windows"][index][1] += 1
+        return True, 0, ""
 
 
 class ApiError(Exception):
@@ -680,12 +838,78 @@ class Handler(BaseHTTPRequestHandler):
     # 关掉 keep-alive：本地小工具不需要，省得连接复用时一个异常把后面全带崩
     protocol_version = "HTTP/1.1"
 
+    # ------------------------------------------------------------ 鉴权 / 限流
+
+    def _peer(self):
+        try:
+            return str(self.client_address[0] or "")
+        except (IndexError, TypeError, AttributeError):
+            return ""
+
+    def _is_local(self):
+        """本机浏览器（编辑器页面）免票。"""
+        return _is_loopback_peer(self._peer())
+
+    def _post_origin_ok(self):
+        """挡跨站 POST —— 尤其是 text/plain 那种不用预检的「简单请求」。"""
+        origin = (self.headers.get("Origin") or "").strip()
+        if origin:
+            return _origin_ok(origin)
+        referer = (self.headers.get("Referer") or "").strip()
+        if referer:
+            return referer.lower().startswith("file://") or _origin_ok(referer)
+        ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        # Origin/Referer 都没有：只有「浏览器必须先预检才能发」的形态才放行。
+        # text/plain / 表单那几种是 CORS 简单请求，跨站页面不预检就能打进来，必须挡住。
+        return ctype not in (
+            "",
+            "text/plain",
+            "application/x-www-form-urlencoded",
+            "multipart/form-data",
+        )
+
+    def _guard(self, method, path):
+        """返回 True = 已经回包拒绝了，路由别再走。"""
+        # 只掐「会改数据 / 会触发模型」的：记录页 5 秒轮询 /rewrite/status 和 /rewrite/records，
+        # 把它们也算进 20 次/分钟会把自己的页面 429 掉。
+        if _rate_limited(method, path):
+            ok, retry_after, window = rate_limit_take(self._peer())
+            if not ok:
+                self._reject(
+                    429,
+                    "rate_limited",
+                    "请求太密：单 IP 每分钟 %d 次 / 每天 %d 次，%d 秒后再试"
+                    % (RATE_BUDGETS[0][1], RATE_BUDGETS[1][1], retry_after),
+                    extra_headers={"Retry-After": str(retry_after)},
+                )
+                return True
+        if not self._is_local() and not _token_ok(self.headers.get(TOKEN_HEADER, "")):
+            self._reject(401, "token_required", "核对口令")
+            return True
+        if method == "POST" and not self._post_origin_ok():
+            self._reject(403, "origin_rejected", "只接受本机或局域网页面发起的写请求")
+            return True
+        return False
+
+    def _reject(self, status, code, hint, extra_headers=None):
+        payload = {"ok": False, "error": code, "hint": hint}
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self._send_bytes(
+            body,
+            "application/json; charset=utf-8",
+            status=status,
+            extra_headers=extra_headers,
+        )
+
     # ------------------------------------------------------------ 入口
 
     def do_GET(self):
         try:
             self._responded = False
-            self._route_get(urlsplit(self.path).path or "/")
+            path = urlsplit(self.path).path or "/"
+            if self._guard("GET", path):
+                return
+            self._route_get(path)
         except ApiError as exc:
             self._fail(exc.status, exc.message)
         except (BrokenPipeError, ConnectionResetError):
@@ -700,6 +924,9 @@ class Handler(BaseHTTPRequestHandler):
             body, error = self._read_body()
             if error:
                 return self._fail(400, error)
+            # 先读完 body 再判：回包之后客户端还在写，容易把自己写成 broken pipe
+            if self._guard("POST", path):
+                return
             self._route_post(path, body)
         except ApiError as exc:
             self._fail(exc.status, exc.message)
@@ -719,6 +946,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_state()
         if path == "/api/history":
             return self._send_json({"ok": True, "items": _history_public()})
+        if path == "/sync/pull":
+            return self._api_sync_pull()
         if path in ("/api/publish", "/api/rollback"):
             return self._fail(405, "%s 只接受 POST" % path)
         if path == "/favicon.ico":
@@ -733,6 +962,8 @@ class Handler(BaseHTTPRequestHandler):
     def _route_post(self, path, body):
         if path.startswith("/rewrite"):
             return self._rewrite_passthrough("POST", body)
+        if path == "/sync/push":
+            return self._api_sync_push(body)
         if path == "/api/publish":
             return self._api_publish(body)
         if path == "/api/rollback":
@@ -747,6 +978,48 @@ class Handler(BaseHTTPRequestHandler):
         payload = {"ok": True}
         payload.update(state_snapshot())
         payload["lanUrl"] = LAN_URL
+        self._send_json(payload)
+
+    def _api_sync_pull(self):
+        query = parse_qs(urlsplit(self.path).query)
+        try:
+            since_rev = int((query.get("since_rev") or ["0"])[0] or 0)
+        except (TypeError, ValueError):
+            return self._fail(400, "since_rev 要是整数")
+        if since_rev < 0:
+            return self._fail(400, "since_rev 不能是负数")
+        try:
+            result = sync_db().pull(since_rev)
+        except Exception as exc:  # noqa: BLE001 - 存储坏了要让人看得见
+            return self._fail(500, "同步库读不出来：%s" % exc)
+        payload = {"ok": True}
+        payload.update(result)
+        self._send_json(payload)
+
+    def _api_sync_push(self, body):
+        data, error = self._parse_json_body(body, "同步")
+        if error:
+            return self._fail(400, error)
+        if not isinstance(data, dict):
+            return self._fail(400, 'body 要这样：{"device_id":"...","ops":[...]}')
+        ops = data.get("ops")
+        if ops is None:
+            ops = []
+        if not isinstance(ops, list):
+            return self._fail(400, "ops 要是数组")
+        if len(ops) > 500:
+            return self._fail(400, "一次最多 500 条")
+        try:
+            base_rev = int(data.get("base_rev") or 0)
+        except (TypeError, ValueError):
+            return self._fail(400, "base_rev 要是整数")
+        device_id = str(data.get("device_id") or "").strip()[:64]
+        try:
+            result = sync_db().push(device_id, base_rev, ops)
+        except Exception as exc:  # noqa: BLE001
+            return self._fail(500, "同步库写不进去：%s" % exc)
+        payload = {"ok": True}
+        payload.update(result)
         self._send_json(payload)
 
     def _api_publish(self, body):
@@ -879,7 +1152,7 @@ class Handler(BaseHTTPRequestHandler):
     def _fail(self, status, message):
         self._send_json({"ok": False, "error": message}, status=status)
 
-    def _send_bytes(self, data, content_type, status=200, cache="no-store"):
+    def _send_bytes(self, data, content_type, status=200, cache="no-store", extra_headers=None):
         if getattr(self, "_responded", False):
             return
         self._responded = True
@@ -889,6 +1162,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             if cache:
                 self.send_header("Cache-Control", cache)
+            for name, value in (extra_headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             if data:
                 self.wfile.write(data)
@@ -1078,6 +1353,7 @@ def main(argv=None):
 
     os.makedirs(HISTORY_DIR, exist_ok=True)
     notes = ensure_initialized()
+    token = ensure_token()
 
     lan_ips = detect_lan_ips()
     primary = next((ip for ip in lan_ips if _is_lan_ip(ip)), None)
@@ -1098,6 +1374,9 @@ def main(argv=None):
             flush=True,
         )
     print("  发布目录：%s" % PUBLISHED_DIR, flush=True)
+    print("  手机口令：%s" % token, flush=True)
+    print("    口令文件：%s（删掉它再启动会重新生成，手机要跟着改）" % TOKEN_PATH, flush=True)
+    print("    电脑上开编辑器不用填；手机上「我的 → 设置 → 卡背结构口令」填这一串。", flush=True)
     others = [ip for ip in lan_ips if ip != primary]
     if others:
         print(

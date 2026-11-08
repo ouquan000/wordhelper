@@ -68,7 +68,10 @@ def _trim(entries):
 
 
 def _public(entry):
-    out = {key: entry.get(key) for key in ("seq", "word", "rev", "approach", "prev", "updatedAt", "status", "clientId")}
+    out = {
+        key: entry.get(key)
+        for key in ("seq", "word", "rev", "approach", "method", "prev", "updatedAt", "status", "clientId")
+    }
     out["model"] = entry.get("model", "")
     return out
 
@@ -182,6 +185,8 @@ class Store:
                 "pos": str(raw.get("pos") or ""),
                 "meaning": str(raw.get("meaning") or ""),
                 "instruction": str(raw.get("instruction") or ""),
+                # 书目在手机上，这边只转存名字：记录页靠它筛选（1.4.4）
+                "book": str(raw.get("book") or "").strip()[:60],
                 "currentApproach": [str(x) for x in (raw.get("currentApproach") or [])][:3],
                 "model": model,
                 "markedAt": str(raw.get("markedAt") or "") or _now(),
@@ -244,6 +249,7 @@ class Store:
                 "word": live["word"],
                 "rev": ((prev or {}).get("rev") or 0) + 1,
                 "approach": list(approach),
+                "method": str(meta.get("method") or ""),  # 六招之一，手机端据此显示「联想 · 词根」标签
                 "prev": list((prev or {}).get("approach") or live.get("currentApproach") or []),
                 "updatedAt": _now(),
                 "status": "ok",
@@ -279,6 +285,7 @@ class Store:
                 "word": live["word"],
                 "rev": (current or {}).get("rev") or 0,
                 "approach": [],
+                "method": "",
                 "prev": list((current or {}).get("approach") or live.get("currentApproach") or []),
                 "updatedAt": _now(),
                 "status": "failed",
@@ -372,8 +379,11 @@ class Store:
             record = self.results.get(word) or {"entries": []}
             return [_public(e) for e in record["entries"]]
 
-    def records_page(self, limit=50, offset=0):
-        """重写记录页：每条标记一行，按最近更新倒序，附上成品三行与上一版。"""
+    def records_page(self, limit=50, offset=0, book=""):
+        """重写记录页：每条标记一行，按最近更新倒序，附上成品分步思路与上一版。
+
+        book 传书名只看那本；传 `__none__` 只看没标书目的（1.4.4 之前的老记录）。
+        """
         with self._lock:
             rows = []
             for item in self.items:
@@ -382,6 +392,8 @@ class Store:
                 rows.append(
                     {
                         "word": item["word"],
+                        "instruction": item.get("instruction") or "",
+                        "book": item.get("book") or "",
                         "model": item["model"],
                         "stage": stage_of(item),
                         "state": item.get("state", "pending"),
@@ -393,10 +405,23 @@ class Store:
                         "seq": (entry or {}).get("seq"),
                         "rev": (entry or {}).get("rev"),
                         "attempts": int(item.get("attempts") or 0),
+                        "method": (entry or {}).get("method") or "",
                         "approach": list(entry["approach"]) if ok else [],
                         "prev": list((entry or {}).get("prev") or item.get("currentApproach") or []),
                     }
                 )
+            # 书目聚合按「全部记录」算，不看当前筛哪本 —— 否则选完一本，下拉里就只剩它自己
+            counts = {}
+            for row in rows:
+                counts[row["book"]] = counts.get(row["book"], 0) + 1
+            books = [
+                {"name": name, "count": count}
+                for name, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+            ]
+            book = (book or "").strip()
+            if book:
+                wanted = "" if book == "__none__" else book
+                rows = [row for row in rows if row["book"] == wanted]
             rows.sort(key=lambda r: (r["updatedAt"], r["clientId"]), reverse=True)
             page = rows[offset : offset + limit]
             return {
@@ -405,6 +430,8 @@ class Store:
                 "limit": limit,
                 "offset": offset,
                 "more": offset + limit < len(rows),
+                "books": books,
+                "book": book,
             }
 
     # ---------------------------------------------------------- 内部

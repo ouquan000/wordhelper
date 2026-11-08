@@ -23,6 +23,7 @@ interface WordDao {
                   c.rel_words AS relWords,
                   IFNULL(m.approach, '') AS approach,
                   IFNULL(m.collocations, '') AS collocations,
+                  IFNULL(m.method, '') AS method,
                   c.book_id AS bookId
            FROM tb_book_word_content c
            INNER JOIN tb_word w ON c.word_id = w.id
@@ -43,6 +44,7 @@ interface WordDao {
                   c.rel_words AS relWords,
                   IFNULL(m.approach, '') AS approach,
                   IFNULL(m.collocations, '') AS collocations,
+                  IFNULL(m.method, '') AS method,
                   c.book_id AS bookId
            FROM tb_book_word_content c
            INNER JOIN tb_word w ON c.word_id = w.id
@@ -63,6 +65,7 @@ interface WordDao {
                   IFNULL(c.rel_words, '') AS relWords,
                   IFNULL(m.approach, '') AS approach,
                   IFNULL(m.collocations, '') AS collocations,
+                  IFNULL(m.method, '') AS method,
                   IFNULL(c.book_id, 0) AS bookId
            FROM tb_word w
            LEFT JOIN tb_word_memory m ON m.word_id = w.id
@@ -104,6 +107,7 @@ interface WordDao {
                    END AS relWords,
                    IFNULL(m.approach, '') AS approach,
                    IFNULL(m.collocations, '') AS collocations,
+                   IFNULL(m.method, '') AS method,
                    CASE
                        WHEN :bookId > 0 THEN :bookId
                        ELSE IFNULL(c_any.book_id, 0)
@@ -167,6 +171,20 @@ interface WordDao {
     @Query("UPDATE tb_word SET phonetic = :phonetic WHERE id = :wordId")
     suspend fun updatePhonetic(wordId: Long, phonetic: String)
 
+    /**
+     * 1.4.4：按词回填记忆方法标签。只填空值，不覆盖已经标注/重写过的（source=user 也不动）。
+     * wordKeys 分批传，避免 SQLite 变量上限。
+     */
+    @Query(
+        """UPDATE tb_word_memory SET method = :method
+           WHERE IFNULL(method, '') = '' AND source != 'user'
+             AND word_id IN (SELECT id FROM tb_word WHERE word_key IN (:wordKeys))"""
+    )
+    suspend fun backfillMethod(wordKeys: List<String>, method: String)
+
+    @Query("SELECT COUNT(*) FROM tb_word_memory WHERE IFNULL(method, '') != ''")
+    suspend fun countMarkedMethod(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertBookWordContent(content: BookWordContent): Long
 
@@ -194,6 +212,7 @@ interface WordDao {
                   IFNULL(c.rel_words, '') AS relWords,
                   IFNULL(m.approach, '') AS approach,
                   IFNULL(m.collocations, '') AS collocations,
+                  IFNULL(m.method, '') AS method,
                   IFNULL(c.book_id, 0) AS bookId
            FROM tb_new_word_ref n
            INNER JOIN tb_word w ON w.id = n.word_id
@@ -220,6 +239,7 @@ interface WordDao {
                   c.rel_words AS relWords,
                   IFNULL(m.approach, '') AS approach,
                   IFNULL(m.collocations, '') AS collocations,
+                  IFNULL(m.method, '') AS method,
                   c.book_id AS bookId
            FROM tb_book_word_content c
            INNER JOIN tb_word w ON c.word_id = w.id

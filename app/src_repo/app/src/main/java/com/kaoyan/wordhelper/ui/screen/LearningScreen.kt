@@ -1937,12 +1937,26 @@ private fun CardBackBlockView(
             modifier = Modifier.fillMaxWidth()
         )
 
-        CardBackBlockType.PHONETIC -> if (word.phonetic.isNotBlank()) {
-            Text(
-                text = word.phonetic,
-                style = MaterialTheme.typography.bodyMedium.scaledBy(bodyStyle),
-                color = overrideColor ?: MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        CardBackBlockType.PHONETIC -> {
+            // 音标与「这一招」标签同一行：标签回答的是「这条思路靠什么记」，不占版式层次。
+            val methodLabel = methodLabelOf(word.method)
+            if (word.phonetic.isNotBlank() || methodLabel != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (word.phonetic.isNotBlank()) {
+                        Text(
+                            text = word.phonetic,
+                            style = MaterialTheme.typography.bodyMedium.scaledBy(bodyStyle),
+                            color = overrideColor ?: MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (methodLabel != null) {
+                        MemoryMethodChip(methodLabel)
+                    }
+                }
+            }
         }
 
         CardBackBlockType.DIVIDER -> HorizontalDivider(
@@ -2345,5 +2359,35 @@ private fun AnimatedContentTransitionScope<WordCardState>.wordCardTransition(
             fadeIn(animationSpec = defaultFadeIn) togetherWith fadeOut(animationSpec = defaultFadeOut)
         }
     }.using(SizeTransform(clip = false))
+}
+
+/**
+ * 六脉神剑里的哪一招。生成器输出的 method 是英文枚举，卡背上给人看的是中文短标签。
+ * 只做「主打的一招」——语料里每个词只带主招，不要为了凑两个标签去编。
+ */
+private fun methodLabelOf(method: String): String? = when (method.trim().lowercase()) {
+    "sound" -> "谐音"
+    "meaning" -> "联想"
+    "shape" -> "字形"
+    "root" -> "词根"
+    "contrast" -> "对比"
+    "polysemy" -> "多义"
+    else -> null
+}
+
+/** 卡背音标行右侧的小标签：告诉人这条思路靠什么记，不抢正文字号。 */
+@Composable
+private fun MemoryMethodChip(label: String) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+        )
+    }
 }
 

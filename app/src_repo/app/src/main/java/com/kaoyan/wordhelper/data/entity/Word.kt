@@ -13,5 +13,7 @@ data class Word(
     /** 记忆思路，多行；来自 tb_word_memory，缺省为空。 */
     val approach: String = "",
     /** 常用搭配，多行；来自 tb_word_memory，缺省为空。 */
-    val collocations: String = ""
+    val collocations: String = "",
+    /** 记忆方法标签（六脉神剑之一），空串 = 未标注；来自 tb_word_memory。 */
+    val method: String = ""
 )

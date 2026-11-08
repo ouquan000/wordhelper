@@ -15,6 +15,7 @@ import com.kaoyan.wordhelper.data.model.WordDraft
 import com.kaoyan.wordhelper.data.repository.SettingsRepository
 import com.kaoyan.wordhelper.util.DateUtils
 import com.kaoyan.wordhelper.util.WordFileParser
+import com.kaoyan.wordhelper.util.withoutBuiltinFull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -118,8 +119,12 @@ class BookManageViewModel(application: Application) : AndroidViewModel(applicati
         .map { it.plannedNewWordsEnabled }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    val books: StateFlow<List<BookUiModel>> = combine(repository.getAllBooks(), dailyNewWordsLimit) { books, dailyLimit ->
-        books to dailyLimit
+    val books: StateFlow<List<BookUiModel>> = combine(
+        repository.getAllBooks(),
+        dailyNewWordsLimit,
+        settingsRepository.showBuiltinFullBooks
+    ) { books, dailyLimit, showFull ->
+        books.withoutBuiltinFull(hide = !showFull) to dailyLimit
     }
         .flatMapLatest { (books, dailyLimit) ->
             if (books.isEmpty()) {

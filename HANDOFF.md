@@ -289,3 +289,75 @@ C 盘、`syncPresetWords` 早退、`Card(onClick)` 8dp touchSlop、`contentKey`�
 3. 要动重写链路：先起电脑端 `python tools/cardback-editor/server.py`，确认 `curl :8765/models` 有 5 个模型。
 4. 真机/模拟器操作见 §4；拉库记得带 `-wal`。
 5. 验完的产物放 `dist/`，文档更新 `docs/spec-x.y.z.md`，最后 `git commit` + tag。
+
+---
+
+## 12. 1.4.4 内部包（2026-11-08，versionCode 8 / 1.4.3.2 同号覆盖）
+
+> 内部验证包不升号；对外发布时才 `versionCode 9 / 1.4.4`。
+
+### 12.1 这一版做了什么（按用户原话）
+
+1. **卡背方法标签**（用户：「六脉神剑有六个背书方法，能不能在卡背音标同一行加上像『联想记忆法』这样的 tag」）
+   - DB 16：`tb_word_memory` 加 `method TEXT NOT NULL DEFAULT ''`。
+   - `assets/word_method_map.json`：由 `by-word` 语料回填 5228 个种子词的方法（只有主招；语料里 `elements` 是纯字符串，没有逐元素方法，所以「主招 · 辅招」暂时只能显示主招）。
+   - 一次性回填：`WordMethodMapLoader` + `WordRepository.backfillWordMethods()`，`SettingsRepository.KEY_METHOD_BACKFILL_DONE` 标记，重装/升级都只跑一次。
+   - 卡背音标行右侧显示中文标签：谐音 / 联想 / 字形 / 词根 / 对比 / 多义（`LearningScreen.methodLabelOf`）。
+   - 电脑端重写结果带回 `method`，`RewriteRepository` 应用时更新标签；`LearningViewModel.syncRewriteNow` 翻面/回前台时同时刷思路与标签。
+   - **未做**：按 tag 的统计视图（用户提过「统计就能按 tag 统计」）——字段已就位，统计页还没接。
+
+2. **学习统计双视图**（用户：「保留全局视图，再加每一本的独立视图，右上角加按钮切换，与原风格一致」）
+   - 学习统计卡片右上角 `FilterChip`：全局 / 当前词书。
+   - 全局沿用原指标（次）；按书视图 5 个指标：累计已学、已掌握、待复习、正确率、今日接触词数；底部注明「与全局的次不是同一口径，两者不能相加」。
+   - 两种口径下都多一行「按记忆方法（已学 N 词）：联想 1200 · 词根 800 …」——`ProgressDao.getGlobalMethodCounts / getBookMethodCounts` 走 `LEFT JOIN tb_word_memory` 按 `method` 分组、`COUNT(DISTINCT word_id)` 去重（全局不重复算同一个词）。
+   - 口径限制：按书「待复习」是进入页面时的快照，不会自己跳动；按书今日新词/复习/拼写拆分算不出来（`tb_daily_stats` / `tb_study_log` 没有 `book_id`）。
+
+3. **隐藏两本内置大词库**（用户：「四本词库留最新的六级和 20 词测试还有生词本」）
+   - 设置 → 内置大词库：隐藏（默认）/ 显示，`SettingsRepository.showBuiltinFullBooks`。
+   - 隐藏时启动不再 `loadPresets/ensurePresetBooks`（省掉每次启动重导 5000+ 词）；如果当前在用的书恰好是被藏的两本，自动切到「六级记忆卡」。
+   - 词库页/学习页的列表都用 `List<Book>.withoutBuiltinFull(hide)` 过滤；**没有删数据**，随时能开回来。
+
+4. **学习记录同步（抄墨墨最小骨架，中间站放电脑）**
+   - 电脑端：`tools/cardback-editor/sync_store.py`（JSON 落盘、原子写、坏文件转 `.broken`），`server.py` 加 `GET /sync/pull?since_rev=N`、`POST /sync/push`。
+   - 手机端：`SyncRepository`，`tb_sync_op` 存待发 op、`tb_sync_state` 存 device_id / server_rev / last_sync_at。
+   - 打点：`upsertProgress` / `applyStudyResult` / `applySpellingOutcome` / `markWordAsTooEasy` 写库后入队；一个词在几本书都有进度时**一本书一条 op**（op_id 带 bookId，避免互相覆盖）。
+   - 冲突：每词 LWW，比 `last_review_time`（相等比 op_id），不弹窗；服务端幂等命中不涨 rev，手机队列才清得掉。
+   - 分页：`pull()` 回 `next_since_rev`（还有下一页时=本页最后一条的 rev，拉完才=全局 rev），手机端按它推游标；拉满 20 页仍没完返回失败而不是「已同步」（验收 P0 修复）。
+   - 入口：我的 → 数据管理 → 「同步学习记录（N）」；只点才联网，平时纯本地。
+   - 不抄：云端排程、意图型 op、CheckpointSnapshot 换表、手动整包上传、墓碑删除。
+
+5. **电脑端口令收口 + 记录页完善**（此前已定）
+   - `tools/cardback-editor/.cardback_token`（首次启动生成，已 gitignore）；请求头 `X-Cardback-Token`；本机 127.0.0.1 免票；POST 校验 Origin；写请求限流 20/分、200/天。
+   - 手机端设置里填「连接口令」，401 统一提示「口令不对，请核对电脑端启动窗口里「手机口令」那一串」。
+   - 记录页：按书筛选、指令列、本页失败全选、批量重试（串行隔 400ms）、复制错误。
+
+6. **提示词放宽 + 口吻**（用户：「字数都可以多一点，我感觉都像是为了三段妥协了很多」「需要时大胆一些」「说人话」）
+   - `generate.txt` / `polish.txt` / `judge.txt` 重写：3–5 步、每行 40–50 字；`normalize()` 与 judge 同步放宽。
+   - polish 叠回 8 种口吻、梗密度上限、明确允许冷梗/地狱笑话/双关（不改音不改义）、禁「该词表示 / 用于描述」等教材腔、8 条自检。
+   - judge 第 6 维「像人说话」；`PASS_LINE` 仍 8。
+
+### 12.2 真实验证记录（2026-11-08）
+
+- 真实模型冒烟（`ds-v41-flash`）：`obscure` 5 步、6 维 8/9/10/8/8/9、177.7s；`brittle` 4 步、9/9/10/9/10/9、149.4s，均一次过。
+- 服务端合约：push 幂等、旧 lrt 不涨 rev、pull 每词只留最新、缺字段 rejected、坏参数 400。
+- 设备（模拟器 emulator-5554，411×892dp）：方法标签显示、统计切页、词库只剩两本、同步拉回 1 条（abandon 立即变「已到期」、进度 1/21）、评分后按钮出现「（1）」、推送后电脑端 rev 3→4、按钮清零。
+- 已知环境问题：AVD 在 360×640dp 的极小屏下卡片会被压成一条缝（老问题）；模拟器冷启动要 40–60 秒。
+
+### 12.3 还没做 / 下一步
+
+- 按 tag 统计已做「已学词的方法分布」；还没有「按方法看正确率/遗忘率」这种效果对比。
+- 重写结果页批量操作只到「本页」；失败原因复制在局域网 http 下走 `execCommand` 兜底。
+- 按书统计若要「今日新词/复习/拼写」这种拆分，得给 `tb_daily_stats` / `tb_study_log` 加 `book_id`（DB17）。
+- 换机同步目前只搬学习进度，不搬卡背改写版本（`seq`/撤销仍在电脑端）。
+- 卡背动效：`docs/motion-ref/` 有三个参考 demo，App 未接。
+- 按书视图只能看「当前词书」（没有书目选择器）；要看别的一本得先切当前词书。
+- 拉取时词/书不在本机的行会跳过且不回补（两本大词库默认隐藏时尤其明显）。
+- 「显示内置大词库」需下次启动才导入，文案已改成「开回来下次启动生效」。
+- DB16 还没有迁移测试用例（`MigrationTest` 只覆盖到 12→13）。
+
+### 12.4 验收修复记录（2026-11-08 15:2x）
+
+- **P0 同步分页丢行**：服务端 `pull()` 增 `next_since_rev`（`sync_store.py`），手机端 `PullPage.nextSinceRev` 优先用它推游标；`MAX_PULL_PAGES` 用尽改为失败提示。600 条合约复测：500 + 100，无丢行。
+- 统计卡新增按记忆方法分布（全局/按书都跟口径切）。
+- 「内置大词库」说明文案改为「开回来下次启动生效」。
+- 复核：`compileDebugKotlin` 零错误；`assembleDebug` 重新出包。

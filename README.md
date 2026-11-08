@@ -75,9 +75,9 @@ Gradle 发行版走腾讯云镜像，两者都不改项目源码。
 |---|---|
 | 签名 | `_toolchain/signing/wordhelper.jks`（别名 `wordhelper`），**这把 key 不能换、不能丢** |
 | 包名 | `com.kaoyan.wordhelper`，与官方版相同 |
-| 版本号 | `versionCode` 与 `versionName` 同步维护（当前 `versionCode 4 / versionName 1.4.1preview`） |
+| 版本号 | `versionCode` 与 `versionName` 同步维护（当前 `versionCode 9 / versionName 1.4.4`，DB 16） |
 
-数据库版本只升不降，每次升级都带迁移。当前 13 → 14（只新建 `tb_word_memory`，不动旧表）。
+数据库版本只升不降，每次升级都带迁移。当前 15 → 16（`tb_word_memory` 加 `method` 列；新建 `tb_sync_op` / `tb_sync_state`，都给学习记录同步用）。
 
 > 唯一的例外：官方版用的是作者的签名，与本项目不同，所以**从官方版切过来必须卸载一次**，
 > 学习进度会清空。切过来之后，后续版本都能互相覆盖。
@@ -250,6 +250,7 @@ export MSYS2_ARG_CONV_EXCL='*'
 ## 1.4.3.1 体验修整（2026-11-07，versionCode 7）
 
 - **重写条挪进卡背内部**：作为卡背最下面一行（`WordCard` 的 `backActions` 槽），固定贴卡底、不随卡背内容滚动；只在背面显示，正面看不到也不占高度
+  - 注：这条已被 1.4.3.2 覆盖——现在重写条排在卡背正文末尾，**随内容一起滚**；此处保留历史记录，不要照这段实现
 - **真实进度**：电脑端每条任务有 `stage`（`queued/generate/polish/judge/done/failed`），手机按 8% / 45% / 75% / 92% / 100% 显示进度条；失败停在当前值并变红。只在卡背可见且标记未完成时 4 秒轮询，翻回正面即停
 - **翻到背面就同步**：翻面触发一次增量拉取（8 秒内最多一次），不必切后台；拉到结果后**原地换文**，并闪 2 秒「已更新」
 - **同词连写第二遍也换文**：终态同步的判断从「本条会话还没同步过」改成「当前标记还没完成」，修掉「停在 100% 但文字要翻面才换」的问题；卡背正文改为直接订阅 `tb_word_memory` 里的记忆思路（`WordMemoryDao.observeApproach` → `LearningViewModel.liveApproach`），不再依赖卡片重建，所以**不翻面、不重启当场换文**

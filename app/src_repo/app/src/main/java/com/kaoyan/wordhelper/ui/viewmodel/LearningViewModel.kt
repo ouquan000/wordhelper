@@ -11,6 +11,7 @@ import com.kaoyan.wordhelper.data.entity.Progress
 import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
 import com.kaoyan.wordhelper.data.entity.RewriteStatus
 import com.kaoyan.wordhelper.data.entity.Word
+import com.kaoyan.wordhelper.util.withoutBuiltinFull
 import com.kaoyan.wordhelper.data.model.RewriteModel
 import com.kaoyan.wordhelper.data.model.RewriteModels
 import com.kaoyan.wordhelper.data.model.DailyStatsAggregate
@@ -19,6 +20,7 @@ import com.kaoyan.wordhelper.data.model.SpellingOutcome
 import com.kaoyan.wordhelper.data.model.StudyRating
 import com.kaoyan.wordhelper.data.repository.AddToNewWordsSource
 import com.kaoyan.wordhelper.data.repository.CheckInResult
+import com.kaoyan.wordhelper.data.repository.CardbackAuth
 import com.kaoyan.wordhelper.data.repository.RewriteRepository
 import com.kaoyan.wordhelper.data.repository.TodayNewWordsPlan
 import com.kaoyan.wordhelper.ml.core.AdaptiveResponseThreshold
@@ -159,7 +161,12 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         .map { !it.swipeGestureGuideShown }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    val books: StateFlow<List<Book>> = repository.getAllBooks()
+    val books: StateFlow<List<Book>> = combine(
+        repository.getAllBooks(),
+        settingsRepository.showBuiltinFullBooks
+    ) { list, showFull ->
+        list.withoutBuiltinFull(hide = !showFull)
+    }
         .map { list ->
             list.sortedWith(
                 compareByDescending<Book> { it.type == Book.TYPE_NEW_WORDS }
@@ -412,7 +419,12 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             }
             val sent = rewriteRepository.enqueueAndSync(word.id, word.word, modelId, instruction)
             if (!sent) {
-                _message.value = "已记下，等电脑连上再发"
+                // 口令错和电脑没开是两件事：都说成「等电脑连上」，用户会一直干等。
+                _message.value = if (rewriteRepository.consumeAuthFailure()) {
+                    CardbackAuth.HINT
+                } else {
+                    "已记下，等电脑连上再发"
+                }
             }
         }
     }
@@ -455,8 +467,15 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         val current = _currentWord.value
         if (current != null) {
             val fresh = rewriteRepository.approachOf(current.id)
-            if (fresh != null && fresh != current.approach) {
-                _currentWord.value = _currentWord.value?.copy(approach = fresh)
+            // 方法标签跟着思路一起换：重写结果里带了 method，别让卡背还挂着旧的那一招。
+            val freshMethod = repository.getWordById(current.id)?.method ?: current.method
+            val approachChanged = fresh != null && fresh != current.approach
+            val methodChanged = freshMethod != current.method
+            if (approachChanged || methodChanged) {
+                _currentWord.value = current.copy(
+                    approach = fresh ?: current.approach,
+                    method = freshMethod
+                )
                 _rewriteUpdatedTick.value += 1
             }
         }

@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import com.kaoyan.wordhelper.data.entity.Progress
+import com.kaoyan.wordhelper.data.model.MethodCount
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -33,6 +34,62 @@ interface ProgressDao {
 
     @Query("SELECT COUNT(*) FROM tb_progress WHERE book_id = :bookId AND status = 2")
     fun getMasteredCount(bookId: Long): Flow<Int>
+
+    // ---- 按书统计聚合（「当前词书」视图）----
+    // 下面三条都只返回单行标量。这些词书常有 5000+ 词，
+    // 绝不能换成把整本 Progress 实体读进内存再数的写法（那是掉帧源）。
+
+    /** 按书待复习数，口径与 DateUtils.isDue 一致：未掌握且已到期。 */
+    @Query(
+        """SELECT COUNT(*) FROM tb_progress
+           WHERE book_id = :bookId
+             AND status != 2
+             AND next_review_time > 0
+             AND next_review_time <= :now"""
+    )
+    fun getBookDueCount(bookId: Long, now: Long): Flow<Int>
+
+    /** 按书正确率，沿用 getGlobalAccuracy 的公式，只多一条 book_id 约束；无复习记录时返回 null。 */
+    @Query(
+        """SELECT AVG(
+            CASE WHEN review_count > 0
+                THEN CAST(review_count - spell_wrong_count AS REAL) / review_count
+                ELSE 0.5
+            END
+        ) FROM tb_progress WHERE book_id = :bookId AND review_count > 0"""
+    )
+    fun getBookAccuracy(bookId: Long): Flow<Float?>
+
+    /** 按书「今日接触词数」：last_review_time 落在学习日区间内，同一个词当天多次复习只算一次。 */
+    @Query(
+        """SELECT COUNT(*) FROM tb_progress
+           WHERE book_id = :bookId
+             AND last_review_time >= :startTime
+             AND last_review_time < :endTime"""
+    )
+    fun getBookTodayTouchedCount(bookId: Long, startTime: Long, endTime: Long): Flow<Int>
+
+    // ---- 按记忆方法聚合（「按 tag 统计」）----
+    // 只看已经学过的词（status >= 1），按 method 分组计数；COUNT(DISTINCT word_id)
+    // 是为了同一个词在几本书里都有进度时不重复算。空串 = 还没落到方法标签。
+
+    @Query(
+        """SELECT IFNULL(m.method, '') AS method, COUNT(DISTINCT p.word_id) AS count
+           FROM tb_progress p
+           LEFT JOIN tb_word_memory m ON m.word_id = p.word_id
+           WHERE p.status >= 1
+           GROUP BY IFNULL(m.method, '')"""
+    )
+    fun getGlobalMethodCounts(): Flow<List<MethodCount>>
+
+    @Query(
+        """SELECT IFNULL(m.method, '') AS method, COUNT(DISTINCT p.word_id) AS count
+           FROM tb_progress p
+           LEFT JOIN tb_word_memory m ON m.word_id = p.word_id
+           WHERE p.status >= 1 AND p.book_id = :bookId
+           GROUP BY IFNULL(m.method, '')"""
+    )
+    fun getBookMethodCounts(bookId: Long): Flow<List<MethodCount>>
 
     @Query(
         """SELECT * FROM tb_progress WHERE book_id = :bookId 

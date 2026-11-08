@@ -10,12 +10,16 @@ import com.kaoyan.wordhelper.data.repository.ForecastRepository
 import com.kaoyan.wordhelper.data.repository.PronunciationRepository
 import com.kaoyan.wordhelper.data.repository.RewriteRepository
 import com.kaoyan.wordhelper.data.repository.SettingsRepository
+import com.kaoyan.wordhelper.data.repository.SyncRepository
 import com.kaoyan.wordhelper.data.repository.WordRepository
 import com.kaoyan.wordhelper.ml.core.PersonalRetentionPredictor
 import com.kaoyan.wordhelper.ml.integration.MLEnhancedScheduler
 import com.kaoyan.wordhelper.ml.training.ColdStartManager
 import com.kaoyan.wordhelper.ml.training.ModelPersistence
 import com.kaoyan.wordhelper.util.WordbookFullLoader
+import com.kaoyan.wordhelper.util.WordMethodMapLoader
+import com.kaoyan.wordhelper.util.BuiltinBooks
+import com.kaoyan.wordhelper.util.withoutBuiltinFull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -52,8 +56,14 @@ class KaoyanWordApp : Application() {
             settingsRepository = settingsRepository,
             wordDao = database.wordDao(),
             wordMemoryDao = database.wordMemoryDao(),
-            queueDao = database.rewriteQueueDao()
+            queueDao = database.rewriteQueueDao(),
+            bookDao = database.bookDao()
         )
+    }
+
+    /** 学习记录同步（1.4.4）：本地排队，只在用户点「同步学习记录」时才联网。 */
+    val syncRepository: SyncRepository by lazy {
+        SyncRepository(database, settingsRepository)
     }
 
     val aiConfigRepository: AIConfigRepository by lazy {
@@ -105,9 +115,26 @@ class KaoyanWordApp : Application() {
                     settingsRepository.updateCardSeedVersion(cardSeed.version)
                 }
             }
-            val presetSeeds = WordbookFullLoader.loadPresets(this@KaoyanWordApp).getOrNull()
-            if (!presetSeeds.isNullOrEmpty()) {
-                repository.ensurePresetBooks(presetSeeds)
+            // 1.4.4：两本内置大词库（各 5000+ 词）默认隐藏，隐藏时连导入都跳过——
+            // 它们每次启动都会从 assets 重导，是启动耗时的大头。库里的旧记录不动，设置里打开就回来。
+            val showFullBooks = settingsRepository.showBuiltinFullBooks.first()
+            if (showFullBooks) {
+                val presetSeeds = WordbookFullLoader.loadPresets(this@KaoyanWordApp).getOrNull()
+                if (!presetSeeds.isNullOrEmpty()) {
+                    repository.ensurePresetBooks(presetSeeds)
+                }
+            }
+            // 隐藏期间，当前激活的书如果是被藏起来的那两本，自动切到可见的书，
+            // 否则学习页会对着一个列表里看不见的词书空转。
+            if (!showFullBooks) {
+                val active = repository.getActiveBook()
+                if (active != null && BuiltinBooks.isBuiltinFull(active)) {
+                    val visible = repository.getAllBooks().first().withoutBuiltinFull(hide = true)
+                    val target = visible.firstOrNull { it.name == "六级记忆卡" } ?: visible.firstOrNull()
+                    if (target != null) {
+                        repository.switchBook(target.id)
+                    }
+                }
             }
             // 1.4.3.2：一次性清空学习记录（进度/复习/新词引用/统计/日志/ML 样本/生词本），
             // 只在升级后第一次启动执行一次，之后正常背词不会被清。
@@ -115,6 +142,15 @@ class KaoyanWordApp : Application() {
                 repository.resetStudyRecords()
                 settingsRepository.clearTodayNewWordsPlan()
                 settingsRepository.markCleanup132Done()
+            }
+            // 1.4.4：老卡片补「记忆方法」标签。资产里是由 by-word 语料抽出来的 word→method，
+            // 只填空值、不覆盖用户重写过的词；升级后第一次启动做一次。
+            if (!settingsRepository.methodBackfillDone()) {
+                runCatching {
+                    val methodMap = WordMethodMapLoader.load(this@KaoyanWordApp)
+                    if (methodMap.isNotEmpty()) repository.backfillWordMethods(methodMap)
+                }
+                settingsRepository.markMethodBackfillDone()
             }
             // 1.4.3.2：20 词测试书，只建书不切换；导入过一次就不再自动建（删了也不复活）。
             val testSeed = CardSeedLoader.loadTest(this@KaoyanWordApp)

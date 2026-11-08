@@ -52,6 +52,10 @@ class CardBackRepository(
     private val _lastMessage = MutableStateFlow<String?>(null)
     val lastMessage: StateFlow<String?> = _lastMessage.asStateFlow()
 
+    /** 电脑端回 401 了：口令不对，别把这种情况说成「电脑没连上」。 */
+    @Volatile
+    private var authFailed = false
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
@@ -92,13 +96,21 @@ class CardBackRepository(
             return CardBackRefreshResult.Failure("正在刷新，稍等一下")
         }
         _refreshing.value = true
+        authFailed = false
         try {
-            val rawUrl = settingsRepository.settingsFlow.first().cardBackUrl
+            val settings = settingsRepository.settingsFlow.first()
+            val rawUrl = settings.cardBackUrl
             val url = normalizeUrl(rawUrl)
                 ?: return CardBackRefreshResult.Failure("还没填卡背结构地址（我的 → 设置 → 卡背结构地址）")
 
-            val body = withContext(Dispatchers.IO) { fetch(url) }
-                ?: return CardBackRefreshResult.Failure("电脑没连上：检查电脑上的服务开着没、手机和电脑是不是同一个网")
+            val body = withContext(Dispatchers.IO) { fetch(url, settings.cardBackToken) }
+                ?: return CardBackRefreshResult.Failure(
+                    if (authFailed) {
+                        CardbackAuth.HINT
+                    } else {
+                        "电脑没连上：检查电脑上的服务开着没、手机和电脑是不是同一个网"
+                    }
+                )
 
             return applyRemoteBody(body)
         } finally {
@@ -174,23 +186,28 @@ class CardBackRepository(
             ?.let { if (it is CardBackDecodeResult.Ok) it.config else null }
     }
 
-    private fun fetch(url: String): String? {
+    private fun fetch(url: String, token: String): String? {
         // 偶发连接失效（实测约 7%，重试即好）—— 手动刷新这么低频，重试一次完全划算。
         repeat(2) { attempt ->
-            val body = runCatching { fetchOnce(url) }.getOrNull()
+            val body = runCatching { fetchOnce(url, token) }.getOrNull()
             if (body != null) return body
             if (attempt == 0) runCatching { Thread.sleep(150) }
         }
         return null
     }
 
-    private fun fetchOnce(url: String): String? {
-        val request = Request.Builder()
+    private fun fetchOnce(url: String, token: String): String? {
+        val builder = Request.Builder()
             .url(url)
             .header("Cache-Control", "no-cache")
             .header("Connection", "close")
-            .build()
-        return client.newCall(request).execute().use { response ->
+        // 电脑端不在本机时，每个请求都要带口令；没填就照发（本机 127.0.0.1 免票）。
+        CardbackAuth.headerValue(token)?.let { builder.header(CardbackAuth.HEADER, it) }
+        return client.newCall(builder.build()).execute().use { response ->
+            if (response.code == 401) {
+                authFailed = true
+                return@use null
+            }
             if (!response.isSuccessful) return@use null
             response.body?.string()
         }

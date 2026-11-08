@@ -60,7 +60,7 @@
   tbody td { padding: 9px 10px; border-bottom: 1px solid var(--surface-2); vertical-align: top; }
   tbody tr:last-child td { border-bottom: none; }
   tbody tr.failed { background: #fff7f7; }
-  .word { font-weight: 600; word-break: break-word; }
+  .word { font-weight: 600; word-break: break-word; white-space: nowrap; }
   .model, .time { color: var(--muted); font-size: 12px; white-space: nowrap; }
   .badge {
     display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px;
@@ -87,6 +87,26 @@
     border-color: #f0b9b9; color: #a63c3c; background: #fff;
   }
   .retry:hover { background: #fdecec; }
+  .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 10px; }
+  .filters label { color: var(--muted); font-size: 11.5px; letter-spacing: .06em; }
+  select {
+    font: inherit; font-size: 12px; color: var(--text); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 7px; padding: 4px 8px; max-width: 340px;
+  }
+  .bulk { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .bulk .count { color: var(--muted); font-size: 11.5px; }
+  th.pick, td.pick { width: 30px; text-align: center; padding-left: 6px; padding-right: 0; }
+  th.pick input, td.pick input { cursor: pointer; }
+  .book { color: var(--muted); font-size: 11px; margin-top: 2px; word-break: break-word; }
+  .instr { max-width: 240px; word-break: break-word; }
+  .instr .none { color: var(--muted); }
+  .copy {
+    margin-top: 5px; border-color: var(--line); color: var(--muted);
+    background: transparent; font-size: 11px; padding: 1px 7px;
+  }
+  .copy.done { color: var(--accent); border-color: #bfe6cf; }
+  td.actions .copy { margin: 4px 0 0 6px; }
+  td.state { white-space: nowrap; }
   .empty-row td { text-align: center; color: var(--muted); padding: 26px 10px; }
   .foot { color: var(--muted); font-size: 11.5px; margin-top: 12px; }
   a { color: var(--primary); }
@@ -116,10 +136,21 @@
 
   <div class="banner" id="banner"></div>
 
+  <div class="filters">
+    <label for="book">书目</label>
+    <select id="book"><option value="">全部书目</option></select>
+    <span class="bulk">
+      <span class="count" id="sel-count">未选失败项</span>
+      <button type="button" id="retry-selected" disabled>重试选中</button>
+    </span>
+  </div>
+
   <table class="records" id="records">
     <thead>
       <tr>
+        <th class="pick"><input type="checkbox" id="pick-all" title="全选本页失败项"></th>
         <th>单词</th>
+        <th>指令</th>
         <th>模型</th>
         <th>阶段</th>
         <th>状态</th>
@@ -129,7 +160,7 @@
       </tr>
     </thead>
     <tbody id="rows">
-      <tr class="empty-row"><td colspan="7">加载中…</td></tr>
+      <tr class="empty-row"><td colspan="9">加载中…</td></tr>
     </tbody>
   </table>
 
@@ -161,11 +192,20 @@
     pending: document.getElementById("pending"),
     banner: document.getElementById("banner"),
     rows: document.getElementById("rows"),
-    total: document.getElementById("total")
+    total: document.getElementById("total"),
+    book: document.getElementById("book"),
+    pickAll: document.getElementById("pick-all"),
+    retrySelected: document.getElementById("retry-selected"),
+    selCount: document.getElementById("sel-count")
   };
 
   var timer = null;
   var busy = false;
+  // 当前筛的书目（'' = 全部）；selected 只认 clientId，刷新后按它把勾选还原回去
+  var currentBook = "";
+  var currentRecords = [];
+  var selected = {};
+  var retrying = false;
 
   function text(value) {
     return value === 0 ? "0" : (value || value === 0 ? String(value) : "–");
@@ -196,6 +236,51 @@
     if (!stageNames[key]) key = "unknown";
     var span = badge("st-" + key, stageNames[key] || stage || "未知");
     return span;
+  }
+
+  /** 复制文本：https/localhost 才有 clipboard API，局域网 http 页面退回 textarea 老办法。 */
+  function copyText(value) {
+    var raw = String(value == null ? "" : value);
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(raw);
+    }
+    return new Promise(function (resolve, reject) {
+      try {
+        var area = document.createElement("textarea");
+        area.value = raw;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.top = "-1000px";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        var ok = document.execCommand("copy");
+        document.body.removeChild(area);
+        if (ok) resolve(); else reject(new Error("execCommand copy 被拒"));
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  function copyButton(record) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "copy";
+    btn.textContent = "复制错误";
+    btn.addEventListener("click", function () {
+      copyText(record.error).then(function () {
+        btn.textContent = "已复制";
+        btn.className = "copy done";
+        window.setTimeout(function () {
+          btn.textContent = "复制错误";
+          btn.className = "copy";
+        }, 1600);
+      }).catch(function () {
+        showError("复制失败：浏览器不让用剪贴板，展开后手动选中那段文字吧");
+      });
+    });
+    return btn;
   }
 
   function linesCell(record) {
@@ -232,14 +317,54 @@
     return wrap;
   }
 
+  function instrCell(record) {
+    var td = document.createElement("td");
+    td.className = "instr";
+    var raw = String(record.instruction || "").trim();
+    if (!raw) {
+      var none = document.createElement("span");
+      none.className = "none";
+      none.textContent = "未填写";
+      td.appendChild(none);
+    } else {
+      td.textContent = raw;
+      td.title = raw;
+    }
+    return td;
+  }
+
   function rowFor(record) {
     var tr = document.createElement("tr");
-    if (record.stage === "failed" || record.state === "failed") tr.className = "failed";
+    var isFailed = record.stage === "failed" || record.state === "failed";
+    if (isFailed) tr.className = "failed";
+
+    var tdPick = document.createElement("td");
+    tdPick.className = "pick";
+    if (isFailed && record.clientId) {
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = !!selected[record.clientId];
+      box.addEventListener("change", function () {
+        if (box.checked) selected[record.clientId] = true;
+        else delete selected[record.clientId];
+        syncSelection();
+      });
+      tdPick.appendChild(box);
+    }
+    tr.appendChild(tdPick);
 
     var tdWord = document.createElement("td");
     tdWord.className = "word";
     tdWord.textContent = record.word || "";
+    if (record.book) {
+      var bookTag = document.createElement("div");
+      bookTag.className = "book";
+      bookTag.textContent = record.book;
+      tdWord.appendChild(bookTag);
+    }
     tr.appendChild(tdWord);
+
+    tr.appendChild(instrCell(record));
 
     var tdModel = document.createElement("td");
     tdModel.className = "model";
@@ -251,6 +376,7 @@
     tr.appendChild(tdStage);
 
     var tdState = document.createElement("td");
+    tdState.className = "state";
     var state = String(record.state || "");
     tdState.textContent = stateNames[state] || state || "–";
     tr.appendChild(tdState);
@@ -266,33 +392,94 @@
 
     var tdAction = document.createElement("td");
     tdAction.className = "actions";
-    if (state === "failed") {
+    if (isFailed) {
       var btn = document.createElement("button");
       btn.type = "button";
       btn.className = "retry";
       btn.textContent = "重试";
       btn.addEventListener("click", function () { retry(record, btn); });
       tdAction.appendChild(btn);
+      // 复制错误放在看得见的地方（失败原因那截是折叠的）
+      if (record.error) tdAction.appendChild(copyButton(record));
     }
     tr.appendChild(tdAction);
     return tr;
   }
 
+  function failedOnPage() {
+    return currentRecords.filter(function (record) {
+      return record.clientId && (record.stage === "failed" || record.state === "failed");
+    });
+  }
+
+  function syncSelection() {
+    var failed = failedOnPage();
+    var chosen = failed.filter(function (record) { return !!selected[record.clientId]; });
+    el.retrySelected.disabled = retrying || chosen.length === 0;
+    el.retrySelected.textContent = chosen.length ? "重试选中 (" + chosen.length + ")" : "重试选中";
+    el.selCount.textContent = chosen.length
+      ? "已选 " + chosen.length + " / " + failed.length + " 条失败"
+      : (failed.length ? "本页 " + failed.length + " 条失败" : "本页没有失败项");
+    el.pickAll.checked = failed.length > 0 && chosen.length === failed.length;
+    el.pickAll.disabled = failed.length === 0 || retrying;
+  }
+
   function render(records) {
+    currentRecords = records;
     el.rows.textContent = "";
     if (!records.length) {
       var tr = document.createElement("tr");
       tr.className = "empty-row";
       var td = document.createElement("td");
-      td.colSpan = 7;
-      td.textContent = "还没有重写记录。在手机上标记一个词就会出现在这里。";
+      td.colSpan = 9;
+      td.textContent = currentBook
+        ? "这本书还没有重写记录。"
+        : "还没有重写记录。在手机上标记一个词就会出现在这里。";
       tr.appendChild(td);
       el.rows.appendChild(tr);
+      syncSelection();
       return;
     }
     records.forEach(function (record) {
       el.rows.appendChild(rowFor(record));
     });
+    syncSelection();
+  }
+
+  /** 书目下拉：用 DOM 拼，别拼字符串（书名里可能有引号/尖括号）。 */
+  function renderBooks(books, active) {
+    var list = Array.isArray(books) ? books : [];
+    var keep = String(active || "");
+    var hasUnset = false;
+    el.book.textContent = "";
+
+    var all = document.createElement("option");
+    all.value = "";
+    all.textContent = "全部书目";
+    el.book.appendChild(all);
+
+    list.forEach(function (item) {
+      var name = String(item.name || "");
+      if (!name) { hasUnset = true; return; }
+      var opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name + "（" + (item.count || 0) + "）";
+      el.book.appendChild(opt);
+    });
+    if (hasUnset) {
+      var noneOpt = document.createElement("option");
+      noneOpt.value = "__none__";
+      noneOpt.textContent = "未标注书目";
+      el.book.appendChild(noneOpt);
+    }
+
+    // 选中的书如果已经不在结果里了（记录被清/改名），退回「全部」，别留个空白下拉
+    var exists = false;
+    for (var i = 0; i < el.book.options.length; i += 1) {
+      if (el.book.options[i].value === keep) { exists = true; break; }
+    }
+    el.book.value = keep && exists ? keep : "";
+    currentBook = el.book.value;
   }
 
   function showError(message) {
@@ -305,15 +492,24 @@
     el.banner.className = "banner";
   }
 
+  function httpHint(status) {
+    if (status === 401) return "401 口令不对";
+    if (status === 429) return "429 请求太密，等一分钟";
+    if (status === 403) return "403 被拒（来源不对）";
+    return "HTTP " + status;
+  }
+
   function load() {
     if (busy) return;
     busy = true;
     clearError();
 
+    var recordsUrl = "/rewrite/records?limit=50" +
+      (currentBook ? "&book=" + encodeURIComponent(currentBook) : "");
     var statusReq = fetch("/rewrite/status", { cache: "no-store" })
-      .then(function (res) { return res.ok ? res.json() : Promise.reject(new Error("status HTTP " + res.status)); });
-    var recordsReq = fetch("/rewrite/records?limit=50", { cache: "no-store" })
-      .then(function (res) { return res.ok ? res.json() : Promise.reject(new Error("records HTTP " + res.status)); });
+      .then(function (res) { return res.ok ? res.json() : Promise.reject(new Error(httpHint(res.status))); });
+    var recordsReq = fetch(recordsUrl, { cache: "no-store" })
+      .then(function (res) { return res.ok ? res.json() : Promise.reject(new Error(httpHint(res.status))); });
 
     Promise.all([statusReq, recordsReq]).then(function (results) {
       var status = results[0] || {};
@@ -322,6 +518,7 @@
       el.failed.textContent = text(status.todayFailed);
       el.running.textContent = text(status.running);
       el.pending.textContent = text(status.pending);
+      renderBooks(records.books, records.book);
       render(Array.isArray(records.records) ? records.records : []);
       el.total.textContent = text(records.total);
       var now = new Date();
@@ -334,21 +531,34 @@
     });
   }
 
-  function retry(record, btn) {
-    var body = { word: record.word || "", clientId: record.clientId || "" };
-    btn.disabled = true;
-    btn.textContent = "排队中…";
-    fetch("/rewrite/retry", {
+  function retryQueued(record) {
+    return fetch("/rewrite/retry", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ word: record.word || "", clientId: record.clientId || "" })
     }).then(function (res) {
       return res.json().then(function (data) {
-        if (!res.ok) throw new Error(data && data.error ? data.error : "HTTP " + res.status);
+        if (!res.ok) {
+          var hint = data && (data.hint || data.error);
+          throw new Error(hint || httpHint(res.status));
+        }
         return data;
       });
     }).then(function (data) {
-      if (!data.queued) showError("没有可重试的失败记录：" + (record.word || ""));
+      return !!(data && data.queued);
+    });
+  }
+
+  function retry(record, btn) {
+    btn.disabled = true;
+    btn.textContent = "排队中…";
+    retryQueued(record).then(function (queued) {
+      if (!queued) {
+        showError("没有可重试的失败记录：" + (record.word || ""));
+        btn.disabled = false;
+        btn.textContent = "重试";
+        return;
+      }
       btn.textContent = "已排队";
       load();
     }).catch(function (err) {
@@ -356,6 +566,46 @@
       btn.disabled = false;
       btn.textContent = "重试";
     });
+  }
+
+  /** 批量重试：一条一条来。电脑端只有一把 grok 锁，并发打进去只会互相排队还容易撞 429。 */
+  function retryMany(records, btn) {
+    if (retrying) return;
+    if (!records.length) {
+      showError("还没选失败项");
+      return;
+    }
+    retrying = true;
+    btn.disabled = true;
+    var done = 0;
+    var failed = 0;
+    var index = 0;
+
+    function next() {
+      if (index >= records.length) {
+        retrying = false;
+        syncSelection();
+        var summary = "批量重试完成：排队 " + done + " 条";
+        if (failed) summary += "，没排上 " + failed + " 条";
+        showError(summary);
+        load();
+        return;
+      }
+      var record = records[index];
+      var label = "重试中 " + (index + 1) + "/" + records.length;
+      el.selCount.textContent = label;
+      retryQueued(record).then(function (queued) {
+        if (queued) done += 1; else failed += 1;
+      }).catch(function (err) {
+        failed += 1;
+        showError("第 " + (index + 1) + " 条失败：" + (err && err.message ? err.message : err));
+      }).then(function () {
+        index += 1;
+        window.setTimeout(next, 400);
+      });
+    }
+
+    next();
   }
 
   function startTimer() {
@@ -378,6 +628,25 @@
     if (timer === null) startTimer(); else stopTimer();
   });
   el.open.addEventListener("click", load);
+
+  el.book.addEventListener("change", function () {
+    currentBook = el.book.value || "";
+    selected = {};
+    load();
+  });
+
+  el.pickAll.addEventListener("change", function () {
+    failedOnPage().forEach(function (record) {
+      if (el.pickAll.checked) selected[record.clientId] = true;
+      else delete selected[record.clientId];
+    });
+    render(currentRecords);
+  });
+
+  el.retrySelected.addEventListener("click", function () {
+    var list = failedOnPage().filter(function (record) { return !!selected[record.clientId]; });
+    retryMany(list, el.retrySelected);
+  });
 
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) stopTimer(); else startTimer();

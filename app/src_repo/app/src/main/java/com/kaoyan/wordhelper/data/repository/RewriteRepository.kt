@@ -1,6 +1,7 @@
 package com.kaoyan.wordhelper.data.repository
 
 import com.google.gson.Gson
+import com.kaoyan.wordhelper.data.dao.BookDao
 import com.kaoyan.wordhelper.data.dao.RewriteQueueDao
 import com.kaoyan.wordhelper.data.dao.WordDao
 import com.kaoyan.wordhelper.data.dao.WordMemoryDao
@@ -20,6 +21,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import java.net.URI
 import java.text.SimpleDateFormat
 import java.time.OffsetDateTime
@@ -64,13 +66,22 @@ class RewriteRepository(
     private val settingsRepository: SettingsRepository,
     private val wordDao: WordDao,
     private val wordMemoryDao: WordMemoryDao,
-    private val queueDao: RewriteQueueDao
+    private val queueDao: RewriteQueueDao,
+    /** 只为把书名带上去：记录页按书筛，可书只在手机库里。 */
+    private val bookDao: BookDao
 ) {
     private val gson = Gson()
     private val syncMutex = Mutex()
 
     @Volatile
     private var cachedModels: List<RewriteModel>? = null
+
+    /** 电脑端回 401 了：口令不对，别把这种情况混进「电脑没连上」。 */
+    @Volatile
+    private var authFailed = false
+
+    /** bookId → 书名；一本书查一次数据库就够，词表几千个词也不会每条都查。 */
+    private val bookNames = HashMap<Long, String>()
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(4, TimeUnit.SECONDS)
@@ -349,7 +360,11 @@ class RewriteRepository(
                 updatedAt = now,
                 source = WordMemory.SOURCE_USER,
                 rev = dto.rev ?: ((existing?.rev ?: 0) + 1),
-                prevApproach = prev.takeIf { it.isNotBlank() }
+                prevApproach = prev.takeIf { it.isNotBlank() },
+                // 重写出来的是「哪一招」也一起换掉；电脑端没给就保留原标签，别把卡背标签弄空。
+                method = dto.method.orEmpty().trim().lowercase()
+                    .takeIf { it.isNotEmpty() }
+                    ?: existing?.method.orEmpty()
             )
         )
         queueDao.updateStatus(wordId, RewriteStatus.DONE, null, now)
@@ -369,6 +384,7 @@ class RewriteRepository(
                 meaning = word?.meaning.orEmpty(),
                 model = item.model,
                 instruction = item.instruction,
+                book = bookNameOf(word?.bookId ?: 0L),
                 markedAt = isoTime(item.createdAt),
                 currentApproach = memory?.approach.orEmpty()
                     .split("\n")
@@ -385,6 +401,15 @@ class RewriteRepository(
 
     private fun clientIdOf(item: RewriteQueueItem): String = "w${item.wordId}-${item.createdAt}"
 
+    /** 书名（空 = 查不到/没绑书）；电脑端只转存这个字符串给记录页筛选用。 */
+    private suspend fun bookNameOf(bookId: Long): String {
+        if (bookId <= 0L) return ""
+        bookNames[bookId]?.let { return it }
+        val name = runCatching { bookDao.getBookById(bookId)?.name }.getOrNull().orEmpty()
+        bookNames[bookId] = name
+        return name
+    }
+
     /** 释义里自带词性前缀（"adj. 恰当的…"），抽出来当词性，别把整条释义都塞给模型。 */
     private fun posOf(meaning: String): String {
         val m = POS_PREFIX.find(meaning.trim()) ?: return ""
@@ -396,14 +421,13 @@ class RewriteRepository(
     }
 
     private suspend fun httpGet(url: String, attempts: Int = 3): String? = withContext(Dispatchers.IO) {
+        val token = currentToken()
         // python 的 HTTPServer 默认 HTTP/1.0，回完就断连接；声明 Connection: close 避免复用旧 socket。
         repeat(attempts) {
             val body = runCatching {
                 client.newCall(
-                    Request.Builder().url(url).get().build()
-                ).execute().use { response ->
-                    if (!response.isSuccessful) null else response.body?.string()
-                }
+                    withToken(Request.Builder().url(url).get(), token).build()
+                ).execute().use { response -> readBody(response) }
             }.onFailure { Thread.sleep(150) }.getOrNull()
             if (body != null) return@withContext body
         }
@@ -411,14 +435,43 @@ class RewriteRepository(
     }
 
     private suspend fun httpPost(url: String, json: String): String? = withContext(Dispatchers.IO) {
+        val token = currentToken()
         runCatching {
             val body = json.toRequestBody(JSON_MEDIA_TYPE)
             client.newCall(
-                Request.Builder().url(url).post(body).build()
-            ).execute().use { response ->
-                if (!response.isSuccessful) null else response.body?.string()
-            }
+                withToken(Request.Builder().url(url).post(body), token).build()
+            ).execute().use { response -> readBody(response) }
         }.getOrNull()
+    }
+
+    /** 电脑端不在本机时，每个请求都得带口令；没填就照发（本机浏览器编辑卡背免票）。 */
+    private fun withToken(builder: Request.Builder, token: String): Request.Builder {
+        CardbackAuth.headerValue(token)?.let { builder.header(CardbackAuth.HEADER, it) }
+        return builder
+    }
+
+    private suspend fun currentToken(): String {
+        return runCatching { settingsRepository.settingsFlow.first().cardBackToken }.getOrDefault("")
+    }
+
+    /**
+     * 401 要单独记一笔：调用方只能拿到 null，分不清「电脑没开」和「口令错」，
+     * 界面就会把口令问题说成「等电脑连上」，用户照着做一辈子都连不上。
+     */
+    private fun readBody(response: Response): String? {
+        if (response.code == HTTP_UNAUTHORIZED) {
+            authFailed = true
+            return null
+        }
+        if (!response.isSuccessful) return null
+        return response.body?.string()
+    }
+
+    /** 上一次请求是不是被电脑端的口令拦住了；读一次就清掉，免得同一句提示反复弹。 */
+    fun consumeAuthFailure(): Boolean {
+        if (!authFailed) return false
+        authFailed = false
+        return true
     }
 
     /** 从卡背地址里取 scheme://host:port；没填或填错返回 null。 */
@@ -448,6 +501,8 @@ class RewriteRepository(
         val meaning: String,
         val model: String,
         val instruction: String,
+        /** 书名；记录页按书筛，电脑端只存这个字符串。老版本不传，默认空。 */
+        val book: String = "",
         val markedAt: String,
         val currentApproach: List<String>? = null
     )
@@ -467,6 +522,7 @@ class RewriteRepository(
         val rev: Int?,
         val approach: List<String>?,
         val prev: List<String>?,
+        val method: String?,
         val status: String?,
         val error: String?
     )
@@ -494,6 +550,7 @@ class RewriteRepository(
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val MAX_PAGES = 20
         private const val STATUS_FAILED = "failed"
+        private const val HTTP_UNAUTHORIZED = 401
 
         /** /rewrite/status 连上了，但列表里没有这个词（电脑端清过数据）。 */
         const val STATE_MISSING = "missing"

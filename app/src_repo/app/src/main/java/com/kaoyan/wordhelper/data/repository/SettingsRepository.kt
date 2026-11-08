@@ -27,6 +27,7 @@ private const val DEFAULT_NEW_WORDS_SHUFFLE_ENABLED = false
 private const val DEFAULT_ML_ADAPTIVE_ENABLED = false
 private const val DEFAULT_PLANNED_NEW_WORDS_ENABLED = false
 private const val DEFAULT_CARD_BACK_URL = ""
+private const val DEFAULT_CARD_BACK_TOKEN = ""
 private val Context.dataStore by preferencesDataStore(name = "user_settings")
 
 data class UserSettings(
@@ -44,7 +45,9 @@ data class UserSettings(
     val mlAdaptiveEnabled: Boolean = DEFAULT_ML_ADAPTIVE_ENABLED,
     val plannedNewWordsEnabled: Boolean = DEFAULT_PLANNED_NEW_WORDS_ENABLED,
     /** 卡背结构地址；空 = 没配，刷新时提示去设置里填。 */
-    val cardBackUrl: String = DEFAULT_CARD_BACK_URL
+    val cardBackUrl: String = DEFAULT_CARD_BACK_URL,
+    /** 电脑端启动时打印的口令；空 = 没填，非本机访问会被 401。 */
+    val cardBackToken: String = DEFAULT_CARD_BACK_TOKEN
 )
 
 data class TodayNewWordsPlan(
@@ -107,7 +110,8 @@ class SettingsRepository(private val context: Context) {
                 prefs[KEY_ML_ADAPTIVE_ENABLED] ?: DEFAULT_ML_ADAPTIVE_ENABLED,
             plannedNewWordsEnabled =
                 prefs[KEY_PLANNED_NEW_WORDS_ENABLED] ?: DEFAULT_PLANNED_NEW_WORDS_ENABLED,
-            cardBackUrl = prefs[KEY_CARD_BACK_URL] ?: DEFAULT_CARD_BACK_URL
+            cardBackUrl = prefs[KEY_CARD_BACK_URL] ?: DEFAULT_CARD_BACK_URL,
+            cardBackToken = prefs[KEY_CARD_BACK_TOKEN] ?: DEFAULT_CARD_BACK_TOKEN
         )
     }
 
@@ -167,6 +171,10 @@ class SettingsRepository(private val context: Context) {
         dataStore.edit { prefs -> prefs[KEY_CARD_BACK_URL] = url.trim() }
     }
 
+    suspend fun updateCardBackToken(token: String) {
+        dataStore.edit { prefs -> prefs[KEY_CARD_BACK_TOKEN] = token.trim() }
+    }
+
     /** 已导入的内置种子词库版本号，用于判断要不要重导内容。 */
     suspend fun cardSeedVersion(): Int {
         return dataStore.data.map { prefs -> prefs[KEY_CARD_SEED_VERSION] ?: 0 }.first()
@@ -212,6 +220,28 @@ class SettingsRepository(private val context: Context) {
         dataStore.edit { prefs -> prefs[KEY_TEST_DECK_VERSION] = version }
     }
 
+    /** 1.4.4：方法标签回填只做一次（升级后第一次启动把老卡片的 method 补齐）。 */
+    suspend fun methodBackfillDone(): Boolean {
+        return dataStore.data.map { prefs -> prefs[KEY_METHOD_BACKFILL_DONE] ?: false }.first()
+    }
+
+    suspend fun markMethodBackfillDone() {
+        dataStore.edit { prefs -> prefs[KEY_METHOD_BACKFILL_DONE] = true }
+    }
+
+    /**
+     * 是否显示两本内置大词库（「完整词库」「完整词库（精选）」）。
+     * 默认关：这两本各 5000+ 词、每次启动都要从 assets 重导，日常背词用不到。
+     * 只是「不显示/不导入」，数据库里的旧书不删，用户随时能开回来。
+     */
+    val showBuiltinFullBooks: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_SHOW_BUILTIN_FULL_BOOKS] ?: false
+    }
+
+    suspend fun updateShowBuiltinFullBooks(show: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_SHOW_BUILTIN_FULL_BOOKS] = show }
+    }
+
     suspend fun saveTodayNewWordsPlan(bookId: Long, wordIds: List<Long>) {
         val learningDate = DateUtils.currentLearningDate().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
         val normalizedWordIds = wordIds.distinct().joinToString(separator = ",")
@@ -248,11 +278,14 @@ class SettingsRepository(private val context: Context) {
         private val KEY_ML_ADAPTIVE_ENABLED = booleanPreferencesKey("ml_adaptive_enabled")
         private val KEY_PLANNED_NEW_WORDS_ENABLED = booleanPreferencesKey("planned_new_words_enabled")
         private val KEY_CARD_BACK_URL = stringPreferencesKey("card_back_url")
+        private val KEY_CARD_BACK_TOKEN = stringPreferencesKey("card_back_token")
         private val KEY_CARD_SEED_VERSION = intPreferencesKey("card_seed_version")
         private val KEY_REWRITE_LAST_SEQ = longPreferencesKey("rewrite_last_seq")
         private val KEY_REWRITE_MODEL = stringPreferencesKey("rewrite_model")
         private val KEY_CLEANUP_132_DONE = booleanPreferencesKey("cleanup_132_done")
         private val KEY_TEST_DECK_VERSION = intPreferencesKey("test_deck_version")
+        private val KEY_METHOD_BACKFILL_DONE = booleanPreferencesKey("method_backfill_done")
+        private val KEY_SHOW_BUILTIN_FULL_BOOKS = booleanPreferencesKey("show_builtin_full_books")
         private val KEY_TODAY_NEW_WORDS_PLAN_DATE = stringPreferencesKey("today_new_words_plan_date")
         private val KEY_TODAY_NEW_WORDS_PLAN_BOOK_ID = stringPreferencesKey("today_new_words_plan_book_id")
         private val KEY_TODAY_NEW_WORDS_PLAN_WORD_IDS = stringPreferencesKey("today_new_words_plan_word_ids")

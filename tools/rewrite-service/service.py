@@ -210,7 +210,8 @@ def _dispatch(method, raw_path, body):
     if method == "GET" and path == "/rewrite/records":
         limit = _int(query, "limit", 50, 1, 200)
         offset = _int(query, "offset", 0, 0, 10 ** 6)
-        return _json(_state["store"].records_page(limit, offset))
+        book = (query.get("book") or [""])[0].strip()[:60]
+        return _json(_state["store"].records_page(limit, offset, book))
     if method == "GET" and path == "/rewrite/results":
         since = _int(query, "since", 0, 0, 10 ** 9)
         limit = _int(query, "limit", 50, 1, 200)

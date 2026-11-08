@@ -1,5 +1,6 @@
 package com.kaoyan.wordhelper.data.repository
 
+import android.util.Log
 import androidx.room.withTransaction
 import com.kaoyan.wordhelper.data.database.AppDatabase
 import com.kaoyan.wordhelper.data.entity.Book
@@ -15,6 +16,7 @@ import com.kaoyan.wordhelper.data.entity.WordMemory
 import com.kaoyan.wordhelper.data.model.CardSeedLoader
 import com.kaoyan.wordhelper.data.model.CardSeedPayload
 import com.kaoyan.wordhelper.data.model.DailyStatsAggregate
+import com.kaoyan.wordhelper.data.model.MethodCount
 import com.kaoyan.wordhelper.data.model.PresetBookCatalog
 import com.kaoyan.wordhelper.data.model.PresetBookSeed
 import com.kaoyan.wordhelper.data.model.SpellingOutcome
@@ -24,6 +26,7 @@ import com.kaoyan.wordhelper.ml.core.SchedulingAdjustment
 import com.kaoyan.wordhelper.ml.integration.MLEnhancedScheduler
 import com.kaoyan.wordhelper.util.DateUtils
 import com.kaoyan.wordhelper.util.Sm2Scheduler
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Instant
@@ -52,6 +55,12 @@ class WordRepository(private val database: AppDatabase) {
     private val earlyReviewDao = database.earlyReviewDao()
     private val forecastCacheDao = database.forecastCacheDao()
     private val wordMemoryDao = database.wordMemoryDao()
+
+    /**
+     * 学习记录同步队列。这里刻意不传 SettingsRepository：学习路径上只做本地入队，
+     * 联网那一半由上层用带 SettingsRepository 的实例触发（见 SyncRepository 的注释）。
+     */
+    private val syncRepository = SyncRepository(database)
 
     // ---- Book ----
 
@@ -174,6 +183,23 @@ class WordRepository(private val database: AppDatabase) {
             bookDao.updateTotalCount(bookId, wordDao.getWordCount(bookId))
         }
         return bookId
+    }
+
+    /**
+     * 1.4.4：给种子卡片回填记忆方法标签（六脉神剑之一）。
+     * 语料来自 assets/word_method_map.json（by-word 导出里本来就带 method，零模型成本）。
+     * 按方法分组、分批 UPDATE，只填空值，不覆盖重写过的词。
+     * 返回标注后库里已有标签的行数，方便日志核对。
+     */
+    suspend fun backfillWordMethods(map: Map<String, String>): Int {
+        if (map.isEmpty()) return 0
+        val byMethod = map.entries.groupBy({ it.value }, { it.key })
+        database.withTransaction {
+            byMethod.forEach { (method, keys) ->
+                keys.chunked(400).forEach { chunk -> wordDao.backfillMethod(chunk, method) }
+            }
+        }
+        return wordDao.countMarkedMethod()
     }
 
     suspend fun ensurePresetBooks(presetSeeds: List<PresetBookSeed> = PresetBookCatalog.presets) {
@@ -360,12 +386,58 @@ class WordRepository(private val database: AppDatabase) {
 
     fun getMasteredCount(bookId: Long): Flow<Int> = progressDao.getMasteredCount(bookId)
 
+    // ---- 按书统计聚合（ProfileScreen 的「当前词书」视图）----
+    // 全部是单行聚合结果；不要改成 getProgressByBookFlow 那种整本实体化（5000+ 词会掉帧）。
+
+    fun getBookDueCount(bookId: Long, now: Long = System.currentTimeMillis()): Flow<Int> =
+        progressDao.getBookDueCount(bookId, now)
+
+    fun getBookAccuracy(bookId: Long): Flow<Float?> = progressDao.getBookAccuracy(bookId)
+
+    fun getBookTodayTouchedCount(bookId: Long, startTime: Long, endTime: Long): Flow<Int> =
+        progressDao.getBookTodayTouchedCount(bookId, startTime, endTime)
+
+    // ---- 按记忆方法聚合（「按 tag 统计」）----
+    // 全局按词去重（同一个词在几本书里都有进度只算一次）；按书视图只看这一本。
+
+    fun getGlobalMethodCounts(): Flow<List<MethodCount>> = progressDao.getGlobalMethodCounts()
+
+    fun getBookMethodCounts(bookId: Long): Flow<List<MethodCount>> =
+        progressDao.getBookMethodCounts(bookId)
+
     suspend fun upsertProgress(progress: Progress) {
         val existing = progressDao.getProgress(progress.wordId, progress.bookId)
         if (existing != null) {
             progressDao.update(progress.copy(id = existing.id))
         } else {
             progressDao.insert(progress)
+        }
+        enqueueProgressSync(progress.wordId, progress.bookId)
+    }
+
+    /**
+     * 学习结果落库之后，把这一行的结果态塞进同步队列。
+     *
+     * - 必须放在 withTransaction 之外：事务里只该有本地写，入队虽然也是本地表，
+     *   但它是附加能力，失败不该把已经写好的学习结果一起回滚；
+     * - 入队失败只留日志：同步是附加功能，不能因为队列写不进去就让「认识/不认识」报错。
+     *   这里读的是刚写完那一行，所以 payload 就是最终落库状态，不用调用方再传一遍。
+     */
+    private suspend fun enqueueProgressSync(wordId: Long, bookId: Long) {
+        // 学习一个词会同时写「所有关联书」（见 applyStudyResult 里的 linkedBookIds），
+        // 同步也要一本不落地入队，否则另一台只背了另一本书时，进度就永远追不上。
+        val linked = runCatching {
+            (wordDao.getBookIdsByWordId(wordId) + bookId).distinct()
+        }.getOrElse { listOf(bookId) }
+        for (linkedBookId in linked) {
+            val snapshot = progressDao.getProgress(wordId, linkedBookId) ?: continue
+            try {
+                syncRepository.enqueueProgress(wordId, linkedBookId, snapshot)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "学习记录入同步队列失败 wordId=$wordId bookId=$linkedBookId", e)
+            }
         }
     }
 
@@ -525,6 +597,8 @@ class WordRepository(private val database: AppDatabase) {
             )
             invalidateForecastCacheInternal()
         }
+        // 事务提交后再入同步队列：入队失败不能回滚学习结果，也绝不在事务里做任何网络事。
+        enqueueProgressSync(wordId, bookId)
     }
 
     suspend fun applySpellingOutcome(
@@ -636,6 +710,8 @@ class WordRepository(private val database: AppDatabase) {
             )
             invalidateForecastCacheInternal()
         }
+        // 拼写结果也是「结果态」，同样在事务外入队（同一个 (词, 书) 后写覆盖先写）。
+        enqueueProgressSync(wordId, bookId)
     }
 
     suspend fun getStudyQueue(
@@ -791,7 +867,8 @@ class WordRepository(private val database: AppDatabase) {
     }
 
     suspend fun markWordAsTooEasy(wordId: Long, bookId: Long): Boolean {
-        return database.withTransaction {
+        // 先拿事务的返回值，再决定要不要入队：linkedBookIds 为空时什么都没写，不能推一条空记录。
+        val marked = database.withTransaction {
             val linkedBookIds = (wordDao.getBookIdsByWordId(wordId) + bookId)
                 .distinct()
                 .filter { it > 0L }
@@ -832,6 +909,12 @@ class WordRepository(private val database: AppDatabase) {
             invalidateForecastCacheInternal()
             true
         }
+        if (marked) {
+            // 这条路径写库时不填 last_review_time（实体默认 0），入队时由 SyncRepository 用动作时间兜底，
+            // 否则在「最新 lrt 赢」的口径下它永远推不倒对面。
+            enqueueProgressSync(wordId, bookId)
+        }
+        return marked
     }
 
     suspend fun removeFromNewWords(wordId: Long) {
@@ -1196,6 +1279,7 @@ class WordRepository(private val database: AppDatabase) {
     }
 
     companion object {
+        private const val TAG = "WordRepository"
         private const val DEFAULT_NEW_WORDS_LIMIT = 20
         private const val MAX_DB_IN_CLAUSE_SIZE = 900
         private const val DAY_REFRESH_HOUR = 4

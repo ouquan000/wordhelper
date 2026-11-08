@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C · 重写条入场 — 卡背动效参考</title>
+  <!-- ===== 动效参数：只改这一块，照着翻成 Compose ===== -->
+  <script>
+  /* ============================================================
+     MOTION — 只改这里就能调（C：重写条入场）
+     ============================================================ */
+  const MOTION = {
+    durationMs: 460,      // 渐显 + 上移时长
+    offsetPx: 12,         // 起点在下方 12px，向上归位
+    threshold: 0.18,      // 可见 18% 触发
+    rootMarginBottom: '-8%',
+    autoScrollDelayMs: 1000,
+    autoScrollGapMs: 340,
+    ease: 'cubic-bezier(.23, 1, .32, 1)'
+  };
+  </script>
+<style>
+  :root{
+    --paper:#F7F2E6;
+    --paper-card:#FCF8EF;
+    --page:#E7DFCE;
+    --ink:#241F18;
+    --ink-2:#6C6354;
+    --ink-3:#9C9282;
+    --rule:#DCD2BF;
+    --accent:#A6462B;
+    --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Songti SC","SimSun",serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --ease:cubic-bezier(.23,1,.32,1);
+    --reveal-dur:460ms;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1100px 620px at 12% -12%, #F3EBDA 0%, rgba(243,235,218,0) 62%),
+      var(--page);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+    padding:52px 0 88px;
+  }
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:9;opacity:.55;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E");
+  }
+  .page{max-width:1040px;margin:0 auto;padding:0 32px}
+  .masthead{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:40px}
+  .kicker{font:11px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--ink-3)}
+  h1{font-family:var(--serif);font-weight:500;font-size:46px;line-height:1.05;letter-spacing:-.012em;margin:14px 0 12px}
+  .lede{max-width:580px;margin:0;color:var(--ink-2);font-size:14.5px;line-height:1.78}
+  .back-link{flex:none;font-size:12.5px;color:var(--ink-2);text-decoration:none;border-bottom:1px solid rgba(60,45,20,.25);padding-bottom:2px;margin-bottom:6px}
+  .back-link:hover{color:var(--ink);border-color:var(--ink)}
+  .layout{display:grid;grid-template-columns:372px minmax(0,1fr);gap:64px;align-items:start}
+
+  /* ---------- device ---------- */
+  .device{
+    width:372px;padding:6px;border-radius:38px;
+    background:linear-gradient(155deg,#332C22 0%,#171410 55%,#0E0C09 100%);
+    box-shadow:0 44px 70px -42px rgba(36,25,8,.8),0 2px 6px rgba(36,25,8,.22),inset 0 1px 0 rgba(255,255,255,.10);
+  }
+  .screen{
+    position:relative;width:360px;height:640px;border-radius:32px;overflow:hidden;
+    background:var(--paper);display:flex;flex-direction:column;
+  }
+  .appbar{flex:none;height:50px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid rgba(60,45,20,.08)}
+  .chev{font-size:20px;line-height:1;color:var(--ink-3);margin-top:-2px}
+  .ttl{font-size:13.5px;color:var(--ink-2);letter-spacing:.02em}
+  .cnt{margin-left:auto;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .progress{flex:none;height:2px;background:rgba(60,45,20,.07)}
+  .progress i{display:block;height:100%;width:16%;background:var(--accent);opacity:.55}
+
+  .scroller{
+    flex:1;overflow-y:auto;overscroll-behavior:contain;
+    scrollbar-width:thin;scrollbar-color:rgba(90,70,40,.28) transparent;
+    padding:14px 14px 22px;
+    background:
+      radial-gradient(90% 40% at 50% 0%, #F5EEDD 0%, rgba(245,238,221,0) 70%),
+      var(--paper);
+  }
+  .scroller::-webkit-scrollbar{width:5px}
+  .scroller::-webkit-scrollbar-thumb{background:rgba(90,70,40,.24);border-radius:99px}
+
+  .card{
+    background:var(--paper-card);border:1px solid #E4DAC6;border-radius:22px;
+    padding:18px 18px 16px;
+    box-shadow:0 12px 26px -22px rgba(50,35,10,.55);
+  }
+  .top{display:flex;align-items:center;justify-content:space-between}
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;
+    background:#EFE6D4;color:#6F6353;font-size:11.5px;letter-spacing:.03em;
+  }
+  .chip b{display:block;width:5px;height:5px;border-radius:50%;background:#B4915C}
+  .star{font-size:17px;color:var(--ink-3);line-height:1}
+  .word{font-family:var(--serif);font-weight:500;font-size:38px;line-height:1.1;letter-spacing:-.015em;margin:14px 0 6px}
+  .ipa{font-size:13px;color:var(--ink-3);letter-spacing:.02em}
+  .rule{height:1px;background:var(--rule);margin:14px 0 15px}
+  .label{font-size:12.5px;font-weight:600;letter-spacing:.05em;color:var(--accent);margin:0 0 7px;opacity:.9}
+  .label.gap{margin-top:16px}
+  .meaning{margin:0;font-size:15.5px;line-height:1.6}
+  .lines{display:flex;flex-direction:column;gap:5px}
+  .line{display:grid;grid-template-columns:19px minmax(0,1fr);gap:8px;align-items:start}
+  .num{font-size:14px;line-height:24px;color:var(--accent);opacity:.72;font-variant-numeric:tabular-nums}
+  .line p{margin:0;font-size:14.5px;line-height:1.68}
+  .kv{margin:0;font-size:14px;line-height:1.75;color:var(--ink)}
+  .kv span{color:var(--ink-3);font-size:13px}
+  .ex{margin:0;font-size:14.5px;line-height:1.65}
+  .ex-zh{margin:4px 0 0;font-size:13px;line-height:1.6;color:var(--ink-2)}
+  .roots{margin:0;font-size:13.5px;line-height:1.75;color:var(--ink-2)}
+  .roots b{color:var(--ink);font-weight:500}
+
+  /* ---------- rewrite block (reveal target) ---------- */
+  .rewrite{
+    margin-top:18px;padding:14px;border-radius:15px;
+    background:#F5EDDD;border:1px solid #E5D9C2;
+    opacity:0;transform:translateY(12px);
+    transition:opacity var(--reveal-dur) var(--ease),transform var(--reveal-dur) var(--ease);
+    will-change:opacity,transform;
+  }
+  .rewrite.is-in{opacity:1;transform:none}
+  .rewrite.no-anim{transition:none}
+  .rw-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+  .rw-title{font-size:12px;font-weight:600;letter-spacing:.08em;color:var(--ink-2)}
+  .rw-model{font-size:11px;color:var(--ink-3);display:inline-flex;align-items:center;gap:4px}
+  .rw-model i{font-style:normal;font-size:8px;transform:translateY(1px)}
+  .rw-btn{
+    display:block;width:100%;height:40px;border-radius:10px;border:1px solid #CBB99D;background:#FBF6EA;
+    color:var(--ink);font-family:var(--sans);font-size:14px;font-weight:500;letter-spacing:.02em;cursor:pointer;
+    transition:transform 160ms var(--ease),background-color 160ms ease;
+  }
+  .rw-btn:hover{background:#F3E8D5}
+  .rw-btn:active{transform:scale(.985)}
+  .rw-model2{
+    margin-top:8px;height:36px;border-radius:10px;border:1px solid #DED2BC;background:#FBF6EA;
+    display:flex;align-items:center;justify-content:space-between;padding:0 11px;
+    font-size:12.5px;color:var(--ink-2);
+  }
+  .rw-model2 i{font-style:normal;font-size:9px;color:var(--ink-3)}
+  .rw-input{
+    margin-top:8px;min-height:40px;border-radius:10px;border:1px dashed #D8CAB0;background:#FAF4E6;
+    padding:10px 11px;font-size:12.5px;color:var(--ink-3);
+  }
+  .rw-foot{display:flex;align-items:center;justify-content:space-between;margin-top:10px;font-size:11px;color:var(--ink-3)}
+  .rw-undo{color:var(--accent);opacity:.85}
+
+  /* ---------- controls ---------- */
+  .ctrl{display:flex;gap:10px;width:372px;margin-top:18px}
+  .btn-replay{
+    flex:1;height:46px;border-radius:13px;border:0;background:var(--ink);color:#FAF4E7;
+    font-family:var(--sans);font-size:14px;font-weight:500;letter-spacing:.03em;cursor:pointer;
+    transition:transform 160ms var(--ease),background-color 160ms ease;
+  }
+  .btn-replay:hover{background:#352C21}
+  .btn-replay:active{transform:scale(.98)}
+  .chip-slow{
+    height:46px;padding:0 16px;border-radius:13px;border:1px solid rgba(60,45,20,.22);
+    background:transparent;color:var(--ink-2);font-family:var(--sans);font-size:12.5px;cursor:pointer;
+    transition:transform 160ms var(--ease),background-color 160ms ease,color 160ms ease,border-color 160ms ease;
+  }
+  .chip-slow[aria-pressed="true"]{background:var(--ink);color:#FAF4E7;border-color:var(--ink)}
+  .chip-slow:active{transform:scale(.97)}
+  .under{margin:12px 0 0;width:372px;font-size:11.5px;color:var(--ink-3);line-height:1.7}
+
+  /* ---------- notes ---------- */
+  .panel{margin-bottom:34px}
+  .panel h2{font:600 10.5px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--ink-3);margin:0 0 14px}
+  .spec{margin:0;display:grid}
+  .spec div{display:flex;justify-content:space-between;align-items:baseline;gap:24px;padding:10px 0;border-top:1px solid rgba(60,45,20,.13)}
+  .spec div:last-child{border-bottom:1px solid rgba(60,45,20,.13)}
+  .spec dt{font-size:12.5px;color:var(--ink-2)}
+  .spec dd{margin:0;font:12px/1.5 var(--mono);color:var(--ink);font-variant-numeric:tabular-nums;text-align:right}
+  pre{margin:0;background:#1D1913;color:#F2EAD8;padding:15px 17px;border-radius:12px;font:11.5px/1.7 var(--mono);overflow:auto;tab-size:2}
+  pre .c{color:#948A76}
+  ul.why{margin:0;padding:0;list-style:none}
+  ul.why li{position:relative;padding:0 0 10px 16px;font-size:13px;line-height:1.72;color:var(--ink-2)}
+  ul.why li::before{content:"";position:absolute;left:0;top:.66em;width:5px;height:1px;background:var(--accent);opacity:.7}
+  ul.why b{color:var(--ink);font-weight:500}
+  .nav{display:flex;gap:18px;flex-wrap:wrap;border-top:1px solid rgba(60,45,20,.13);padding-top:16px}
+  .nav a{font-size:12.5px;color:var(--ink-2);text-decoration:none}
+  .nav a:hover{color:var(--accent)}
+  .foot{margin-top:44px;font-size:11.5px;color:var(--ink-3);letter-spacing:.02em}
+
+  @media (max-width:900px){
+    .layout{grid-template-columns:1fr;justify-items:start;gap:44px}
+    .masthead{display:block}
+    h1{font-size:38px}
+    .back-link{display:inline-block;margin-top:14px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .rewrite{transition:opacity 200ms ease;transform:none}
+  }
+</style>
+
+</head>
+<body>
+<main class="page">
+  <header class="masthead">
+    <div>
+      <div class="kicker">Motion ref · 03 / 03</div>
+      <h1>重写条入场</h1>
+      <p class="lede">重写区在卡背正文的最后，随内容滚进视口时才出现：淡入 + 上移 12px，只播一次。它一直在布局里，只是透明——所以出现时不会把正文顶一下。</p>
+    </div>
+    <a class="back-link" href="./index.html">← 全部 demo</a>
+  </header>
+
+  <div class="layout">
+    <section>
+      <div class="device">
+        <div class="screen">
+          <div class="appbar">
+            <span class="chev">‹</span>
+            <span class="ttl">六级记忆卡</span>
+            <span class="cnt">3 / 20</span>
+          </div>
+          <div class="progress"><i></i></div>
+
+          <div class="scroller" id="scroller">
+            <article class="card">
+              <div class="top">
+                <span class="chip"><b></b>未安排</span>
+                <span class="star" aria-hidden="true">☆</span>
+              </div>
+
+              <h2 class="word">appropriate</h2>
+              <div class="ipa">/əˈprəʊpriət/</div>
+              <div class="rule"></div>
+
+              <div class="label">释义</div>
+              <p class="meaning">adj. 恰当的，合适的</p>
+
+              <div class="label gap">记忆思路</div>
+              <div class="lines">
+                <div class="line"><span class="num">①</span><p>propri 是「自己的」；把别人的东西划到自己名下，就是「挪用」。</p></div>
+                <div class="line"><span class="num">②</span><p>把话说得正好落在它该在的位置上，就是「恰当」。</p></div>
+                <div class="line"><span class="num">③</span><p>拆：ap + propri + ate；先有「归属」，才有「合适」。</p></div>
+              </div>
+
+              <div class="label gap">常用搭配</div>
+              <p class="kv">appropriate for&nbsp; <span>对…合适</span></p>
+              <p class="kv">appropriate to&nbsp; <span>适用于</span></p>
+
+              <div class="label gap">例句</div>
+              <p class="ex">Wear something appropriate for the occasion.</p>
+              <p class="ex-zh">穿适合这个场合的衣服。</p>
+
+              <div class="label gap">同根词</div>
+              <p class="roots"><b>property</b> 财产 &nbsp;·&nbsp; <b>appropriation</b> 拨款；挪用</p>
+
+              <!-- 重写区：滚动进视口时渐显 + 上移 12px（只播一次） -->
+              <div class="rewrite" id="rewrite">
+                <div class="rw-head">
+                  <span class="rw-title">重写思路</span>
+                  <span class="rw-model">DeepSeek V4.1 Flash <i>▾</i></span>
+                </div>
+                <button class="rw-btn" type="button">再重写一次</button>
+                <div class="rw-model2"><span>DeepSeek V4.1 Flash</span><i>▾</i></div>
+                <div class="rw-input">哪里有问题？留空＝整段重写</div>
+                <div class="rw-foot"><span>上次重写 11-07 14:23</span><span class="rw-undo">撤销</span></div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <button class="btn-replay" id="replay" type="button">重播 ↻</button>
+        <button class="chip-slow" id="slow" aria-pressed="false" type="button">慢放 ×2.5</button>
+      </div>
+      <p class="under">打开后会自动滚到重写区演示一次；也可以自己滚。「重播」= 回到卡背顶部，再滚一次（模拟新一张卡）。</p>
+    </section>
+
+    <aside>
+      <section class="panel">
+        <h2>参数</h2>
+        <dl class="spec">
+          <div><dt>触发</dt><dd>IntersectionObserver · 可见 18%</dd></div>
+          <div><dt>滚动容器</dt><dd>卡背内部 .scroller</dd></div>
+          <div><dt>时长</dt><dd>460 ms</dd></div>
+          <div><dt>位移</dt><dd>+12 px → 0（向上归位）</dd></div>
+          <div><dt>缓动</dt><dd>cubic-bezier(.23, 1, .32, 1)</dd></div>
+          <div><dt>重复</dt><dd>每条卡只播一次</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <h2>Compose 示意</h2>
+<pre>var shown by remember(cardId) { mutableStateOf(false) }
+<span class="c">// LazyListState 里判断「该条首次进入视口」，只置一次</span>
+LaunchedEffect(cardId) { shown = true }
+
+AnimatedVisibility(
+  visible = shown,
+  enter = fadeIn(tween(<span style="color:#E8C08A">460</span>)) +
+          slideInVertically(tween(<span style="color:#E8C08A">460</span>)) { <span style="color:#E8C08A">12.dp</span> },
+  exit = ExitTransition.None     <span class="c">// 不进不退，出现即留下</span>
+) { RewriteBar() }</pre>
+      </section>
+
+      <section class="panel">
+        <h2>为什么这样</h2>
+        <ul class="why">
+          <li><b>只动 transform / opacity。</b>重写区一直占着布局位置，出现时不会让正文重排、滚动位置跳一下。</li>
+          <li><b>12px 要小。</b>再大就变成「弹出来」；12px 只够给一个方向感——它从下面来，不是凭空出现。</li>
+          <li><b>只播一次。</b>每次滚过都淡入，等于反复跟读者抢注意力；一张卡看一次就够。</li>
+          <li><b>460ms 比控件长。</b>这是内容入场，不是按钮反馈；但它仍要在你读完之前完成，所以不拖过 0.5s。</li>
+        </ul>
+      </section>
+
+      <nav class="nav">
+        <a href="./A-approach-swap.html">A 换文</a>
+        <a href="./B-flip-spring.html">B 翻面</a>
+        <a href="./C-bar-reveal.html" style="color:var(--ink)">C 重写条</a>
+        <a href="./index.html">索引</a>
+      </nav>
+      <p class="foot">自包含单文件 · 无外部字体 / 图片 / 脚本 · 参数见源码顶部 <code>MOTION</code></p>
+    </aside>
+  </div>
+</main>
+
+<script>
+
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const scroller = document.getElementById('scroller');
+const rewrite = document.getElementById('rewrite');
+const replayBtn = document.getElementById('replay');
+const slowBtn = document.getElementById('slow');
+
+let slow = false;
+let revealed = false;
+let timer = 0;
+
+document.documentElement.style.setProperty('--reveal-dur', MOTION.durationMs + 'ms');
+document.documentElement.style.setProperty('--ease', MOTION.ease);
+if (reduce) rewrite.classList.add('is-in');
+
+function targetScrollTop(){
+  const top = rewrite.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+  const max = scroller.scrollHeight - scroller.clientHeight;
+  return Math.max(0, Math.min(max, top + rewrite.offsetHeight - scroller.clientHeight + 32));
+}
+
+function reveal(){
+  if (revealed) return;
+  revealed = true;
+  rewrite.classList.remove('no-anim');
+  rewrite.classList.add('is-in');
+}
+
+const io = new IntersectionObserver((entries) => {
+  for (const entry of entries){
+    if (entry.isIntersecting) reveal();
+  }
+}, {
+  root: scroller,
+  threshold: MOTION.threshold,
+  rootMargin: '0px 0px ' + MOTION.rootMarginBottom + ' 0px'
+});
+io.observe(rewrite);
+
+function autoScroll(){
+  scroller.scrollTo({ top: targetScrollTop(), behavior: reduce ? 'auto' : 'smooth' });
+}
+
+function reset(instant){
+  clearTimeout(timer);
+  revealed = false;
+  rewrite.classList.add('no-anim');
+  rewrite.classList.remove('is-in');
+  void rewrite.offsetWidth;
+  rewrite.classList.remove('no-anim');
+  scroller.scrollTo({ top: 0, behavior: 'auto' });
+  if (instant) return;
+  timer = setTimeout(autoScroll, MOTION.autoScrollGapMs);
+}
+
+replayBtn.addEventListener('click', () => reset(false));
+
+slowBtn.addEventListener('click', () => {
+  slow = !slow;
+  slowBtn.setAttribute('aria-pressed', String(slow));
+  slowBtn.textContent = slow ? '恢复 ×1' : '慢放 ×2.5';
+  document.documentElement.style.setProperty('--reveal-dur', (slow ? MOTION.durationMs * 2.5 : MOTION.durationMs) + 'ms');
+});
+
+// 打开即滚到重写区演示一次
+if (reduce){
+  setTimeout(() => scroller.scrollTo({ top: targetScrollTop(), behavior: 'auto' }), 600);
+} else {
+  timer = setTimeout(() => {
+    autoScroll();
+  }, MOTION.autoScrollDelayMs);
+}
+</script>
+</body>
+</html>

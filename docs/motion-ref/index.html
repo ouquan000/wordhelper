@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>卡背动效参考 — 3 个方向</title>
+<style>
+  :root{
+    --paper:#F7F2E6;
+    --paper-card:#FCF8EF;
+    --page:#E7DFCE;
+    --ink:#241F18;
+    --ink-2:#6C6354;
+    --ink-3:#9C9282;
+    --rule:#D5C9B3;
+    --accent:#A6462B;
+    --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Songti SC","SimSun",serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --ease:cubic-bezier(.23,1,.32,1);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1200px 700px at 10% -14%, #F3EBDA 0%, rgba(243,235,218,0) 60%),
+      var(--page);
+    color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.62;
+    -webkit-font-smoothing:antialiased;padding:56px 0 80px;
+  }
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:9;opacity:.55;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E");
+  }
+  .page{max-width:960px;margin:0 auto;padding:0 32px}
+
+  .kicker{font:11px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--ink-3)}
+  h1{font-family:var(--serif);font-weight:500;font-size:58px;line-height:1.02;letter-spacing:-.018em;margin:18px 0 16px}
+  .lede{max-width:620px;margin:0;color:var(--ink-2);font-size:15px;line-height:1.8}
+
+  .meta{display:flex;flex-wrap:wrap;gap:10px 22px;margin:28px 0 44px;font-size:11.5px;color:var(--ink-3);font-family:var(--mono);letter-spacing:.04em}
+  .meta span{display:inline-flex;align-items:center;gap:7px}
+  .dot{width:5px;height:5px;border-radius:50%;background:var(--accent);opacity:.7}
+
+  .list{border-top:1px solid var(--rule)}
+  .demo{
+    display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:22px;align-items:start;
+    padding:28px 18px 28px 10px;border-bottom:1px solid var(--rule);
+    text-decoration:none;color:inherit;border-radius:2px;
+    transition:background-color 180ms ease,padding-left 220ms var(--ease);
+  }
+  .demo:hover{background:rgba(255,250,238,.55);padding-left:18px}
+  .demo:active{background:rgba(255,250,238,.8)}
+
+  .glyph{
+    font-family:var(--serif);font-size:38px;line-height:1;color:var(--ink);
+    padding-top:2px;position:relative;
+  }
+  .glyph::after{content:"";position:absolute;left:2px;bottom:-9px;width:18px;height:2px;background:var(--accent);opacity:.75}
+  .demo-b .glyph::after{width:10px}
+  .demo-c .glyph::after{width:26px}
+
+  h2{font-family:var(--serif);font-weight:500;font-size:26px;line-height:1.2;letter-spacing:-.01em;margin:0 0 6px}
+  h2 em{font-family:var(--mono);font-style:normal;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-left:10px;vertical-align:2px}
+  .desc{margin:0 0 12px;font-size:13.5px;line-height:1.7;color:var(--ink-2);max-width:560px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chips span{
+    font:11px/1 var(--mono);letter-spacing:.02em;color:#6B6151;
+    background:rgba(120,98,60,.08);border:1px solid rgba(120,98,60,.13);
+    padding:5px 8px;border-radius:5px;
+  }
+  .go{
+    font-size:12.5px;color:var(--ink-2);white-space:nowrap;margin-top:8px;
+    border-bottom:1px solid rgba(60,45,20,.28);padding-bottom:2px;
+    transition:color 160ms ease,border-color 160ms ease;
+  }
+  .demo:hover .go{color:var(--accent);border-color:var(--accent)}
+
+  .how{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:48px}
+  .how h3{font:600 10.5px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--ink-3);margin:0 0 12px}
+  .how p,.how li{font-size:12.5px;line-height:1.8;color:var(--ink-2);margin:0}
+  .how ol{margin:0;padding-left:16px}
+  .how li{padding-bottom:4px}
+  .how b{color:var(--ink);font-weight:500}
+  code{font-family:var(--mono);font-size:11.5px;background:rgba(120,98,60,.09);padding:1px 5px;border-radius:3px}
+
+  .foot{margin-top:46px;padding-top:16px;border-top:1px solid var(--rule);font-size:11px;color:var(--ink-3);line-height:1.8;letter-spacing:.01em}
+
+  @media (max-width:720px){
+    h1{font-size:44px}
+    .demo{grid-template-columns:44px minmax(0,1fr);gap:14px}
+    .go{display:none}
+    .how{grid-template-columns:1fr;gap:28px}
+  }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="kicker">Anki card back · motion ref · 3 directions</div>
+  <h1>卡背动效参考</h1>
+  <p class="lede">三个方向各是一个自包含的 HTML：打开就能看到动画，可重播、可慢放，参数写在源码顶部的 <code>MOTION</code> 常量里，方便一比一翻成 Compose。</p>
+
+  <div class="meta">
+    <span><i class="dot"></i>360 px 卡背</span>
+    <span><i class="dot"></i>单文件 · 离线</span>
+    <span><i class="dot"></i>只动 transform / opacity</span>
+    <span><i class="dot"></i>缓动 cubic-bezier(.23, 1, .32, 1)</span>
+  </div>
+
+  <div class="list">
+    <a class="demo demo-a" href="./A-approach-swap.html">
+      <span class="glyph" aria-hidden="true">A</span>
+      <span class="demo-main">
+        <h2>换文 <em>approach swap</em></h2>
+        <p class="desc">三行推导被整段重写后逐行替换：旧文先退，新文从下方 10px 淡入归位，错峰 140ms。①②③ 不参与动画，锚住每一行的位置。</p>
+        <span class="chips"><span>stagger 140ms</span><span>out 120ms / −6px</span><span>in 300ms / +10px</span></span>
+      </span>
+      <span class="go">打开 ↗</span>
+    </a>
+
+    <a class="demo demo-b" href="./B-flip-spring.html">
+      <span class="glyph" aria-hidden="true">B</span>
+      <span class="demo-main">
+        <h2>翻面 <em>flip spring</em></h2>
+        <p class="desc">绕 Y 轴翻 180°，用阻尼比 0.82 的弹簧收尾，过冲约 2°。只转一个轴、不叠缩放，落定即停；中途再点会带着速度反向。</p>
+        <span class="chips"><span>ζ 0.82</span><span>stiffness 200</span><span>overshoot ≈ 2°</span></span>
+      </span>
+      <span class="go">打开 ↗</span>
+    </a>
+
+    <a class="demo demo-c" href="./C-bar-reveal.html">
+      <span class="glyph" aria-hidden="true">C</span>
+      <span class="demo-main">
+        <h2>重写条入场 <em>bar reveal</em></h2>
+        <p class="desc">重写区随卡背内容滚进视口时渐显并上移 12px，460ms 完成，每张卡只播一次。它始终占着布局位置，出现时不会顶动正文。</p>
+        <span class="chips"><span>460ms</span><span>+12px → 0</span><span>once per card</span></span>
+      </span>
+      <span class="go">打开 ↗</span>
+    </a>
+  </div>
+
+  <div class="how">
+    <section>
+      <h3>怎么看</h3>
+      <ol>
+        <li>三个页面打开后都会<b>自动演示一次</b>，不用先找按钮。</li>
+        <li>要反复对比就按<b>重播</b>；拿不准节奏时开<b>慢放 ×2.5</b>，曲线和位移不变，只拉长时间轴。</li>
+        <li>B 的卡片可以直接点，翻到一半再点会反向——这一下最能看出是不是弹簧。</li>
+      </ol>
+    </section>
+    <section>
+      <h3>判断标准</h3>
+      <p>不看「有没有动画」，看三件事：<b>文字有没有重影</b>（A 的旧文/新文是否抢同一块像素）、<b>落定有没有回弹感</b>（B 的 2° 过冲是不是刚好）、<b>出现时正文有没有被顶一下</b>（C 是否只动 transform / opacity）。</p>
+    </section>
+  </div>
+
+  <p class="foot">方法论来自 Open Design 的 animate / emil-design-eng / emilkowalski-motion 三份 skill：进入用 ease-out、只动 transform 与 opacity、位移量控制在「看得出方向但不像在弹」的范围内；滚动入场只播一次，避免跟读者抢注意力。<br>所有文件不引用 CDN、外部字体或图片，可直接双击离线打开。</p>
+</main>
+</body>
+</html>

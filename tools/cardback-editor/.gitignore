@@ -1,0 +1,9 @@
+# 本机口令：每台电脑首次启动自动生成，泄露了删掉重启即可换新的。
+.cardback_token
+
+# 本机同步数据（学习进度 oplog + checkpoint），属于用户数据，不入库。
+sync.json
+sync.json.broken
+
+# 打包/运行产生的缓存
+__pycache__/
