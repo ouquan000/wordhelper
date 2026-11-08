@@ -757,6 +757,13 @@ private fun LabEntryCard(
 
 @Composable
 private fun AboutCard() {
+    // 版本号现读系统里的安装信息：BuildConfig 的常量会被增量编译内联成旧值（1.4.5 时还显示 1.4.4）。
+    val context = LocalContext.current
+    val versionName = remember(context) {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull().orEmpty()
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -769,7 +776,7 @@ private fun AboutCard() {
         ) {
             Text(text = "关于软件", style = MaterialTheme.typography.titleLarge)
             Text(text = "真的不想背单词了:(", fontWeight = FontWeight.SemiBold)
-            Text(text = "版本 ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
+            Text(text = "版本 $versionName", style = MaterialTheme.typography.bodySmall)
             Text(text = "完全离线运行，无广告干扰。", style = MaterialTheme.typography.bodySmall)
         }
     }

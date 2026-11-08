@@ -148,6 +148,8 @@ fun LearningScreen(
     val currentWord by viewModel.currentWord.collectAsStateWithLifecycle()
     // 卡背正文直接订阅库里的思路：电脑端结果一落库就换文，不依赖词对象什么时候被刷新
     val liveApproach by viewModel.liveApproach.collectAsStateWithLifecycle()
+    // 方法标签也订阅库：重写落地后胶囊立刻换，不等下一次翻面
+    val liveMethod by viewModel.liveMethod.collectAsStateWithLifecycle()
     val currentIndex by viewModel.currentIndex.collectAsStateWithLifecycle()
     val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
     val isInNewWords by viewModel.isInNewWords.collectAsStateWithLifecycle()
@@ -598,9 +600,12 @@ fun LearningScreen(
                                             .testTag("learning_word_card")
                                     ) { swipeModifier ->
                                         WordCard(
-                                            // 词对象可能是旧快照，卡背正文以库里的实时值为准
-                                            word = liveApproach?.let { state.word.copy(approach = it) }
-                                                ?: state.word,
+                                            // 词对象可能是旧快照，卡背正文与方法标签都以库里的实时值为准
+                                            word = state.word.copy(
+                                                approach = liveApproach ?: state.word.approach,
+                                                method = liveMethod?.takeIf { it.isNotBlank() }
+                                                    ?: state.word.method
+                                            ),
                                             isInNewWords = state.isInNewWords,
                                             onToggleNewWords = viewModel::toggleNewWord,
                                             reviewTag = reviewTag,

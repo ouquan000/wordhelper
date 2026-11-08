@@ -108,7 +108,8 @@ class CardBackRepository(
                     if (authFailed) {
                         CardbackAuth.HINT
                     } else {
-                        "电脑没连上：检查电脑上的服务开着没、手机和电脑是不是同一个网"
+                        "电脑没连上：先确认电脑上的服务开着、手机和电脑在同一个 WiFi；" +
+                            "如果电脑换过网络，IP 会变，去电脑上重新复制「手机：粘贴这一行」整行贴过来"
                     }
                 )
 

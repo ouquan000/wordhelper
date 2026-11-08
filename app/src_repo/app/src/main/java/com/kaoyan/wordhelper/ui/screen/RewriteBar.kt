@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +38,7 @@ import com.kaoyan.wordhelper.data.entity.RewriteStatus
 import com.kaoyan.wordhelper.data.model.RewriteModel
 import com.kaoyan.wordhelper.data.model.RewriteModels
 import com.kaoyan.wordhelper.ui.viewmodel.RewriteProgressUi
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -71,6 +73,17 @@ internal fun RewriteBar(
     // 按词重置：换词时不要把上一个词写了一半的指令带过去
     var instruction by remember(wordId) { mutableStateOf("") }
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    // 跑完别把 100% 钉在那儿：收掉进度条，「撤销」那行才回到可视区。
+    var keepProgress by remember(wordId, mark?.status) { mutableStateOf(true) }
+    LaunchedEffect(wordId, mark?.status) {
+        if (mark?.status == RewriteStatus.DONE) {
+            delay(1500)
+            keepProgress = false
+        } else {
+            keepProgress = true
+        }
+    }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -127,7 +140,7 @@ internal fun RewriteBar(
         )
 
         // 有标记才画进度；跑完/失败后保留最后一格（100% 或红条），换词时才清掉
-        if (mark != null && (progress != null ||
+        if (keepProgress && mark != null && (progress != null ||
                 mark.status == RewriteStatus.PENDING || mark.status == RewriteStatus.QUEUED)
         ) {
             ProgressRow(progress)
@@ -209,7 +222,7 @@ private fun ProgressRow(progress: RewriteProgressUi?) {
 }
 
 private fun progressLabel(fraction: Float?, failed: Boolean, offline: Boolean): String = when {
-    offline -> "等电脑上线"
+    offline -> "等电脑上线（连不上就重贴那一行）"
     failed -> "重写失败"
     fraction == null -> "生成中…"
     else -> "${(fraction * 100).roundToInt()}%"

@@ -401,3 +401,13 @@ C 盘、`syncPresetWords` 早退、`Card(onClick)` 8dp touchSlop、`contentKey`�
 - 自动同步只在同 WiFi、电脑端服务开着时真传；否则静默跳过，不报错。
 - 电脑端要重启一次 `server.py` 才会打印新的「手机：粘贴这一行」，旧窗口里还是旧格式。
 - 书目选择器仍未做：按书视图看的是「当前词书」，要看别的一本先切书。
+
+### 13.5 测试鱼结论与收尾修复（同日）
+
+测试子代理在模拟器上 6 项全 PASS（翻面 / 统计双视图 / 按书隔离 / 整行口令 / 自动同步 / 稳定性），报告 `_recon/test-report-1.4.5.md`，证据 47 件在 `_recon/test-shots-145/`。按书隔离在数据层确认：`tb_book_memory` 只有 `(131, 2)`，`tb_word_memory` 同词仍是旧文；撤销在干净用例上 rev 1→0 且 10 秒不回弹。它另外提了三件「非阻断但该修」：
+
+1. **卡背方法标签不随重写刷新**（evaporate 实测）。根因：卡背读的是分页快照里的词对象。修法：新增 `observeMethodForBook` / `observeMethod` 两条 DAO 查询 + `RewriteRepository.observeMethod()` + `LearningViewModel.liveMethod`，卡背 `WordCard` 同时用 `liveApproach` 与 `liveMethod` 覆盖快照。实测重写后「词根」胶囊即时在。
+2. **「关于软件」显示 1.4.4**。根因不是配置：增量编译把 `BuildConfig.VERSION_NAME` 常量内联成了旧值（生成的 BuildConfig 是 1.4.5，dex 里却留了「版本 1.4.4」）。修法：`AboutCard` 改为运行时读 `PackageManager.getPackageInfo().versionName`；装机确认显示「版本 1.4.5」。
+3. **重写跑到 100% 进度条不收、把撤销挤出屏幕**。修法：`RewriteBar` 在 `DONE` 后 1.5 秒收起进度条（`keepProgress`）。
+
+顺手还修了：`RewriteRepository.upload()` 的书名取 `item.bookId`（原来取 `word.bookId`，测试书里重写会被电脑端记成「六级记忆卡」），旧思路也改取本书那份；连不上时的提示补上「电脑换过网络地址会变，重新粘那一行」；`RewriteBar` 离线态文案同步。重打包 `dist/english-app-1.4.5.apk`，34,132,820 B，md5 `3f924fc272b4261a3e5dcc3ec8fa6ef4`。

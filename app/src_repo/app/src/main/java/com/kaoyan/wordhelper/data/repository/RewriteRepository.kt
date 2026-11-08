@@ -125,6 +125,14 @@ class RewriteRepository(
             .combine(global) { own, fallback -> own?.takeIf { it.isNotBlank() } ?: fallback }
     }
 
+    /** 这本书当前生效的方法标签做成的流；卡背胶囊读它，重写落地立刻换标签。 */
+    fun observeMethod(wordId: Long, bookId: Long = 0L): Flow<String?> {
+        val global = wordMemoryDao.observeMethod(wordId)
+        if (bookId <= 0L) return global
+        return bookMemoryDao.observeMethodForBook(wordId, bookId)
+            .combine(global) { own, fallback -> own?.takeIf { it.isNotBlank() } ?: fallback }
+    }
+
     /** 这本书当前生效的方法标签（用于重写完后原地换胶囊）。 */
     suspend fun methodOf(wordId: Long, bookId: Long = 0L): String {
         if (bookId > 0L) {
@@ -445,6 +453,13 @@ class RewriteRepository(
         val marks = items.map { item ->
             val word = wordDao.getWordById(item.wordId)
             val memory = wordMemoryDao.getByWordId(item.wordId)
+            // 按书重写时，给模型看的「旧思路」和记录页显示的书名都必须是这本书的；
+            // 词本身只记得自己出生的那本书，不能拿 word.bookId 冒充当前书。
+            val scopedMemory = if (item.bookId > 0L) {
+                bookMemoryDao.getForBook(item.wordId, item.bookId)
+            } else {
+                null
+            }
             MarkDto(
                 clientId = clientIdOf(item),
                 word = item.word,
@@ -453,9 +468,9 @@ class RewriteRepository(
                 meaning = word?.meaning.orEmpty(),
                 model = item.model,
                 instruction = item.instruction,
-                book = bookNameOf(word?.bookId ?: 0L),
+                book = bookNameOf(if (item.bookId > 0L) item.bookId else (word?.bookId ?: 0L)),
                 markedAt = isoTime(item.createdAt),
-                currentApproach = memory?.approach.orEmpty()
+                currentApproach = (scopedMemory?.approach ?: memory?.approach).orEmpty()
                     .split("\n")
                     .map { it.trim() }
                     .filter { it.isNotEmpty() }

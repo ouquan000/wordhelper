@@ -211,6 +211,16 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** 卡背方法标签，同样直接盯库；重写结果落库后胶囊立刻换，不等下一次翻面。 */
+    val liveMethod: StateFlow<String?> = combine(activeBook, _currentWord) { book, word ->
+        (book?.id ?: 0L) to word
+    }
+        .flatMapLatest { (bookId, word) ->
+            if (word == null) flowOf(null)
+            else rewriteRepository.observeMethod(word.id, bookId)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     /** 卡背上的进度条数据；null = 还没问过电脑端。 */
     private val _rewriteProgress = MutableStateFlow<RewriteProgressUi?>(null)
     val rewriteProgress: StateFlow<RewriteProgressUi?> = _rewriteProgress.asStateFlow()
@@ -432,7 +442,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 _message.value = if (rewriteRepository.consumeAuthFailure()) {
                     CardbackAuth.HINT
                 } else {
-                    "已记下，等电脑连上再发"
+                    "已记下，等电脑连上再发（电脑换过网络的话，地址会变，得重新粘那一行）"
                 }
             }
         }

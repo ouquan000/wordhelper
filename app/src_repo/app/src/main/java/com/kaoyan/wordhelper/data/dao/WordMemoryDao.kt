@@ -23,6 +23,10 @@ interface WordMemoryDao {
     @Query("SELECT approach FROM tb_word_memory WHERE word_id = :wordId LIMIT 1")
     fun observeApproach(wordId: Long): Flow<String?>
 
+    /** 方法标签也盯库：重写落地后胶囊要立刻换成新那一招，不能等下一次翻面。 */
+    @Query("SELECT method FROM tb_word_memory WHERE word_id = :wordId LIMIT 1")
+    fun observeMethod(wordId: Long): Flow<String?>
+
     /** 被用户重写过的词，种子重新导入时必须跳过，否则会把重写冲掉。 */
     @Query("SELECT word_id FROM tb_word_memory WHERE source = 'user'")
     suspend fun getUserSourcedWordIds(): List<Long>
