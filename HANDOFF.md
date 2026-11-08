@@ -361,3 +361,11 @@ C 盘、`syncPresetWords` 早退、`Card(onClick)` 8dp touchSlop、`contentKey`�
 - 统计卡新增按记忆方法分布（全局/按书都跟口径切）。
 - 「内置大词库」说明文案改为「开回来下次启动生效」。
 - 复核：`compileDebugKotlin` 零错误；`assembleDebug` 重新出包。
+
+### 12.5 二轮复审补修（2026-11-08 15:4x–15:5x）
+
+- **首次同步全量补历史**（复审指出的真空：升级前背的词没有 op 记录，永远到不了电脑）：`SyncDao.allLearnedProgress()` 只读捞 `status>=1` 的进度，`SyncRepository.bulkEnqueueIfFresh()` 在「服务端 rev=0 且从没同步过」时按 500 一批补进 `tb_sync_op`（op_id 相同，重跑不会重复）。
+  - 端上实测：清空队列、只留 1 条历史进度 → 点同步 → 电脑 `sync.json` rev 0→1、落 1 行（appropriate）；再点一次显示「已经是最新的了」、rev 不变。
+- **拒收不再卡队列**：`PushResponse` 增 `rejected`，服务端明确不收的 op（缺字段）直接删并留日志，避免「待同步 N」永远不清零。
+- **pull 不再带 `device_id`**：服务端根本不读它，注释与实现对齐。
+- **按方法统计口径**：分子分母都只算有标签的词，标题改「按记忆方法（已标注 N 词）」，另起一行「另有 M 词还没有标签（重写思路后会补上）」。

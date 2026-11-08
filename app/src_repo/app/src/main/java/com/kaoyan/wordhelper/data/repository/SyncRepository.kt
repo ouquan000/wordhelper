@@ -108,6 +108,48 @@ class SyncRepository(
         )
     }
 
+    /**
+     * 首次同步：把手机上已有的学习进度一次性补进队列，让「以前背的词」也能备份到电脑。
+     *
+     * 只在「服务端 rev=0 且从没同步过」时执行，所以正常路径上只会发生一次；
+     * 补队列失败（push 失败）时下次还会再补一遍，op_id 相同，INSERT IGNORE 不会重复。
+     * 5000 词分批写，避免一条超大事务卡住学习页。
+     */
+    private suspend fun bulkEnqueueIfFresh(state: SyncState): Int {
+        if (state.serverRev != 0L || state.lastSyncAt != 0L) return 0
+        val rows = syncDao.allLearnedProgress()
+        if (rows.isEmpty()) return 0
+        val now = System.currentTimeMillis()
+        val ops = rows.map { row ->
+            val lrt = if (row.lastReviewTime > 0L) row.lastReviewTime else now
+            val opId = opIdOf(row.wordId, row.bookId, lrt)
+            SyncOp(
+                opId = opId,
+                payload = gson.toJson(
+                    LocalOp(
+                        opId = opId,
+                        type = TYPE_PROGRESS,
+                        wordKey = "",
+                        bookName = "",
+                        status = row.status,
+                        repetitions = row.repetitions,
+                        intervalDays = row.intervalDays,
+                        nextReviewTime = row.nextReviewTime,
+                        easeFactor = row.easeFactor,
+                        reviewCount = row.reviewCount,
+                        lastReviewTime = lrt,
+                        wordId = row.wordId,
+                        bookId = row.bookId
+                    )
+                ),
+                createdAt = now
+            )
+        }
+        ops.chunked(500).forEach { syncDao.enqueueAll(it) }
+        Log.i(TAG, "首次同步：把 ${ops.size} 条历史进度补进队列")
+        return ops.size
+    }
+
     // ---- 推送 ----
 
     /** 队列推给电脑端，返回本次被 ack（可以安全删掉）的条数。网络失败时队列原样保留。 */
@@ -180,6 +222,13 @@ class SyncRepository(
 
         val acked = response.acked.orEmpty()
         if (acked.isNotEmpty()) syncDao.deleteByOpIds(acked)
+        // 服务端明确不收的（缺字段/格式错）留在队里也永远不会被收，删掉并留日志，别让「待同步 N」卡住。
+        val rejected = response.rejected.orEmpty()
+        if (rejected.isNotEmpty()) {
+            val ids = rejected.mapNotNull { it.opId?.takeIf(String::isNotBlank) }
+            if (ids.isNotEmpty()) syncDao.deleteByOpIds(ids)
+            Log.w(TAG, "电脑端拒收 ${rejected.size} 条：${rejected.take(3).mapNotNull { it.reason }}")
+        }
         syncDao.putState(
             state.copy(
                 serverRev = response.serverRev ?: state.serverRev,
@@ -201,8 +250,8 @@ class SyncRepository(
         var rewound = false
 
         repeat(MAX_PULL_PAGES) {
-            // device_id 是 UUID（只有 0-9a-f 和连字符），直接拼进 query 是安全的，不用编码。
-            val url = "${config.origin}$PULL_PATH?since_rev=${state.serverRev}&device_id=${state.deviceId}"
+            // 服务端只认 since_rev；device_id 只在 push 时带，pull 不需要（也不该假装能过滤自己发过的 op）。
+            val url = "${config.origin}$PULL_PATH?since_rev=${state.serverRev}"
             val reply = get(url, config.token) ?: return Result.failure(SyncException(UNREACHABLE))
 
             if (reply.code == 401) return Result.failure(SyncException(CardbackAuth.HINT))
@@ -319,6 +368,8 @@ class SyncRepository(
      * 把「自己刚推上去的」在别的设备上的结果是同一份，顺手把服务端补的字段收回来。
      */
     suspend fun syncOnce(): Result<String> = syncMutex.withLock {
+        // 第一次同步前先把「升级前就背过的词」补进队列：服务端 rev=0 且从没同步过才走这里。
+        bulkEnqueueIfFresh(ensureState())
         val firstPull = pullLocked()
         if (firstPull.isFailure) {
             return@withLock Result.failure<String>(firstPull.exceptionOrNull() ?: SyncException("同步失败"))
@@ -478,7 +529,14 @@ class SyncRepository(
 
     private data class PushResponse(
         @SerializedName("server_rev") val serverRev: Long? = null,
-        @SerializedName("acked") val acked: List<String>? = null
+        @SerializedName("acked") val acked: List<String>? = null,
+        @SerializedName("rejected") val rejected: List<RejectedOp>? = null
+    )
+
+    /** 服务端拒收的行：op_id + 原因（服务端字段名就是 op_id / reason）。 */
+    private data class RejectedOp(
+        @SerializedName("op_id") val opId: String? = null,
+        @SerializedName("reason") val reason: String? = null
     )
 
     private data class PullPage(

@@ -429,17 +429,19 @@ private fun EmptyState(text: String) {
 /** 「按记忆方法」分布：主招 × 词数，按多少降序，最多 6 个。没有已学词就整块不出现。 */
 @Composable
 private fun MethodBreakdown(counts: List<MethodCount>) {
-    val total = counts.sumOf { it.count }
+    // 分子分母必须同口径：只统计有标签的词，没标签的单独报一句，否则「加起来对不上 N」像丢数据。
+    val labeled = counts.filter { it.method.isNotBlank() && it.count > 0 }
+    val total = labeled.sumOf { it.count }
     if (total <= 0) return
-    val parts = counts
-        .filter { it.method.isNotBlank() && it.count > 0 }
+    val unlabeled = counts.filter { it.method.isBlank() }.sumOf { it.count }
+    val parts = labeled
         .sortedByDescending { it.count }
         .take(6)
         .map { "${methodLabelOfProfile(it.method)} ${it.count}" }
     if (parts.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            text = "按记忆方法（已学 $total 词）",
+            text = "按记忆方法（已标注 $total 词）",
             style = MaterialTheme.typography.titleSmall
         )
         Text(
@@ -447,6 +449,13 @@ private fun MethodBreakdown(counts: List<MethodCount>) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        if (unlabeled > 0) {
+            Text(
+                text = "另有 $unlabeled 词还没有标签（重写思路后会补上）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
