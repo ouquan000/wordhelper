@@ -54,18 +54,20 @@ work_anki_enligish/
 ├─ app/
 │  └─ src_repo/          安卓源码（Fork 自上游，改动见「本仓库改了什么」）
 ├─ content/
-│  └─ words/             导入用的词条 JSON（每批一个文件，按日期或用途命名）
+│  ├─ words/             导入用的词条 JSON（每批一个文件，按日期或用途命名）
+│  └─ seed/              内置种子词包（cet6_cards.json，5228 词）
 ├─ tools/
-│  └─ card-editor/       **卡背可视化编辑工具**（1.4.2 计划，见下方专节）
-├─ media/                以后放图片（本版未使用）
-├─ sync-service/         以后放电脑端同步服务（本版未使用）
-├─ docs/                 设计说明、验收记录、截图
+│  ├─ cardback-editor/   卡背可视化编辑器 + 重写服务路由（8765，见下方专节）
+│  └─ rewrite-service/   重写流水线（生成 → 润色 → 独立评分）
+├─ dist/                 发版 APK（`.gitignore` 忽略，不入库）
+├─ docs/                 设计说明、决策记录、验收证据、截图
 ├─ _toolchain/           本机构建工具链（Gradle、签名、依赖缓存）——不进版本管理
-└─ _recon/               调研期的临时产物（截图、比对脚本）
+└─ _recon/               调研与测试的临时产物（截图、报告、dump）
 ```
 
-**硬盘卫生**：`_toolchain/` 大约 800 MB（Gradle 发行版 + 依赖缓存 + 签名），
+**硬盘卫生**：`_toolchain/` 目前约 1.9 GB（Gradle 发行版 + 依赖缓存 + 签名），
 `app/src_repo/app/build/` 是构建产物，两者都可以随时删除重建，不要往这两个目录里放源码或素材。
+`dist/` 里有历代 APK（约 397 MB），发版包才留，中间包用完可删。
 
 ## 构建
 
@@ -80,6 +82,18 @@ export GRADLE_USER_HOME="D:/deepseek harness/work_anki_enligish/_toolchain/gradl
 
 产物：`app/src_repo/app/build/outputs/apk/debug/app-debug.apk`
 
+单测（当前 141 项）走同一个 Gradle：
+
+```bash
+cd app/src_repo
+export JAVA_HOME="/c/Users/ouquan/AppData/Local/Programs/Microsoft/jdk-17.0.10.7-hotspot"
+export GRADLE_USER_HOME="D:/deepseek harness/work_anki_enligish/_toolchain/gradle-home"
+"$GRADLE_USER_HOME/../gradle-8.9/bin/gradle" --no-daemon :app:testDebugUnitTest
+```
+
+报告：`app/src_repo/app/build/reports/tests/testDebugUnitTest/index.html`；
+原始 XML 在 `app/src_repo/app/build/test-results/testDebugUnitTest/`（23 个文件，141 tests）。
+
 依赖走阿里云镜像（`_toolchain/gradle-home/init.d/mirrors.gradle`），
 Gradle 发行版走腾讯云镜像，两者都不改项目源码。
 
@@ -91,9 +105,14 @@ Gradle 发行版走腾讯云镜像，两者都不改项目源码。
 |---|---|
 | 签名 | `_toolchain/signing/wordhelper.jks`（别名 `wordhelper`），**这把 key 不能换、不能丢** |
 | 包名 | `com.kaoyan.wordhelper`，与官方版相同 |
-| 版本号 | `versionCode` 与 `versionName` 同步维护（当前 `versionCode 10 / versionName 1.4.5`，DB 17） |
+| 版本号 | `versionCode` 与 `versionName` 同步维护（当前 `versionCode 13 / versionName 1.4.6.2`，DB 20） |
 
-数据库版本只升不降，每次升级都带迁移。当前 16 → 17（新建 `tb_book_memory` 按书存记忆思路；新建 `tb_book_daily_stats` 按书记每日学习量；`tb_rewrite_queue` 加 `book_id`）。15 → 17 的完整链路已在真机备份上验过（数据零丢失、`integrity_check=ok`）。
+数据库版本只升不降，每次升级都带迁移。当前 **20**：
+17 → 18 加 `prev_method`、`tb_rewrite_skipped`、`tb_feedback`；
+18 → 19 反馈绑到思路版本（`tb_feedback.approach_rev`）；
+19 → 20 冷启动回插（`tb_rewrite_queue.needs_reinsert`）。
+17 → 18 与 19 → 20 分别在测试库里跑过（`_recon/1.4.6-test-report.md`、`_recon/1.4.6.1-fix2-report.md`）；
+**17 → 20 的整链本轮没有单独复测**，交付前建议在真机备份副本上再跑一次。
 
 > 唯一的例外：官方版用的是作者的签名，与本项目不同，所以**从官方版切过来必须卸载一次**，
 > 学习进度会清空。切过来之后，后续版本都能互相覆盖。
@@ -229,7 +248,7 @@ export MSYS2_ARG_CONV_EXCL='*'
 
 完整决策（含用户原话、两个按钮位置、动效参数、离线排队规则）见 [`docs/decisions-1.4.2.md`](docs/decisions-1.4.2.md)。
 
-## 本版验证记录（模拟器 API 34）
+## 1.4.1 时期的验证记录（模拟器 API 34，历史）
 
 | 环节 | 结果 |
 |---|---|
@@ -281,7 +300,7 @@ export MSYS2_ARG_CONV_EXCL='*'
 - **一次性清空学习记录**：升级后第一次启动清 `tb_progress / tb_early_review_ref / tb_new_word_ref / tb_daily_stats / tb_study_log / word_ml_stats / training_samples`，并清当天新词计划；DataStore 标记 `cleanup_132_done`，之后正常背词不会被清（**不可逆**）
 - **20 词测试书**：`assets/test20_cards.json` 从六级卡抽 20 词（带记忆思路），书名「测试·20词」，只建书不切当前书、可删、删了不复活
 - 完整词库两本没有删；生词本引用随记录清理一起清空
-- 当前 `versionCode 10 / versionName 1.4.5`（DB 17）
+- 该节写于 1.4.5 发版时（vc10 / DB 17）；1.4.3.2 自身的包是 vc8
 - APK：`dist/english-app-1.4.3.2.apk`（33,139,773 B，md5 `e3bd6b57c4fb9a0016aac6ccb5be6183`）
 
 ## 1.4.4 / 1.4.5 已完成（下面是当时列的候选，留作历史）
@@ -299,29 +318,75 @@ export MSYS2_ARG_CONV_EXCL='*'
    - 参考 [fsrs4anki](https://github.com/open-spaced-repetition/fsrs4anki)、
      [srs-benchmark](https://github.com/open-spaced-repetition/srs-benchmark)、
      [Anki 手册](https://docs.ankiweb.net/deck-options.html)
-7. **安全收口**：8765 目前 0.0.0.0 且无鉴权，`/rewrite/marks` 会花模型钱
+7. **安全收口**（当时）：8765 绑 `0.0.0.0` 且无鉴权，`/rewrite/marks` 会花模型钱。
+   2026-11-09 已补 token + CF 回源头判断，见 [`HANDOFF.md`](HANDOFF.md) §15.3；限流与版本提示仍在 1.4.7。
 
-## 1.4.6（准备中）
+## 1.4.6 系列已交付（1.4.6 / 1.4.6.1 / 1.4.6.2）
 
-用户评价 1.4.5「这版挺好的，但有些地方可以优化」，以此开启 1.4.6。具体清单等用户口述后补到本节；
-工程侧已知可做的排在 `HANDOFF.md` §14.5。
+- **1.4.6**：词包 v2（5228 词、4850 条释义更新，ECDICT / MIT）；词根主方法 951 → 0，2948 张卡改写 `approach`；DB18 跨书 SRS 解耦（老进度归当前书，`type=2` 生词本保留）；跳过等待 / 随机回插；👍/👎 本地 + 电脑端；按书热力图；种子重导保留用户标签。
+- **1.4.6.1**：冷启动后跳过的词能插回（`needs_reinsert`，DB20）；DB19 反馈绑思路版本；地址兜底 / 网络恢复补发；普通卡也能反馈；最终验收 50 项 100/100。
+- **1.4.6.2**：顶部「认词 / 拼写」可折叠；点赞行移进卡背滚动区最底部，普通卡可见；纯 UI，不改 DB。
 
-- **自动找电脑**：换 WiFi / 电脑换 IP 后不用手抄地址。思路=扫上次网段 + 扫本网段 + UDP 广播兜底。
-  ⚠️ 手机（`10.103.216.69`）与电脑（`10.105.85.227`）可能跨网段，广播不可靠。半成品暂存在 git stash
-  `wip: 自动找电脑（探路，未完成）`，尚未编译验证。
-- **书目选择器**：按书视图现在只能看「当前词书」，应能直接选任意一本。
-- **同步跳过行回补**：书被隐藏 / 词不在本机时，拉取会跳过并推进游标，之后补不回来。
-- **撤销回滚方法标签**：需要给 `tb_book_memory` 加 `prev_method`（DB 18）。
-- **跨书复习进度解耦**：同一个词在两本书共用一个 SRS 记录，需评估迁移与老数据语义。
-- **动效接管**：三个参考 demo 在 `docs/motion-ref/`，参数已量好，尚未翻成 Compose。
+当前包：`dist/english-app-1.4.6.2.apk`，33,788,038 B，md5 `906aa1e71f079201fd1ef11e975b3ad2`，vc13 / DB20。
+1.4.6 与 1.4.6.1 没有单独 tag，`v1.4.6.2` 覆盖三版；141 项单测全过。
+完整交接与 1.4.7 计划见 [`HANDOFF.md`](HANDOFF.md) §15。
+
+## 远程同步（1.4.7 方向，未开工）
+
+> 现状：**1.4.6.2 仍只支持手机和电脑在同一个 WiFi**。下面是把电脑端搬到公网的目标流程，
+> 截至 2026-11-09 只完成了 8765 鉴权修复，公网入口还没打通。
+
+### 目标
+
+- 手机在任何网络（4G / 别的 WiFi）都能同步、重写、回拉。
+- 电脑重启、隧道重启、换网络后能自己恢复，不用重填地址。
+- 出错能看懂：是 token 错、电脑端版本旧、被限流，还是域名/隧道没起。
+
+### 一次配置（目标流程）
+
+1. 电脑装 `cloudflared`，由**用户本人**登录 Cloudflare（扫码 / 浏览器授权）。
+2. 建 named tunnel，把 `anki.ouquansdiary.cn` 指到本机 `127.0.0.1:8765`。
+3. 手机「卡背结构地址」整行粘贴：`https://anki.ouquansdiary.cn#<token>`。
+4. 之后由 PC 守护负责 cloudflared 与 8765 的存活；App 记住「上次成功」地址。
+
+域名 `ouquansdiary.cn` 已买，但解析要等注册局恢复（1–2 个工作日）；Cloudflare 尚未登录、NS 未改。
+**到登录 / 2FA / 授权 / 改 NS 就停，等用户本人操作。**
+
+### token 是什么
+
+- 电脑端生成的口令，等于钥匙；放在 `#` 后面，由 App 自己拆出来用。
+- 不要发群、不要截图、不要写进公开日志。
+- 换 token 时手机和电脑要一起换；换完旧的立即失效。
+
+### 常见故障
+
+| 现象 | 多半是 | 怎么办 |
+|---|---|---|
+| 401 | token 错 / 没带 token | 重新粘整行 `https://...#<token>`；别只填域名 |
+| 404（尤其 `/rewrite/feedback`） | 电脑端 8765 还是旧进程，没有新路由 | 重启 `server.py`；它启动时会打印新地址。1.4.7 会做版本提示 |
+| 429 | 重试太密，被限流 | 等一会儿，别反复点；1.4.7 做指数退避 |
+| DNS / 超时 | 域名没解析、隧道没起、电脑关机 | 先回局域网地址；查 cloudflared 是否在跑 |
+| 能连上但数据不动 | 书/词不在本机，拉取跳过并推进游标 | 1.4.7 做跳行回补；现在先手动重写/重拉 |
+
+### 安全提醒
+
+- 优先 HTTPS；token 不进日志、不进查询串。
+- 电脑端只暴露必要端口；8765 不再对公网裸奔（Cloudflare 回源 + token）。
+- **手机不需要常驻 VPN**：Tailscale Funnel 是公网入口，手机端不用装 Tailscale；只有 Tailscale 私有组网才需要手机装客户端。它仍只作备选（国内连通性 / 带宽待实测）。
+- `.cn` 域名 + 家宽公网 Web 可能被要求 ICP 备案或被墙；先技术验证，不行就换非 `.cn` 域名。
+
+决策记录见 [`docs/decisions-1.4.7.md`](docs/decisions-1.4.7.md)。
 
 ## 版本号约定
 
-- 当前 `versionCode 10 / versionName 1.4.5`（DB 17：翻面手感 + 整行口令 + 按书记忆 + 按书曲线 + 自动备份）
-- 上一版 `versionCode 9 / versionName 1.4.4`（DB 16：方法标签 + 统计双视图 + 局域网同步 + 口令收口 + 提示词放宽）
+- 当前 `versionCode 13 / versionName 1.4.6.2`（DB 20：跨书 SRS 解耦 + 反馈绑思路版本 + 冷启动回插）
+- 上一版 `versionCode 12 / versionName 1.4.6.1`（同 tag；DB 19/20）
+- 再上一版 `versionCode 11 / versionName 1.4.6`（DB 18：词包 v2 + 跨书 SRS 解耦）
+- 再上一版 `versionCode 10 / versionName 1.4.5`（DB 17：翻面手感 + 整行口令 + 按书记忆 + 按书曲线 + 自动备份）
+- 再上一版 `versionCode 9 / versionName 1.4.4`（DB 16：方法标签 + 统计双视图 + 局域网同步 + 口令收口 + 提示词放宽）
 - 再上一版 `versionCode 8 / versionName 1.4.3.2`（重写条竖排随滚 + 清记录 + 20 词测试书）
 - 再上一版 `versionCode 7 / versionName 1.4.3.1`（重写条进卡背 + 进度条 + 原地换文）
 - 再上一版 `versionCode 6 / versionName 1.4.3`（重写记忆思路）
 - 再上一版 `versionCode 5 / versionName 1.4.2`（卡背 JSON 清单 + 电脑端编辑器）
-- **下一次发版 `versionCode` +1（→11）**；内部验证包不要升号，同号覆盖安装即可
-- 数据库版本 17；1.4.4 加 `tb_word_memory.method` 与两张同步表（`MIGRATION_15_16`）；1.4.5 加 `tb_book_memory`、`tb_book_daily_stats` 与 `tb_rewrite_queue.book_id`（`MIGRATION_16_17`）
+- **下一次发版 `versionCode` +1（→14）**；内部验证包不要升号，同号覆盖安装即可
+- 数据库版本 20；17→18 加 `prev_method` / `tb_rewrite_skipped` / `tb_feedback`，18→19 反馈绑思路版本（`approach_rev`），19→20 冷启动回插（`needs_reinsert`）
