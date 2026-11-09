@@ -54,6 +54,12 @@ MODELS = {
         "model": "cn:glm-5.3",
         "reasoning": "high",
     },
+    "kimi-k31-pro": {
+        "name": "Kimi K3.1 Pro",
+        "provider": "wb",
+        "model": "cn:kimi-k3.1-pro",
+        "reasoning": "high",
+    },
     "portdan-gpt": {
         "name": "GPT-6.1 Sol",
         "provider": "portdan-gpt",

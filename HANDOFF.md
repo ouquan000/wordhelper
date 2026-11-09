@@ -671,4 +671,4 @@ C 盘、`syncPresetWords` 早退、`Card(onClick)` 8dp touchSlop、`contentKey`�
 - 服务端现状：8765 现 PID 3204，started_at `2026-11-09T19:04:59+08:00`，`/health` 200（protocol=1，capabilities=rewrite/feedback/sync_push/sync_cursor）；口令在 `tools/cardback-editor/.cardback_token`（未跟踪），旧口令已作废（带 `CF-Connecting-IP` 实测 401）。
 - 本版修掉的坑：读响应体 `ProtocolException` 被吞成「空数据」→ 现在冒泡重试；换地址后沿用旧游标会漏行 → `serverRev` 归零，且**保存连接串时就清**（`resetCursorForEndpointChange()`，杀进程也不丢）；手填地址多行粘贴 → 只取第一行；冷启动首拉全量 → 记录已见 revision（N1）。
 - 验证证据：141 单测 0 失败；功能闸 T1–T9、定点复测 R1–R8 全 PASS；独立验收 **88/100「可交付」**（原 78，B1/B2 修复后复核）。报告与截图在 `_recon/1.4.7/`（gitignored）。
-- 未验证（下版或真机再做）：4G⇄WiFi 切换、电脑重启、24h soak、远程四链路。真机已装 1.4.7（2026-11-09 20:23 覆盖安装，状态页显示已连接、实际连接 `http://10.105.85.227:8765`、电脑端 1.4.2/19:04:59）。
+- 未验证（下版或真机再做）：WiFi⇄4G 来回切换、电脑重启、24h soak、远程四链路。**4G 单程已验证 PASS**（2026-11-09 20:50，WiFi 关闭、仅 rmnet 路由，冷启动后 20:50:43 `/health` 200、20:50:46/47 `/sync/pull?since_rev=272` 200，全程走 Quick Tunnel）。真机已装 1.4.7（2026-11-09 20:23 覆盖安装；状态页已连接、实际连接公网域名、电脑端 1.4.2/19:04:59）。
