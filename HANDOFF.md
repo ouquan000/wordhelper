@@ -684,6 +684,7 @@ C 盘、`syncPresetWords` 早退、`Card(onClick)` 8dp touchSlop、`contentKey`�
   - 20→21 覆盖升级实测：先装 1.4.7 得 `dbver=20 / words=5228`，`install -r` 1.4.7.1 后 `dbver=21 / words=5228`，logcat 无 Room/FATAL（`upgrade-test.sh`、`db-old/`、`db-new/`）。
   - JobScheduler 实测：`JOB #u0a192/23063 .../.sync.BackgroundSyncJobService`，PERIODIC 15m/flex 5m、PERSISTED、RUNNABLE。
   - 真实链路：重启后跑 `ephemeral`（instruction=用谐音联想，别用词根词缀）→ 4 步交付、末行 `——>`、`unverified=false`。
+  - 三词回放（补丁后 `_recon/1.4.7.1/after-b1.json`）：chronic 2 轮 219.2s → **1 轮 177.0s**（B1 格式误杀消失）；hemisphere 1 轮 86.6s（六维全 10）；cathedral 首轮稿质量低（方法选对 5）重试一次 312.9s，p95 312.9s 属生成波动；交付率 100%、白卷 0、unverified 0。
   - 干净中文复验：`live-20261110-ephemeral-cn`（instruction「别用词根词缀拆，换个方法；最后一行提一嘴词根就行」）→ 1 轮通过，七维 9/9/8/9/9/8 + 诉求落实 9，`method=sound`、`unverified=false`。修掉了上一版提交端乱码导致「评委没看懂原话」的存疑。
   - 独立验收：初评 82/100（F1 80 / S1 88 / A1 78）；B1/B2/B3 处理后复评 **89/100「可交付」**（F1 87 / S1 88 / A1 91，三条阻塞全部关闭）；复核记录见 `_recon/1.4.7.1/acceptance-report.md` 末尾。
 - 服务端现状：8765 PID 51580，started_at `2026-11-10T01:01:23+08:00`，`/health` 200，能力四项；已加载出包后的服务端补丁（否定式禁令 / 维度错字归一 / attempts 投影）。
