@@ -1,6 +1,6 @@
 # 1.4.7 远程同步决策记录（草稿）
 
-> 2026-11-09。**尚未实施**，只记录已定的取舍与待验证项。
+> 2026-11-09。**已实施并交付 1.4.7**（完成度见 §7）；公网隧道实测与 4G 矩阵仍待做。
 > 现状与计划见 [`../HANDOFF.md`](../HANDOFF.md) §15；用户版说明见 [`../README.md`](../README.md)「远程同步（1.4.7 方向）」。
 
 ## 0 一句话
@@ -33,7 +33,7 @@ Cloudflare Tunnel + `anki.ouquansdiary.cn` + token + 限流；App 侧只加连�
 
 ## 3 域名与备案取舍
 
-- `ouquansdiary.cn` 已在腾讯云购买、实名通过；**注册局 1–2 个工作日恢复解析**（截至 11-09 未恢复）。
+- `ouquansdiary.cn` 已在腾讯云购买、实名通过；ServerHold 已解除（WHOIS status=ok），DNSPod 现有 0 条解析记录。
 - 本机 `anki.ouquansdiary.cn` → `198.18.0.180` 是代理假 IP，不算解析成功。
 - 风险：`.cn` + 国内宽带公网 Web 可能被要求 ICP 备案，也可能被墙；**先技术验证，不先承诺长期可用**。
 - 若验证失败：换非 `.cn` 域名 > Tailscale Funnel（仅电脑侧装）> 回局域网。
@@ -52,12 +52,11 @@ Cloudflare Tunnel + `anki.ouquansdiary.cn` + token + 限流；App 侧只加连�
 - 为了远程同步重写 SRS / 同步协议。
 - UI 八条、root 尾注、动效（另开版本）。
 
-## 6 待用户拍板
+## 6 拍板结果与仍待办
 
-1. 用 `ouquansdiary.cn` 还是换非 `.cn` 域名。
-2. 是否同意把 NS 改到 Cloudflare（需要他本人登录 / 授权）。
-3. 能否接受可能的 ICP 备案流程；不接受就走备选。
-4. 1.4.7 是否包含 App 侧状态页 / outbox，还是先只做隧道验证。
+已拍板：用 `ouquansdiary.cn` + Cloudflare Tunnel；同意改 NS（要用户本人登录/授权）；1.4.7 包含 App 侧状态页与重试（已交付）；本版不 bump 版本号。
+
+仍待办：公网隧道未实测（Quick Tunnel 探针 → named tunnel → 改 NS）；4G⇄WiFi、电脑重启、24h soak、远程四链路未验证。
 
 ## 7 交付状态（2026-11-09）
 
