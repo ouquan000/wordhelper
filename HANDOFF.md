@@ -684,7 +684,7 @@ C 盘、`syncPresetWords` 早退、`Card(onClick)` 8dp touchSlop、`contentKey`�
   - 20→21 覆盖升级实测：先装 1.4.7 得 `dbver=20 / words=5228`，`install -r` 1.4.7.1 后 `dbver=21 / words=5228`，logcat 无 Room/FATAL（`upgrade-test.sh`、`db-old/`、`db-new/`）。
   - JobScheduler 实测：`JOB #u0a192/23063 .../.sync.BackgroundSyncJobService`，PERIODIC 15m/flex 5m、PERSISTED、RUNNABLE。
   - 真实链路：重启后跑 `ephemeral`（instruction=用谐音联想，别用词根词缀）→ 4 步交付、末行 `——>`、`unverified=false`。
-  - 独立验收：**82/100「有条件可交付」**（F1 80 / S1 88 / A1 78）；B1/B2/B3 已处理并送复核，复核结论见 `_recon/1.4.7.1/acceptance-report.md` 末尾。
+  - 独立验收：初评 82/100（F1 80 / S1 88 / A1 78）；B1/B2/B3 处理后复评 **89/100「可交付」**（F1 87 / S1 88 / A1 91，三条阻塞全部关闭）；复核记录见 `_recon/1.4.7.1/acceptance-report.md` 末尾。
 - 服务端现状：8765 PID 43236，started_at `2026-11-10T00:48:45+08:00`，`/health` 200，能力四项；重启前队列空。
 - 回滚：DB 21 无降级迁移，旧包不能覆盖安装回去，必须先卸载 / 清 App 数据（进度会丢）；README 与 `docs/decisions-1.4.7.1.md` 已写明。
 - 未验证：WiFi⇄4G 来回、电脑重启、24h soak、远程四链路；真实库里 `unverified=true` 的端到端仍是注入数据验证，没有自然产生的未复核卡；真机尚未装 1.4.7.1（等用户点头）。
