@@ -493,7 +493,9 @@ class Store:
                         "clientId": item["clientId"],
                         "seq": (entry or {}).get("seq"),
                         "rev": (entry or {}).get("rev"),
-                        "attempts": int(item.get("attempts") or 0),
+                        "attempts": int(
+                            (entry or {}).get("attempts") or item.get("attempts") or 0
+                        ),
                         "method": (entry or {}).get("method") or "",
                         "approach": list(entry["approach"]) if ok else [],
                         "prev": list((entry or {}).get("prev") or item.get("currentApproach") or []),

@@ -391,5 +391,62 @@ class FeedbackTest(unittest.TestCase):
             self.assertIn(line, judge_user)
 
 
+    def test_polish_reintroducing_banned_method_blocks_verified(self):
+        self.prepare(
+            instruction="别用词根，换个方法",
+            generate=[draft(), draft()],
+            polish=[
+                polished(["① 词根 chron 表示时间", "② 加后缀", "③ 合起来 ——> 慢性的"]),
+                polished(["① 词根 chron 表示时间", "② 加后缀", "③ 合起来 ——> 慢性的"]),
+            ],
+            judge=[
+                judge_json({**SIX_9, "诉求落实": 9}),
+                judge_json({**SIX_9, "诉求落实": 9}),
+            ],
+        )
+        result = pipeline.run(self.item)
+        self.assertTrue(result["unverified"])
+        self.assertIn("词根", result["reason"])
+
+    def test_negated_mention_of_banned_root_is_not_a_violation(self):
+        bans = [{"label": "词根", "needle": "词根", "method": "root"}]
+        self.assertEqual(
+            pipeline._text_hits(
+                bans,
+                ["① 这版不像词根那样硬拆", "② 用谐音记 x", "③ 合起来 ——> y"],
+            ),
+            [],
+        )
+
+    def test_plain_mention_of_banned_root_still_hits(self):
+        bans = [{"label": "词根", "needle": "词根", "method": "root"}]
+        self.assertEqual(
+            pipeline._text_hits(bans, ["① 词根 de 表示向下", "② 加后缀", "③ 合起来 ——> y"]),
+            ["词根"],
+        )
+
+    def test_negation_does_not_cover_second_occurrence(self):
+        bans = [{"label": "词根", "needle": "词根", "method": "root"}]
+        self.assertEqual(
+            pipeline._text_hits(bans, ["① 不用词根，② 词根其实也能记", "③ 合起来 ——> y"]),
+            ["词根"],
+        )
+
+    def test_judge_dimension_typo_maps_to_canonical(self):
+        self.assertEqual(pipeline._canonical_dim("像人谐话"), "像人说话")
+        self.assertEqual(pipeline._canonical_dim("拆分成力"), "拆分成立")
+        self.assertEqual(pipeline._canonical_dim("诉求"), "诉求落实")
+        self.assertEqual(pipeline._canonical_dim("方法选对"), "方法选对")
+
+    def test_judge_typo_key_does_not_zero_the_real_dimension(self):
+        scores = {key: 9 for key in pipeline.JUDGE_DIMENSIONS}
+        scores.pop("像人说话")
+        scores["像人谐话"] = 8
+        mapped = {pipeline._canonical_dim(key): value for key, value in scores.items()}
+        for dim in pipeline.JUDGE_DIMENSIONS:
+            mapped.setdefault(dim, 0)
+        self.assertEqual(mapped["像人说话"], 8)
+
+
 if __name__ == "__main__":
     unittest.main()

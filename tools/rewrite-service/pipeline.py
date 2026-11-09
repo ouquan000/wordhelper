@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
 import re
@@ -38,6 +39,27 @@ JUDGE_ALIASES = {
     "诉求落实度": COMPLIANCE_DIM,
     "诉求": COMPLIANCE_DIM,
 }
+
+
+def _canonical_dim(key):
+    """把评委返回的维度名归一：先查别名，再做一次近似匹配。
+
+    模型偶尔把「像人说话」写成「像人谐话」；精确查表查不到就会被当成新键，
+    真维再被 setdefault 记 0 —— 一张好稿可能因为一个错字撞上「无 0 分」红线被判死。
+    """
+    raw = str(key).strip()
+    if raw in JUDGE_DIMENSIONS or raw == COMPLIANCE_DIM:
+        return raw
+    if raw in JUDGE_ALIASES:
+        return JUDGE_ALIASES[raw]
+    best, best_ratio = raw, 0.0
+    for dim in JUDGE_DIMENSIONS + (COMPLIANCE_DIM,):
+        ratio = difflib.SequenceMatcher(None, raw, dim).ratio()
+        if ratio > best_ratio:
+            best, best_ratio = dim, ratio
+    return best if best_ratio >= 0.6 else raw
+
+
 MAX_ATTEMPTS = 2  # 首次 + 重试一次（spec §4.2）
 # judge.txt 要求先判意图与「是不是同一条思路」，生成侧据此决定重试时强调什么
 INTENTS = ("change_method", "explain", "fix_detail", "other")
@@ -247,6 +269,25 @@ def banned_terms(instruction):
     return found
 
 
+NEGATION_MARKERS = (
+    "不", "别", "没", "勿", "禁止", "避免", "而非", "无需", "无须", "不用", "不要", "不再",
+)
+NEGATION_STOPS = "，。；：！？、\n\r\t—…"
+
+
+def _negated(body, pos):
+    """判断 pos 前的短窗口是不是否定语境（如「不像词根那样拆」「别用词根」）。
+
+    只回看 6 个字符、遇标点即停：再长容易把上一句的「不」算进来。
+    """
+    window = body[max(0, pos - 6):pos]
+    for stop in NEGATION_STOPS:
+        cut = window.rfind(stop)
+        if cut >= 0:
+            window = window[cut + 1:]
+    return any(marker in window for marker in NEGATION_MARKERS)
+
+
 def _text_hits(bans, texts, allow_last_note=False):
     """在一段文本里找禁令命中；allow_last_note=True 时放行最后一行（用户常说「末行提一嘴就行」）。"""
     lines = list(texts)
@@ -261,10 +302,20 @@ def _text_hits(bans, texts, allow_last_note=False):
     for ban in bans:
         if ban["method"]:
             words = METHOD_WORDS.get(ban["method"], (ban["needle"],))
-            if any(word.lower() in lowered for word in words):
-                hits.append(ban["needle"])
-        elif ban["needle"].lower() in lowered:
-            hits.append(ban["needle"])
+        else:
+            words = (ban["needle"],)
+        # 否定式提及不算命中：好卡解释「这版不像词根那样拆」不该被自己的说明判违规。
+        # 同一个词出现多处时，只要有一处不在否定语境里，就算命中。
+        for word in words:
+            needle = str(word).lower()
+            if not needle:
+                continue
+            start = lowered.find(needle)
+            while start >= 0:
+                if not _negated(lowered, start):
+                    hits.append(ban["needle"])
+                    break
+                start = lowered.find(needle, start + 1)
     return hits
 
 
@@ -457,7 +508,7 @@ def judge(item, draft, approach):
     scores = {}
     for key, value in (data.get("scores") or {}).items():
         try:
-            scores[JUDGE_ALIASES.get(str(key), str(key))] = int(round(float(value)))
+            scores[_canonical_dim(key)] = int(round(float(value)))
         except (TypeError, ValueError):
             continue
     if not scores:
