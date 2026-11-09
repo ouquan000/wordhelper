@@ -507,6 +507,13 @@ class SyncRepository(
         return state
     }
 
+    /** 1.4.7 验收 B2：换电脑/换地址后必须从头拉，旧游标会静默漏行；保存连接串时立刻清，进程被杀也不会漏。 */
+    suspend fun resetCursorForEndpointChange() {
+        syncDao.state()?.let { st ->
+            if (st.serverRev != 0L) syncDao.putState(st.copy(serverRev = 0L))
+        }
+    }
+
     private suspend fun config(rotate: Boolean = true): SyncConfig? {
         // 只读一次 settingsFlow：地址与口令必须来自同一份快照。
         val settings = settingsRepository?.settingsFlow?.first() ?: return null

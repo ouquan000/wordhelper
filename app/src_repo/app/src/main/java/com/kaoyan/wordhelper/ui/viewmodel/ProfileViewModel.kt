@@ -317,6 +317,8 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             settingsRepository.updateCardBackUrl(url)
             // 换地址后旧地址的状态不该再挂在状态页上。
             SyncStatusStore.reset()
+            // 1.4.7 验收 B2：立刻清游标，别等下一次同步（进程随后被杀也不会漏）。
+            runCatching { syncRepository.resetCursorForEndpointChange() }
         }
     }
 
@@ -325,6 +327,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             settingsRepository.updateCardBackToken(token)
             SyncStatusStore.reset()
+            runCatching { syncRepository.resetCursorForEndpointChange() }
         }
     }
 
