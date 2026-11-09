@@ -109,7 +109,12 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 withContext(Dispatchers.IO) {
                     val scopedBookId = if (activeBook?.type == Book.TYPE_NEW_WORDS) null else activeBook?.id
                     val words = repository.searchWords(trimmed, scopedBookId)
-                    val progressByWordId = repository.getGlobalProgressMap(words.map { it.id })
+                    // 1.4.6：进度按书独立，搜索结果的「已学/未学」以当前这本书为准。
+                    val progressBookId = scopedBookId ?: activeBook?.id ?: 0L
+                    val progressByWordId = repository.getProgressMapForBook(
+                        progressBookId,
+                        words.map { it.id }
+                    )
                     words.map { word ->
                         word to progressByWordId[word.id]
                     }

@@ -59,6 +59,7 @@ import com.kaoyan.wordhelper.ui.component.HeatmapLegend
 import com.kaoyan.wordhelper.ui.component.MemoryLineChart
 import com.kaoyan.wordhelper.ui.viewmodel.AiLabSummary
 import com.kaoyan.wordhelper.ui.viewmodel.BookStats
+import com.kaoyan.wordhelper.ui.viewmodel.HeatmapCell
 import com.kaoyan.wordhelper.ui.viewmodel.LineChartEntry
 import com.kaoyan.wordhelper.ui.viewmodel.ProfileViewModel
 import com.kaoyan.wordhelper.ui.viewmodel.ProfileStats
@@ -81,6 +82,7 @@ fun ProfileScreen(
     val bookStats by viewModel.bookStats.collectAsStateWithLifecycle()
     val methodCounts by viewModel.methodCounts.collectAsStateWithLifecycle()
     val bookLineData by viewModel.bookLineData.collectAsStateWithLifecycle()
+    val bookHeatmap by viewModel.bookHeatmap.collectAsStateWithLifecycle()
     val aiLabSummary by viewModel.aiLabSummary.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val rewritePendingCount by viewModel.rewritePendingCount.collectAsStateWithLifecycle()
@@ -195,6 +197,7 @@ fun ProfileScreen(
                         bookStats = bookStats,
                         methodCounts = methodCounts,
                         bookLineData = bookLineData,
+                        bookHeatmap = bookHeatmap,
                         statsScope = statsScope,
                         onStatsScopeChange = viewModel::setStatsScope,
                         onOpenStats = onOpenStats
@@ -271,6 +274,7 @@ private fun StatsCard(
     bookStats: BookStats,
     methodCounts: List<MethodCount>,
     bookLineData: List<LineChartEntry>,
+    bookHeatmap: List<HeatmapCell>,
     statsScope: StatsScope,
     onStatsScopeChange: (StatsScope) -> Unit,
     onOpenStats: () -> Unit
@@ -389,6 +393,15 @@ private fun StatsCard(
                         modifier = Modifier.height(180.dp),
                         showLegend = false
                     )
+                }
+                Text(text = "日历热力图（这本书）", style = MaterialTheme.typography.titleMedium)
+                // 空态判断用「有没有量」而不是 isEmpty：热力图窗口本身永远有格子，
+                // 没学过这本书时是一整片 0，看 isEmpty 会永远显示一张全空的图。
+                if (bookHeatmap.none { it.count > 0 }) {
+                    EmptyState(text = "暂无学习记录（从升级到 1.4.5 当天开始按书记账）")
+                } else {
+                    HeatmapGrid(cells = bookHeatmap)
+                    HeatmapLegend()
                 }
                 Text(
                     text = "按书记账从升级到 1.4.5 当天开始，更早的历史没有按书拆分。",

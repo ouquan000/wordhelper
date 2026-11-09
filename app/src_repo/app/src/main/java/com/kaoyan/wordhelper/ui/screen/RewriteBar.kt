@@ -1,5 +1,6 @@
 package com.kaoyan.wordhelper.ui.screen
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,9 +31,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.kaoyan.wordhelper.data.entity.RewriteFeedbackRating
 import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
 import com.kaoyan.wordhelper.data.entity.RewriteStatus
 import com.kaoyan.wordhelper.data.model.RewriteModel
@@ -52,8 +55,11 @@ import kotlin.math.roundToInt
  *
  * 第一行：重写按钮（整行，按文字显示，不省略）
  * 第二行：模型下拉（整行）
- * 第三行：输入框（常显，一行起，最多四行；留空 = 整段重写）
- * 有标记时再跟一行：进度条 + 状态小字 / 撤销
+ * 第三行：折叠的指令行（默认只显示「哪里有问题？点开补充」，点开才展开输入框；留空 = 整段重写）
+ * 有标记时再跟：进度条 + 状态小字 / 撤销；还没生成好时另有一颗整行「跳过」按钮
+ *
+ * 1.4.6.1 P1：👍/👎 已从卡背滚动区挪到卡背外的底部操作区上方（见 RewriteFeedbackRow），
+ * 不用滑到底就能看到。
  */
 @Composable
 internal fun RewriteBar(
@@ -68,10 +74,15 @@ internal fun RewriteBar(
     enabled: Boolean,
     progress: RewriteProgressUi?,
     justUpdated: Boolean,
+    /** 1.4.6 H：只在点过重写、结果还没回来时由外层置 true。 */
+    showSkip: Boolean = false,
+    onSkip: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // 按词重置：换词时不要把上一个词写了一半的指令带过去
     var instruction by remember(wordId) { mutableStateOf("") }
+    // 输入框默认折叠；展开状态也按词重置，换一张卡不继承上一张的展开态。
+    var instructionExpanded by remember(wordId) { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
 
     // 跑完别把 100% 钉在那儿：收掉进度条，「撤销」那行才回到可视区。
@@ -125,19 +136,72 @@ internal fun RewriteBar(
             modifier = Modifier.fillMaxWidth()
         )
 
-        OutlinedTextField(
-            value = instruction,
-            onValueChange = { if (it.length <= MAX_INSTRUCTION) instruction = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("哪里有问题？留空＝整段重写", style = MaterialTheme.typography.bodySmall) },
-            textStyle = MaterialTheme.typography.bodySmall,
-            minLines = 1,
-            maxLines = 4,
-            // 打完按键盘上的「完成」就把键盘收起来，不用去点别处（点卡片会翻面）
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { keyboardController?.hide() }),
-            shape = MaterialTheme.shapes.medium
-        )
+        // 1.4.6.1：默认只占一行。写过的内容收起后给「已填写」，别让人以为字丢了。
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled) { instructionExpanded = !instructionExpanded }
+                .testTag("rewrite_instruction_toggle")
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (instructionExpanded) "哪里有问题？" else "哪里有问题？点开补充",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            if (!instructionExpanded && instruction.isNotBlank()) {
+                Text(
+                    text = "已填写",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else if (instructionExpanded) {
+                Text(
+                    text = "收起",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        if (instructionExpanded) {
+            OutlinedTextField(
+                value = instruction,
+                onValueChange = { if (it.length <= MAX_INSTRUCTION) instruction = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("rewrite_instruction_field"),
+                placeholder = { Text("哪里有问题？留空＝整段重写", style = MaterialTheme.typography.bodySmall) },
+                textStyle = MaterialTheme.typography.bodySmall,
+                minLines = 1,
+                maxLines = 4,
+                // 打完按键盘上的「完成」就把键盘收起来，不用去点别处（点卡片会翻面）
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { keyboardController?.hide() }),
+                shape = MaterialTheme.shapes.medium
+            )
+        }
+
+        // 1.4.6.1：跳过从状态行的小字改成整行大按钮，和「重写思路」同宽同高、同样好点。
+        if (showSkip && mark != null && mark.status != RewriteStatus.DONE) {
+            OutlinedButton(
+                onClick = onSkip,
+                enabled = enabled,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("rewrite_skip"),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = "跳过，先背下一个",
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1
+                )
+            }
+        }
 
         // 有标记才画进度；跑完/失败后保留最后一格（100% 或红条），换词时才清掉
         if (keepProgress && mark != null && (progress != null ||
@@ -171,6 +235,58 @@ internal fun RewriteBar(
                     }
                 }
             }
+        }
+
+    }
+}
+
+/**
+ * 1.4.6.1 P1：卡背上的 👍/👎 评价行。
+ *
+ * 从 RewriteBar 的滚动内容里抽出来，放在卡背与「不认识/模糊/认识」之间：
+ * 卡背内容再长也不用滑到底才能看到，普通卡和重写卡共用同一个入口。
+ * 👎 只记录，不触发自动重写，也不调模型；评价绑当前展示的 rev。
+ */
+@Composable
+internal fun RewriteFeedbackRow(
+    feedback: String?,
+    onFeedback: (String) -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "这条思路",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(
+            onClick = { onFeedback(RewriteFeedbackRating.UP) },
+            enabled = enabled && feedback != RewriteFeedbackRating.UP,
+            contentPadding = PaddingValues(horizontal = 8.dp),
+            modifier = Modifier.testTag("rewrite_feedback_up")
+        ) {
+            Text(
+                text = if (feedback == RewriteFeedbackRating.UP) "👍 已认可" else "👍 有帮助",
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
+        TextButton(
+            onClick = { onFeedback(RewriteFeedbackRating.DOWN) },
+            enabled = enabled && feedback != RewriteFeedbackRating.DOWN,
+            contentPadding = PaddingValues(horizontal = 8.dp),
+            modifier = Modifier.testTag("rewrite_feedback_down")
+        ) {
+            Text(
+                text = if (feedback == RewriteFeedbackRating.DOWN) "👎 已记录" else "👎 没帮助",
+                style = MaterialTheme.typography.labelSmall
+            )
         }
     }
 }

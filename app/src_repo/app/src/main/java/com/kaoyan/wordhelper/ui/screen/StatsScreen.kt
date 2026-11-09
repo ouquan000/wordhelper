@@ -56,6 +56,7 @@ import com.kaoyan.wordhelper.ui.viewmodel.CalendarMode
 import com.kaoyan.wordhelper.ui.viewmodel.ForecastDayUi
 import com.kaoyan.wordhelper.ui.viewmodel.ForecastWordPreview
 import com.kaoyan.wordhelper.ui.viewmodel.HeatmapCell
+import com.kaoyan.wordhelper.ui.viewmodel.HeatmapScope
 import com.kaoyan.wordhelper.ui.viewmodel.LineChartEntry
 import com.kaoyan.wordhelper.ui.viewmodel.MasteryDistribution
 import com.kaoyan.wordhelper.ui.viewmodel.StatsRange
@@ -98,6 +99,7 @@ fun StatsScreen(
             uiState = uiState,
             onRangeSelect = viewModel::updateRange,
             onCalendarModeSelect = viewModel::updateCalendarMode,
+            onHeatmapScopeSelect = viewModel::updateHeatmapScope,
             onForecastDateSelect = viewModel::selectForecastDate,
             onPullForward = viewModel::pullForwardForSelectedDate,
             modifier = Modifier
@@ -113,6 +115,7 @@ fun StatsContent(
     uiState: StatsUiState,
     onRangeSelect: (StatsRange) -> Unit,
     onCalendarModeSelect: (CalendarMode) -> Unit,
+    onHeatmapScopeSelect: (HeatmapScope) -> Unit = {},
     onForecastDateSelect: (LocalDate) -> Unit,
     onPullForward: () -> Unit,
     modifier: Modifier = Modifier
@@ -125,6 +128,7 @@ fun StatsContent(
             LearningCalendar(
                 mode = uiState.calendarMode,
                 heatmap = uiState.heatmap,
+                heatmapScope = uiState.heatmapScope,
                 forecast = uiState.forecast,
                 selectedForecastDate = uiState.selectedForecastDate,
                 selectedForecastWords = uiState.selectedForecastWords,
@@ -134,6 +138,7 @@ fun StatsContent(
                 todayRecognizedCount = uiState.todayRecognizedCount,
                 forecastLoadLabel = uiState.forecastLoadLabel,
                 onModeSelect = onCalendarModeSelect,
+                onHeatmapScopeSelect = onHeatmapScopeSelect,
                 onForecastDateSelect = onForecastDateSelect,
                 onPullForward = onPullForward
             )
@@ -171,6 +176,7 @@ fun StatsContent(
 private fun LearningCalendar(
     mode: CalendarMode,
     heatmap: List<HeatmapCell>,
+    heatmapScope: HeatmapScope,
     forecast: List<ForecastDayUi>,
     selectedForecastDate: LocalDate?,
     selectedForecastWords: List<ForecastWordPreview>,
@@ -180,6 +186,7 @@ private fun LearningCalendar(
     todayRecognizedCount: Int,
     forecastLoadLabel: String,
     onModeSelect: (CalendarMode) -> Unit,
+    onHeatmapScopeSelect: (HeatmapScope) -> Unit,
     onForecastDateSelect: (LocalDate) -> Unit,
     onPullForward: () -> Unit
 ) {
@@ -216,6 +223,17 @@ private fun LearningCalendar(
             )
 
             if (mode == CalendarMode.HISTORY) {
+                // 1.4.6：热力图可以只看当前这本（tb_book_daily_stats），也可以看全部（tb_daily_stats）。
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HeatmapScope.entries.forEach { item ->
+                        FilterChip(
+                            selected = item == heatmapScope,
+                            onClick = { onHeatmapScopeSelect(item) },
+                            label = { Text(text = item.label) },
+                            modifier = Modifier.testTag("stats_heatmap_scope_${item.name}")
+                        )
+                    }
+                }
                 Text(
                     text = "过去 12 周学习热力图",
                     style = MaterialTheme.typography.bodySmall,

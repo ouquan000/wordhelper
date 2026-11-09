@@ -9,6 +9,8 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.kaoyan.wordhelper.data.model.PronunciationSource
+import com.kaoyan.wordhelper.data.network.CardBackAddress
+import com.kaoyan.wordhelper.data.network.NetworkAvailability
 import com.kaoyan.wordhelper.util.DateUtils
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -28,6 +30,7 @@ private const val DEFAULT_ML_ADAPTIVE_ENABLED = false
 private const val DEFAULT_PLANNED_NEW_WORDS_ENABLED = false
 private const val DEFAULT_CARD_BACK_URL = ""
 private const val DEFAULT_CARD_BACK_TOKEN = ""
+private const val DEFAULT_CARD_BACK_LAST_GOOD_URL = ""
 private val Context.dataStore by preferencesDataStore(name = "user_settings")
 
 data class UserSettings(
@@ -47,7 +50,13 @@ data class UserSettings(
     /** 卡背结构地址；空 = 没配，刷新时提示去设置里填。 */
     val cardBackUrl: String = DEFAULT_CARD_BACK_URL,
     /** 电脑端启动时打印的口令；空 = 没填，非本机访问会被 401。 */
-    val cardBackToken: String = DEFAULT_CARD_BACK_TOKEN
+    val cardBackToken: String = DEFAULT_CARD_BACK_TOKEN,
+    /**
+     * 1.4.6.1：上次真正连通过的地址（已归一成 scheme://host:port）。
+     * 换 Wi-Fi / 路由器重新分配 IP / 用户改错手填地址时，请求会先退回这里，
+     * 不用再让用户去电脑上查一遍 IP。空 = 还没成功连过。
+     */
+    val cardBackLastGoodUrl: String = DEFAULT_CARD_BACK_LAST_GOOD_URL
 )
 
 data class TodayNewWordsPlan(
@@ -111,9 +120,16 @@ class SettingsRepository(private val context: Context) {
             plannedNewWordsEnabled =
                 prefs[KEY_PLANNED_NEW_WORDS_ENABLED] ?: DEFAULT_PLANNED_NEW_WORDS_ENABLED,
             cardBackUrl = prefs[KEY_CARD_BACK_URL] ?: DEFAULT_CARD_BACK_URL,
-            cardBackToken = prefs[KEY_CARD_BACK_TOKEN] ?: DEFAULT_CARD_BACK_TOKEN
+            cardBackToken = prefs[KEY_CARD_BACK_TOKEN] ?: DEFAULT_CARD_BACK_TOKEN,
+            cardBackLastGoodUrl = prefs[KEY_CARD_BACK_LAST_GOOD_URL] ?: DEFAULT_CARD_BACK_LAST_GOOD_URL
         )
     }
+
+    /**
+     * 网络可用性（1.4.6.1）。冷流，供 RewriteRepository 在网络恢复后补一次同步用；
+     * 不做轮询，collect 结束就注销系统回调。
+     */
+    val networkAvailableFlow: Flow<Boolean> = NetworkAvailability.observe(context)
 
     suspend fun updateNewWordsLimit(limit: Int) {
         dataStore.edit { prefs -> prefs[KEY_NEW_WORDS_LIMIT] = limit.coerceIn(1, 500) }
@@ -183,6 +199,16 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updateCardBackToken(token: String) {
         dataStore.edit { prefs -> prefs[KEY_CARD_BACK_TOKEN] = token.trim() }
+    }
+
+    /**
+     * 记住「上次真正连通的地址」（1.4.6.1）。只在请求成功后调用。
+     * 先归一成 scheme://host:port 再存；解析不出 host 就忽略 ——
+     * 不能因为一次脏输入把原来能用的兜底地址覆盖掉。
+     */
+    suspend fun updateCardBackLastGoodUrl(url: String) {
+        val origin = CardBackAddress.originOf(url) ?: return
+        dataStore.edit { prefs -> prefs[KEY_CARD_BACK_LAST_GOOD_URL] = origin }
     }
 
     /** 已导入的内置种子词库版本号，用于判断要不要重导内容。 */
@@ -289,6 +315,7 @@ class SettingsRepository(private val context: Context) {
         private val KEY_PLANNED_NEW_WORDS_ENABLED = booleanPreferencesKey("planned_new_words_enabled")
         private val KEY_CARD_BACK_URL = stringPreferencesKey("card_back_url")
         private val KEY_CARD_BACK_TOKEN = stringPreferencesKey("card_back_token")
+        private val KEY_CARD_BACK_LAST_GOOD_URL = stringPreferencesKey("card_back_last_good_url")
         private val KEY_CARD_SEED_VERSION = intPreferencesKey("card_seed_version")
         private val KEY_REWRITE_LAST_SEQ = longPreferencesKey("rewrite_last_seq")
         private val KEY_REWRITE_MODEL = stringPreferencesKey("rewrite_model")

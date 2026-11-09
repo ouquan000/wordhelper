@@ -173,6 +173,19 @@ def _marks(body):
     return {"accepted": accepted, "rejected": rejected}
 
 
+def _feedback(body):
+    """卡背 👍/👎（1.4.6）：只落盘，不触发任何重写。"""
+    payload = _read_body(body)
+    items = payload.get("items") if isinstance(payload, dict) else payload
+    if not isinstance(items, list):
+        raise ApiError("items 必须是数组")
+    if len(items) > 200:
+        raise ApiError("一次最多 200 条反馈")
+    accepted, rejected = _state["store"].add_feedback(items)
+    log("收反馈 %d 条：接受 %d 拒绝 %d" % (len(items), len(accepted), len(rejected)))
+    return {"ok": True, "accepted": accepted, "rejected": rejected}
+
+
 PAGE_FILES = {"records": "rewrite.html", "panel": "panel.html"}
 
 
@@ -223,6 +236,8 @@ def _dispatch(method, raw_path, body):
         return _json({"word": word, "entries": _state["store"].word_history(word)})
     if method == "POST" and path == "/rewrite/marks":
         return _json(_marks(body))
+    if method == "POST" and path == "/rewrite/feedback":
+        return _json(_feedback(body))
     if method == "POST" and path == "/rewrite/retry":
         data = _read_body(body)
         payload = data if isinstance(data, dict) else {}

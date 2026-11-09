@@ -26,6 +26,13 @@ interface ProgressDao {
     @Query("SELECT * FROM tb_progress WHERE word_id IN (:wordIds)")
     suspend fun getProgressByWordIds(wordIds: List<Long>): List<Progress>
 
+    /**
+     * 只取「这本书」的进度（1.4.6 起进度按书完全独立）。
+     * 队列拼装用它；不要再用 [getGlobalProgress]/[getProgressByWordIds] 取跨书最优值。
+     */
+    @Query("SELECT * FROM tb_progress WHERE book_id = :bookId AND word_id IN (:wordIds)")
+    suspend fun getProgressByBookAndWordIds(bookId: Long, wordIds: List<Long>): List<Progress>
+
     @Query("SELECT word_id FROM tb_progress WHERE book_id = :bookId AND word_id IN (:wordIds)")
     suspend fun getProgressWordIdsByBookAndWordIds(bookId: Long, wordIds: List<Long>): List<Long>
 
@@ -160,6 +167,10 @@ interface ProgressDao {
 
     @Query("DELETE FROM tb_progress WHERE word_id = :wordId")
     suspend fun deleteByWordId(wordId: Long)
+
+    /** 1.4.6：撤销「太简单」只删当前书那一行，别的书不动。 */
+    @Query("DELETE FROM tb_progress WHERE word_id = :wordId AND book_id = :bookId")
+    suspend fun deleteByWordAndBook(wordId: Long, bookId: Long)
 
     @Query("SELECT AVG(avg_response_time_ms) FROM tb_progress WHERE avg_response_time_ms > 0")
     suspend fun getAverageResponseTime(): Float?

@@ -7,8 +7,15 @@ import com.kaoyan.wordhelper.data.database.AppDatabase
 import com.kaoyan.wordhelper.data.entity.Progress
 import com.kaoyan.wordhelper.data.entity.SyncOp
 import com.kaoyan.wordhelper.data.entity.SyncState
+import com.kaoyan.wordhelper.data.network.CardBackAddress
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -49,6 +56,23 @@ class SyncRepository(
 
     /** 同一时刻只允许一轮同步（pull 与 push 共用游标与队列，交叉跑会把 rev 弄乱）。 */
     private val syncMutex = Mutex()
+
+    /** 1.4.6.1 P1：本次进程里最后一次真正连通的地址（手填地址坏了时靠它兜底）。 */
+    @Volatile
+    private var activeOrigin: String? = null
+
+    /** 已写进 DataStore 的 last-good；一轮同步要发多次请求，别每次都写盘。 */
+    @Volatile
+    private var savedLastGood: String? = null
+
+    /** 断网恢复自动补同步的节流。 */
+    @Volatile
+    private var lastAutoSyncAt = 0L
+
+    @Volatile
+    private var networkRecoveryStarted = false
+
+    private val autoSyncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
      * OkHttpClient 自带连接池与线程池，构造一次就该复用；但只在真的要联网时才建
@@ -203,11 +227,17 @@ class SyncRepository(
         if (deadOpIds.isNotEmpty()) syncDao.deleteByOpIds(deadOpIds)
         if (wireOps.isEmpty()) return Result.success(0)
 
-        val reply = post(
-            url = config.origin + PUSH_PATH,
-            json = gson.toJson(PushRequest(state.deviceId, state.serverRev, wireOps)),
-            token = config.token
-        ) ?: return Result.failure(SyncException(UNREACHABLE))
+        val pushJson = gson.toJson(PushRequest(state.deviceId, state.serverRev, wireOps))
+        var lastReply: HttpResult? = null
+        for (origin in config.origins) {
+            val attempt = post(origin + PUSH_PATH, pushJson, config.token)
+            if (attempt != null) {
+                rememberSuccess(origin)
+                lastReply = attempt
+                break
+            }
+        }
+        val reply = lastReply ?: return Result.failure(SyncException(UNREACHABLE))
 
         if (reply.code == 401) return Result.failure(SyncException(CardbackAuth.HINT))
         val pushBody = reply.body
@@ -251,8 +281,17 @@ class SyncRepository(
 
         repeat(MAX_PULL_PAGES) {
             // 服务端只认 since_rev；device_id 只在 push 时带，pull 不需要（也不该假装能过滤自己发过的 op）。
-            val url = "${config.origin}$PULL_PATH?since_rev=${state.serverRev}"
-            val reply = get(url, config.token) ?: return Result.failure(SyncException(UNREACHABLE))
+            val path = "$PULL_PATH?since_rev=${state.serverRev}"
+            var lastReply: HttpResult? = null
+            for (origin in config.origins) {
+                val attempt = get(origin + path, config.token)
+                if (attempt != null) {
+                    rememberSuccess(origin)
+                    lastReply = attempt
+                    break
+                }
+            }
+            val reply = lastReply ?: return Result.failure(SyncException(UNREACHABLE))
 
             if (reply.code == 401) return Result.failure(SyncException(CardbackAuth.HINT))
             val pullBody = reply.body
@@ -391,6 +430,34 @@ class SyncRepository(
     /** 队列里还有几条没发出去（给界面显示「待同步 N 条」用，不触发网络）。 */
     suspend fun pendingCount(): Int = syncDao.pendingCount()
 
+    /**
+     * 1.4.6.1 P1：网络恢复后自动补一轮学习记录同步。
+     *
+     * 改写链路早就在监听网络了，学习记录没有；断网时背的词会一直躺在 tb_sync_op 里，
+     * 等用户下次手点同步。这里只在真正「从断到通」时触发一次，并做 30 秒节流，
+     * 不和改写同步共用节流（两条链路各自的请求互不影响）。
+     */
+    fun startNetworkRecoverySync() {
+        val settings = settingsRepository ?: return
+        if (networkRecoveryStarted) return
+        networkRecoveryStarted = true
+        autoSyncScope.launch {
+            settings.networkAvailableFlow
+                .distinctUntilChanged()
+                // 订阅时读到的当前状态不算「恢复」：启动时的正常同步会处理。
+                .drop(1)
+                .filter { it }
+                .collect {
+                    // 已经在同步：这一轮会用到刚恢复的网络，别再排一轮。
+                    if (syncMutex.isLocked) return@collect
+                    val now = System.currentTimeMillis()
+                    if (now - lastAutoSyncAt < AUTO_SYNC_MIN_INTERVAL_MS) return@collect
+                    lastAutoSyncAt = now
+                    runCatching { syncOnce() }
+                }
+        }
+    }
+
     // ---- 内部工具 ----
 
     private suspend fun ensureState(): SyncState {
@@ -403,11 +470,35 @@ class SyncRepository(
         return state
     }
 
-    private suspend fun config(): SyncConfig? {
+    private suspend fun config(rotate: Boolean = true): SyncConfig? {
         // 只读一次 settingsFlow：地址与口令必须来自同一份快照。
         val settings = settingsRepository?.settingsFlow?.first() ?: return null
-        val origin = SyncEndpoint.baseOrigin(settings.cardBackUrl) ?: return null
-        return SyncConfig(origin = origin, token = settings.cardBackToken.trim())
+        // 1.4.6.1 P1：和改写链路同一套候选/上次成功，手填地址写坏时学习记录也能自愈。
+        val origins = if (rotate) {
+            CardBackAddress.candidates(
+                active = activeOrigin,
+                current = settings.cardBackUrl,
+                lastGood = settings.cardBackLastGoodUrl
+            )
+        } else {
+            listOfNotNull(
+                CardBackAddress.preferred(
+                    active = activeOrigin,
+                    current = settings.cardBackUrl,
+                    lastGood = settings.cardBackLastGoodUrl
+                )
+            )
+        }
+        if (origins.isEmpty()) return null
+        return SyncConfig(origins = origins, token = settings.cardBackToken.trim())
+    }
+
+    /** 记下真正连通的地址；下次冷启动/换 Wi-Fi 还能兜底。 */
+    private suspend fun rememberSuccess(origin: String) {
+        activeOrigin = origin
+        if (origin == savedLastGood) return
+        savedLastGood = origin
+        runCatching { settingsRepository?.updateCardBackLastGoodUrl(origin) }
     }
 
     private fun parseLocal(row: SyncOp): LocalOp? =
@@ -433,7 +524,7 @@ class SyncRepository(
         return name
     }
 
-    private data class SyncConfig(val origin: String, val token: String)
+    private data class SyncConfig(val origins: List<String>, val token: String)
 
     private data class PullApply(val applied: Int, val skipped: Int)
 
@@ -556,6 +647,9 @@ class SyncRepository(
         private const val MAX_PULL_PAGES = 20
         private const val GET_ATTEMPTS = 3
         private const val RETRY_DELAY_MS = 150L
+
+        /** 断网/重连回调常连着抖几次，30 秒内只补一轮。 */
+        private const val AUTO_SYNC_MIN_INTERVAL_MS = 30_000L
 
         private const val TYPE_PROGRESS = "progress"
 

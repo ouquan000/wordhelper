@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.kaoyan.wordhelper.KaoyanWordApp
 import com.kaoyan.wordhelper.data.entity.Book
+import com.kaoyan.wordhelper.data.entity.BookDailyStats
 import com.kaoyan.wordhelper.data.entity.MLModelState
 import com.kaoyan.wordhelper.data.entity.TrainingSample
 import com.kaoyan.wordhelper.data.model.DailyStatsAggregate
@@ -41,6 +42,17 @@ enum class StatsRange(val days: Long, val label: String) {
 enum class CalendarMode(val label: String) {
     HISTORY("历史模式"),
     FUTURE("未来模式")
+}
+
+/**
+ * 热力图口径（1.4.6）。
+ *
+ * 1.4.5 之前只有全局 tb_daily_stats，所以热力图只能是「全部」。现在每本书自己记一份
+ * tb_book_daily_stats，「当前词书」才反映你正在背的这本；「全部」保留老口径，方便看总时长。
+ */
+enum class HeatmapScope(val label: String) {
+    CURRENT_BOOK("当前词书"),
+    ALL("全部")
 }
 
 data class LineChartEntry(
@@ -106,6 +118,8 @@ data class StatsUiState(
     val lineData: List<LineChartEntry> = emptyList(),
     val mastery: MasteryDistribution = MasteryDistribution(0, 0, 0, 0),
     val heatmap: List<HeatmapCell> = emptyList(),
+    /** 热力图当前口径：当前词书 / 全部（1.4.6）。 */
+    val heatmapScope: HeatmapScope = HeatmapScope.CURRENT_BOOK,
     val gestureEasyCount: Int = 0,
     val gestureNotebookCount: Int = 0,
     val todayFuzzyCount: Int = 0,
@@ -135,6 +149,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val rangeFlow = MutableStateFlow(StatsRange.WEEK)
     private val calendarModeFlow = MutableStateFlow(CalendarMode.HISTORY)
+    private val heatmapScopeFlow = MutableStateFlow(HeatmapScope.CURRENT_BOOK)
     private val forecastFlow = MutableStateFlow<List<ForecastDayUi>>(emptyList())
     private val selectedForecastDateFlow = MutableStateFlow<LocalDate?>(null)
     private val selectedForecastWordsFlow = MutableStateFlow<List<ForecastWordPreview>>(emptyList())
@@ -179,11 +194,27 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val heatmapRange = DateUtils.learningHeatmapRange(zoneId = zoneId)
 
-    private val heatmapFlow = repository.getDailyStatsAggregated(
-        heatmapRange.first,
-        heatmapRange.second
-    ).map { aggregates ->
-        buildHeatmap(heatmapRange.first, heatmapRange.second, aggregates)
+    private val heatmapFlow = heatmapScopeFlow.flatMapLatest { scope ->
+        when (scope) {
+            HeatmapScope.ALL -> repository.getDailyStatsAggregated(
+                heatmapRange.first,
+                heatmapRange.second
+            ).map { aggregates ->
+                buildHeatmap(heatmapRange.first, heatmapRange.second, aggregates)
+            }
+            HeatmapScope.CURRENT_BOOK -> repository.getActiveBookFlow().flatMapLatest { book ->
+                if (book == null) {
+                    flowOf(buildHeatmap(heatmapRange.first, heatmapRange.second, emptyList()))
+                } else {
+                    repository.getBookDailyStatsFlow(
+                        bookId = book.id,
+                        fromDate = heatmapRange.first.format(DATE_FORMATTER)
+                    ).map { rows ->
+                        buildBookHeatmap(heatmapRange.first, heatmapRange.second, rows)
+                    }
+                }
+            }
+        }
     }
 
     private val gestureStatsFlow = rangeFlow.flatMapLatest { range ->
@@ -223,6 +254,8 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
             gestureEasyCount = gestureStats.gestureEasyCount,
             gestureNotebookCount = gestureStats.gestureNotebookCount
         )
+    }.combine(heatmapScopeFlow) { base, scope ->
+        base.copy(heatmapScope = scope)
     }.combine(todayRecognitionFlow) { base, todayRecognition ->
         base.copy(
             todayFuzzyCount = todayRecognition.fuzzyCount,
@@ -280,6 +313,11 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateRange(range: StatsRange) {
         rangeFlow.value = range
+    }
+
+    /** 热力图切「当前词书 / 全部」；只切热力图，趋势图与手势统计仍是全局口径。 */
+    fun updateHeatmapScope(scope: HeatmapScope) {
+        heatmapScopeFlow.value = scope
     }
 
     fun updateCalendarMode(mode: CalendarMode) {
@@ -426,6 +464,42 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
             val count = aggregate?.let {
                 it.newWordsCount + it.reviewWordsCount + it.spellPracticeCount
             } ?: 0
+            val level = if (inRange) computeLevel(count, maxCount) else 0
+            result.add(
+                HeatmapCell(
+                    date = cursor,
+                    count = count,
+                    level = level,
+                    inRange = inRange
+                )
+            )
+            cursor = cursor.plusDays(1)
+        }
+        return result
+    }
+
+    /**
+     * 按书热力图：数据来自 tb_book_daily_stats（1.4.5 才建表，所以只有升级之后的日子有数）。
+     * 口径与全局版保持一致：一天的量 = 新词 + 复习 + 拼写。
+     */
+    private fun buildBookHeatmap(
+        startDate: LocalDate,
+        endDate: LocalDate,
+        rows: List<BookDailyStats>
+    ): List<HeatmapCell> {
+        val map = rows.mapNotNull { row ->
+            parseDate(row.date)?.let { it to row }
+        }.toMap()
+        val maxCount = rows.maxOfOrNull { row ->
+            row.newCount + row.reviewCount + row.spellCount
+        } ?: 0
+        val displayEnd = endDate.with(DayOfWeek.SUNDAY)
+        val result = mutableListOf<HeatmapCell>()
+        var cursor = startDate
+        while (!cursor.isAfter(displayEnd)) {
+            val inRange = !cursor.isAfter(endDate)
+            val row = if (inRange) map[cursor] else null
+            val count = row?.let { it.newCount + it.reviewCount + it.spellCount } ?: 0
             val level = if (inRange) computeLevel(count, maxCount) else 0
             result.add(
                 HeatmapCell(

@@ -57,6 +57,8 @@ class WordRepository(private val database: AppDatabase) {
     private val earlyReviewDao = database.earlyReviewDao()
     private val forecastCacheDao = database.forecastCacheDao()
     private val wordMemoryDao = database.wordMemoryDao()
+    /** 1.4.6：root 标签刷新要按书那份一起改（卡背读的是 tb_book_memory）。 */
+    private val bookMemoryDao = database.bookMemoryDao()
 
     /**
      * 学习记录同步队列。这里刻意不传 SettingsRepository：学习路径上只做本地入队，
@@ -204,6 +206,49 @@ class WordRepository(private val database: AppDatabase) {
         return wordDao.countMarkedMethod()
     }
 
+    /**
+     * 1.4.6（P0）：种子重导只更新正文，不动 method，而 WordDraft 根本没有 method 字段 ——
+     * 于是新导进来的词带着默认的 "root"，老行也永远停在 "root"。
+     * 这里按 word_method_map 把「种子来源、且还是 fromMethod」的行改成真正的方法标签：
+     * - 只动种子行，source='user'（用户重写过）一律不碰；
+     * - 候选集来自 DAO 的「仍在 root 的行」，改完 method 变了，下次启动候选集自然为空 —— 幂等。
+     * 返回实际改掉的行数（tb_word_memory + tb_book_memory），方便日志核对。
+     */
+    suspend fun refreshRootMethods(
+        map: Map<String, String>,
+        fromMethod: String = DEFAULT_ROOT_METHOD
+    ): Int {
+        if (map.isEmpty()) return 0
+        val now = System.currentTimeMillis()
+        var changed = 0
+        database.withTransaction {
+            val candidates = LinkedHashSet<Long>()
+            candidates += wordMemoryDao.getWordIdsByMethod(fromMethod, WordMemory.SOURCE_USER)
+            candidates += bookMemoryDao.getWordIdsByMethod(fromMethod, WordMemory.SOURCE_USER)
+            candidates.forEach { wordId ->
+                val key = wordDao.getWordKeyById(wordId) ?: return@forEach
+                val method = map[key]?.trim()
+                    ?.takeIf { it.isNotEmpty() && it != fromMethod }
+                    ?: return@forEach
+                changed += wordMemoryDao.refreshMethod(
+                    wordId = wordId,
+                    fromMethod = fromMethod,
+                    method = method,
+                    updatedAt = now,
+                    userSource = WordMemory.SOURCE_USER
+                )
+                changed += bookMemoryDao.refreshMethod(
+                    wordId = wordId,
+                    fromMethod = fromMethod,
+                    method = method,
+                    updatedAt = now,
+                    userSource = WordMemory.SOURCE_USER
+                )
+            }
+        }
+        return changed
+    }
+
     suspend fun ensurePresetBooks(presetSeeds: List<PresetBookSeed> = PresetBookCatalog.presets) {
         database.withTransaction {
             val books = bookDao.getAllBooksList().toMutableList()
@@ -341,39 +386,59 @@ class WordRepository(private val database: AppDatabase) {
 
     // ---- Progress ----
 
+    /**
+     * 只读「这本书」的进度（1.4.6 / DB18）。
+     *
+     * 1.4.5 及之前这里返回的是跨书最优值（getGlobalProgress），于是同一个词在 A 书背过，
+     * B 书就凭空变成已学。现在每本书各记各的，bookId 传谁就读谁。
+     */
     suspend fun getProgress(wordId: Long, bookId: Long): Progress? {
-        return progressDao.getGlobalProgress(wordId)
+        return progressDao.getProgress(wordId, bookId)
     }
 
-    suspend fun getGlobalProgressMap(wordIds: Collection<Long>): Map<Long, Progress> {
-        if (wordIds.isEmpty()) return emptyMap()
-        val grouped = getProgressByWordIdsChunked(wordIds)
-            .groupBy { it.wordId }
-        val result = LinkedHashMap<Long, Progress>(grouped.size)
-        grouped.forEach { (wordId, progressList) ->
-            val best = progressList.maxWithOrNull(PROGRESS_PRIORITY_COMPARATOR) ?: return@forEach
-            result[wordId] = best
-        }
+    /**
+     * 队列拼装用的批量版：只取这本书的进度，不再跨书取最优。
+     *
+     * bookId <= 0 时返回空表（等于「整本都是新词」），不偷偷回落到全局那份。
+     */
+    suspend fun getProgressMapForBook(
+        bookId: Long,
+        wordIds: Collection<Long>
+    ): Map<Long, Progress> {
+        if (bookId <= 0L || wordIds.isEmpty()) return emptyMap()
+        val rows = getProgressByBookChunked(bookId, wordIds)
+        if (rows.isEmpty()) return emptyMap()
+        val result = LinkedHashMap<Long, Progress>(rows.size)
+        rows.forEach { result[it.wordId] = it }
         return result
     }
 
-    suspend fun getProgressSnapshotsForWord(wordId: Long): List<Progress> {
-        return progressDao.getProgressByWordIds(listOf(wordId))
-            .sortedWith(compareBy<Progress> { it.bookId }.thenBy { it.id })
+    /**
+     * 撤销「太简单」手势时要恢复的那一行。
+     * 进度按书独立之后，一个词在一本书里只有一行，所以最多一条。
+     */
+    suspend fun getProgressSnapshotsForWord(wordId: Long, bookId: Long): List<Progress> {
+        if (bookId <= 0L) return emptyList()
+        val row = progressDao.getProgress(wordId, bookId) ?: return emptyList()
+        return listOf(row)
     }
 
     suspend fun restoreProgressSnapshots(
         wordId: Long,
+        bookId: Long,
         snapshots: List<Progress>,
         rollbackGestureEasy: Boolean = false
     ) {
         database.withTransaction {
-            progressDao.deleteByWordId(wordId)
+            if (bookId <= 0L) return@withTransaction
+            // 只回滚当前书这一行：别的书有它们自己的进度，不能跟着一起动。
+            progressDao.deleteByWordAndBook(wordId, bookId)
             snapshots.forEach { snapshot ->
                 progressDao.insert(
                     snapshot.copy(
                         id = 0,
-                        wordId = wordId
+                        wordId = wordId,
+                        bookId = bookId
                     )
                 )
             }
@@ -426,20 +491,16 @@ class WordRepository(private val database: AppDatabase) {
      *   这里读的是刚写完那一行，所以 payload 就是最终落库状态，不用调用方再传一遍。
      */
     private suspend fun enqueueProgressSync(wordId: Long, bookId: Long) {
-        // 学习一个词会同时写「所有关联书」（见 applyStudyResult 里的 linkedBookIds），
-        // 同步也要一本不落地入队，否则另一台只背了另一本书时，进度就永远追不上。
-        val linked = runCatching {
-            (wordDao.getBookIdsByWordId(wordId) + bookId).distinct()
-        }.getOrElse { listOf(bookId) }
-        for (linkedBookId in linked) {
-            val snapshot = progressDao.getProgress(wordId, linkedBookId) ?: continue
-            try {
-                syncRepository.enqueueProgress(wordId, linkedBookId, snapshot)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "学习记录入同步队列失败 wordId=$wordId bookId=$linkedBookId", e)
-            }
+        // 1.4.6 起进度按书独立：只推「这本书」那一行。
+        // 以前这里会给所有关联书各推一份，等于把同一份进度灌进别的书，和独立性冲突。
+        if (bookId <= 0L) return
+        val snapshot = progressDao.getProgress(wordId, bookId) ?: return
+        try {
+            syncRepository.enqueueProgress(wordId, bookId, snapshot)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "学习记录入同步队列失败 wordId=$wordId bookId=$bookId", e)
         }
     }
 
@@ -506,7 +567,7 @@ class WordRepository(private val database: AppDatabase) {
         responseTimeMs: Long = 0L
     ) {
         database.withTransaction {
-            val existing = progressDao.getGlobalProgress(wordId)
+            val existing = progressDao.getProgress(wordId, bookId)
             val schedule = Sm2Scheduler.schedule(
                 current = existing,
                 rating = rating,
@@ -560,32 +621,29 @@ class WordRepository(private val database: AppDatabase) {
                 oldAvgTime
             }
 
-            val linkedBookIds = (wordDao.getBookIdsByWordId(wordId) + bookId).distinct()
-            linkedBookIds.forEach { linkedBookId ->
-                val existingByBook = progressDao.getProgress(wordId, linkedBookId)
-                val progress = Progress(
-                    id = existingByBook?.id ?: 0,
-                    wordId = wordId,
-                    bookId = linkedBookId,
-                    status = schedule.status,
-                    repetitions = schedule.repetitions,
-                    intervalDays = finalIntervalDays,
-                    nextReviewTime = finalNextReviewTime,
-                    easeFactor = finalEaseFactor,
-                    reviewCount = reviewCount,
-                    spellCorrectCount = existing?.spellCorrectCount ?: 0,
-                    spellWrongCount = existing?.spellWrongCount ?: 0,
-                    markedEasyCount = existing?.markedEasyCount ?: 0,
-                    lastEasyTime = existing?.lastEasyTime ?: 0L,
-                    consecutiveCorrect = newConsecutiveCorrect,
-                    avgResponseTimeMs = newAvgResponseTime,
-                    lastReviewTime = now
-                )
-                if (existingByBook != null) {
-                    progressDao.update(progress.copy(id = existingByBook.id))
-                } else {
-                    progressDao.insert(progress)
-                }
+            // 1.4.6：只写当前这本书。同一个词在别的书里是另一份独立进度，不跟着动。
+            val progress = Progress(
+                id = existing?.id ?: 0,
+                wordId = wordId,
+                bookId = bookId,
+                status = schedule.status,
+                repetitions = schedule.repetitions,
+                intervalDays = finalIntervalDays,
+                nextReviewTime = finalNextReviewTime,
+                easeFactor = finalEaseFactor,
+                reviewCount = reviewCount,
+                spellCorrectCount = existing?.spellCorrectCount ?: 0,
+                spellWrongCount = existing?.spellWrongCount ?: 0,
+                markedEasyCount = existing?.markedEasyCount ?: 0,
+                lastEasyTime = existing?.lastEasyTime ?: 0L,
+                consecutiveCorrect = newConsecutiveCorrect,
+                avgResponseTimeMs = newAvgResponseTime,
+                lastReviewTime = now
+            )
+            if (existing != null) {
+                progressDao.update(progress)
+            } else {
+                progressDao.insert(progress)
             }
             earlyReviewDao.deleteByWord(wordId)
             if (qualifiesAsCompleted) {
@@ -622,7 +680,7 @@ class WordRepository(private val database: AppDatabase) {
         sessionTotal: Int = 1
     ) {
         database.withTransaction {
-            val existing = progressDao.getGlobalProgress(wordId)
+            val existing = progressDao.getProgress(wordId, bookId)
             val schedule = Sm2Scheduler.scheduleSpelling(
                 current = existing,
                 outcome = outcome,
@@ -679,32 +737,29 @@ class WordRepository(private val database: AppDatabase) {
                 oldAvgTime
             }
 
-            val linkedBookIds = (wordDao.getBookIdsByWordId(wordId) + bookId).distinct()
-            linkedBookIds.forEach { linkedBookId ->
-                val existingByBook = progressDao.getProgress(wordId, linkedBookId)
-                val progress = Progress(
-                    id = existingByBook?.id ?: 0,
-                    wordId = wordId,
-                    bookId = linkedBookId,
-                    status = schedule.status,
-                    repetitions = schedule.repetitions,
-                    intervalDays = finalIntervalDays,
-                    nextReviewTime = finalNextReviewTime,
-                    easeFactor = finalEaseFactor,
-                    reviewCount = reviewCount,
-                    spellCorrectCount = spellCorrectCount,
-                    spellWrongCount = spellWrongCount,
-                    markedEasyCount = existing?.markedEasyCount ?: 0,
-                    lastEasyTime = existing?.lastEasyTime ?: 0L,
-                    consecutiveCorrect = newConsecutiveCorrect,
-                    avgResponseTimeMs = newAvgResponseTime,
-                    lastReviewTime = now
-                )
-                if (existingByBook != null) {
-                    progressDao.update(progress.copy(id = existingByBook.id))
-                } else {
-                    progressDao.insert(progress)
-                }
+            // 1.4.6：拼写结果同样只落当前这本书。
+            val progress = Progress(
+                id = existing?.id ?: 0,
+                wordId = wordId,
+                bookId = bookId,
+                status = schedule.status,
+                repetitions = schedule.repetitions,
+                intervalDays = finalIntervalDays,
+                nextReviewTime = finalNextReviewTime,
+                easeFactor = finalEaseFactor,
+                reviewCount = reviewCount,
+                spellCorrectCount = spellCorrectCount,
+                spellWrongCount = spellWrongCount,
+                markedEasyCount = existing?.markedEasyCount ?: 0,
+                lastEasyTime = existing?.lastEasyTime ?: 0L,
+                consecutiveCorrect = newConsecutiveCorrect,
+                avgResponseTimeMs = newAvgResponseTime,
+                lastReviewTime = now
+            )
+            if (existing != null) {
+                progressDao.update(progress)
+            } else {
+                progressDao.insert(progress)
             }
             earlyReviewDao.deleteByWord(wordId)
             if (qualifiesAsCompleted) {
@@ -760,7 +815,7 @@ class WordRepository(private val database: AppDatabase) {
             return StudyQueueSnapshot(queue = emptyList(), dueCount = 0)
         }
 
-        val progressByWordId = getGlobalProgressMap(sourceWords.map { it.id })
+        val progressByWordId = getProgressMapForBook(book.id, sourceWords.map { it.id })
         val progressList = progressByWordId.values.toList()
         val dueProgress = progressList
             .filter { it.status != Progress.STATUS_MASTERED && it.nextReviewTime > 0 && DateUtils.isDue(it.nextReviewTime) }
@@ -881,43 +936,36 @@ class WordRepository(private val database: AppDatabase) {
     }
 
     suspend fun markWordAsTooEasy(wordId: Long, bookId: Long): Boolean {
-        // 先拿事务的返回值，再决定要不要入队：linkedBookIds 为空时什么都没写，不能推一条空记录。
+        if (bookId <= 0L) return false
+        // 先拿事务的返回值，再决定要不要入队：什么都没写时不能推一条空记录。
         val marked = database.withTransaction {
-            val linkedBookIds = (wordDao.getBookIdsByWordId(wordId) + bookId)
-                .distinct()
-                .filter { it > 0L }
-            if (linkedBookIds.isEmpty()) return@withTransaction false
-
+            val existing = progressDao.getProgress(wordId, bookId)
             val now = System.currentTimeMillis()
             // "太简单" is a user override (hard intervention), not a standard SM-2 transition.
             val nextReviewTime = Sm2Scheduler.nextReviewTimeByDays(30, now)
-            val globalProgress = progressDao.getGlobalProgress(wordId)
 
-            linkedBookIds.forEach { linkedBookId ->
-                val existingByBook = progressDao.getProgress(wordId, linkedBookId)
-                val base = existingByBook ?: globalProgress
-                val updated = Progress(
-                    id = existingByBook?.id ?: 0L,
-                    wordId = wordId,
-                    bookId = linkedBookId,
-                    status = Progress.STATUS_MASTERED,
-                    repetitions = maxOf(base?.repetitions ?: 0, 1),
-                    intervalDays = 30,
-                    nextReviewTime = nextReviewTime,
-                    easeFactor = base?.easeFactor ?: 2.5f,
-                    reviewCount = base?.reviewCount ?: 0,
-                    spellCorrectCount = base?.spellCorrectCount ?: 0,
-                    spellWrongCount = base?.spellWrongCount ?: 0,
-                    markedEasyCount = (base?.markedEasyCount ?: 0) + 1,
-                    lastEasyTime = now
-                )
-                if (existingByBook != null) {
-                    progressDao.update(updated.copy(id = existingByBook.id))
-                } else {
-                    progressDao.insert(updated)
-                }
-                earlyReviewDao.deleteByWordAndBook(wordId, linkedBookId)
+            // 1.4.6：只动当前这本书。别的书有它们自己的进度，不跟着变「已掌握」。
+            val updated = Progress(
+                id = existing?.id ?: 0L,
+                wordId = wordId,
+                bookId = bookId,
+                status = Progress.STATUS_MASTERED,
+                repetitions = maxOf(existing?.repetitions ?: 0, 1),
+                intervalDays = 30,
+                nextReviewTime = nextReviewTime,
+                easeFactor = existing?.easeFactor ?: 2.5f,
+                reviewCount = existing?.reviewCount ?: 0,
+                spellCorrectCount = existing?.spellCorrectCount ?: 0,
+                spellWrongCount = existing?.spellWrongCount ?: 0,
+                markedEasyCount = (existing?.markedEasyCount ?: 0) + 1,
+                lastEasyTime = now
+            )
+            if (existing != null) {
+                progressDao.update(updated)
+            } else {
+                progressDao.insert(updated)
             }
+            earlyReviewDao.deleteByWordAndBook(wordId, bookId)
 
             updateDailyStatsInternal(gestureEasyDelta = 1)
             invalidateForecastCacheInternal()
@@ -983,33 +1031,29 @@ class WordRepository(private val database: AppDatabase) {
     }
 
     suspend fun recordSpellingResult(wordId: Long, bookId: Long, isCorrect: Boolean) {
+        if (bookId <= 0L) return
         database.withTransaction {
-            val existing = progressDao.getGlobalProgress(wordId)
+            // 1.4.6：拼写对错也只记当前这本书。
+            val existing = progressDao.getProgress(wordId, bookId)
             val spellCorrect = (existing?.spellCorrectCount ?: 0) + if (isCorrect) 1 else 0
             val spellWrong = (existing?.spellWrongCount ?: 0) + if (isCorrect) 0 else 1
-            val linkedBookIds = (wordDao.getBookIdsByWordId(wordId) + bookId).distinct()
-            linkedBookIds.forEach { linkedBookId ->
-                val existingByBook = progressDao.getProgress(wordId, linkedBookId)
-                val updated = if (existingByBook == null) {
-                    Progress(
-                        wordId = wordId,
-                        bookId = linkedBookId,
-                        spellCorrectCount = spellCorrect,
-                        spellWrongCount = spellWrong,
-                        markedEasyCount = existing?.markedEasyCount ?: 0,
-                        lastEasyTime = existing?.lastEasyTime ?: 0L
-                    )
-                } else {
-                    existingByBook.copy(
-                        spellCorrectCount = spellCorrect,
-                        spellWrongCount = spellWrong
-                    )
-                }
-                if (existingByBook == null) {
-                    progressDao.insert(updated)
-                } else {
-                    progressDao.update(updated.copy(id = existingByBook.id))
-                }
+            val updated = if (existing == null) {
+                Progress(
+                    wordId = wordId,
+                    bookId = bookId,
+                    spellCorrectCount = spellCorrect,
+                    spellWrongCount = spellWrong
+                )
+            } else {
+                existing.copy(
+                    spellCorrectCount = spellCorrect,
+                    spellWrongCount = spellWrong
+                )
+            }
+            if (existing == null) {
+                progressDao.insert(updated)
+            } else {
+                progressDao.update(updated)
             }
             updateDailyStatsInternal(spellPracticeDelta = 1)
             updateBookDailyStatsInternal(bookId = bookId, spellPracticeDelta = 1)
@@ -1019,6 +1063,10 @@ class WordRepository(private val database: AppDatabase) {
     /** 1.4.5：某本书从 fromDate 起的按书记账（升级当天开始才有数据）。 */
     suspend fun getBookDailyStats(bookId: Long, fromDate: String): List<BookDailyStats> =
         bookDailyStatsDao.getRange(bookId, fromDate)
+
+    /** 1.4.6：统计页热力图的「当前词书」口径（Room Flow，写入后自动刷新）。 */
+    fun getBookDailyStatsFlow(bookId: Long, fromDate: String): Flow<List<BookDailyStats>> =
+        bookDailyStatsDao.observeRange(bookId, fromDate)
 
     private suspend fun getTodayNewWordsCount(): Int {
         val today = currentLearningDate().format(DATE_FORMATTER)
@@ -1154,10 +1202,8 @@ class WordRepository(private val database: AppDatabase) {
         }
 
         val contents = ArrayList<BookWordContent>(normalizedDrafts.size)
-        val linkedWordIds = LinkedHashSet<Long>(normalizedDrafts.size)
         normalizedDrafts.forEach { (key, draft) ->
             val wordId = wordIdsByKey[key] ?: return@forEach
-            linkedWordIds.add(wordId)
             contents.add(
                 BookWordContent(
                     wordId = wordId,
@@ -1178,59 +1224,41 @@ class WordRepository(private val database: AppDatabase) {
         // 不会碰 tb_progress，所以更新内容不会重置学习进度。
         // 1.4.3：用户重写过的词（source=user）跳过，否则种子版本一涨就把重写冲掉。
         val userSourcedWordIds = wordMemoryDao.getUserSourcedWordIds().toHashSet()
-        val memories = normalizedDrafts.mapNotNull { (key, draft) ->
-            val wordId = wordIdsByKey[key] ?: return@mapNotNull null
-            if (wordId in userSourcedWordIds) return@mapNotNull null
-            if (draft.approach.isBlank() && draft.collocations.isBlank()) return@mapNotNull null
-            WordMemory(
-                wordId = wordId,
-                approach = draft.approach.trim(),
-                collocations = draft.collocations.trim(),
-                updatedAt = System.currentTimeMillis()
-            )
-        }
-        if (memories.isNotEmpty()) {
-            wordMemoryDao.upsertAll(memories)
-        }
-
-        if (contents.isNotEmpty()) {
-            syncBookProgressWithGlobal(bookId, linkedWordIds)
-        }
-    }
-
-    private suspend fun syncBookProgressWithGlobal(bookId: Long, wordIds: Collection<Long>) {
-        if (wordIds.isEmpty()) return
-
-        val distinctWordIds = wordIds.distinct()
-        val globalProgressByWordId = getProgressByWordIdsChunked(distinctWordIds)
-            .groupBy { it.wordId }
-            .mapValues { (_, grouped) ->
-                grouped.maxWithOrNull(PROGRESS_PRIORITY_COMPARATOR)
+        // 1.4.6：先查已存在的记忆行。已存在的只更新正文，保留 method/source/rev/prev_approach；
+        // 只有库里没有的行才 INSERT，避免种子 version 一涨就把标签和撤销冲空。
+        val existingMemories = HashMap<Long, WordMemory>(normalizedDrafts.size)
+        wordIdsByKey.values
+            .distinct()
+            .chunked(MAX_DB_IN_CLAUSE_SIZE)
+            .forEach { chunk ->
+                wordMemoryDao.getByWordIds(chunk).forEach { existingMemories[it.wordId] = it }
             }
-        if (globalProgressByWordId.isEmpty()) return
-
-        val existingWordIds = HashSet<Long>()
-        distinctWordIds.chunked(MAX_DB_IN_CLAUSE_SIZE).forEach { chunk ->
-            existingWordIds.addAll(progressDao.getProgressWordIdsByBookAndWordIds(bookId, chunk))
-        }
-
-        val toInsert = ArrayList<Progress>(globalProgressByWordId.size)
-        globalProgressByWordId.forEach { (wordId, globalProgress) ->
-            val resolvedProgress = globalProgress ?: return@forEach
-            if (existingWordIds.contains(wordId)) {
-                return@forEach
-            }
-            toInsert.add(
-                resolvedProgress.copy(
-                    id = 0,
-                    wordId = wordId,
-                    bookId = bookId
+        val updatedAt = System.currentTimeMillis()
+        val newMemories = ArrayList<WordMemory>(normalizedDrafts.size)
+        normalizedDrafts.forEach { (key, draft) ->
+            val wordId = wordIdsByKey[key] ?: return@forEach
+            if (wordId in userSourcedWordIds) return@forEach
+            val approach = draft.approach.trim()
+            val collocations = draft.collocations.trim()
+            if (approach.isBlank() && collocations.isBlank()) return@forEach
+            if (existingMemories.containsKey(wordId)) {
+                wordMemoryDao.updateContent(wordId, approach, collocations, updatedAt)
+            } else {
+                newMemories.add(
+                    WordMemory(
+                        wordId = wordId,
+                        approach = approach,
+                        collocations = collocations,
+                        updatedAt = updatedAt
+                    )
                 )
-            )
+            }
         }
-        if (toInsert.isNotEmpty()) {
-            progressDao.insertAll(toInsert)
+        if (newMemories.isNotEmpty()) {
+            wordMemoryDao.upsertAll(newMemories)
         }
+        // 1.4.6：导入新书不再继承别的书的进度（syncBookProgressWithGlobal 已删除）。
+        // 按书独立之后，新书就该从零开始；否则「其他书从零」的口径会被一次导入破掉。
     }
 
     private suspend fun updateNewWordsBookCount() {
@@ -1309,13 +1337,16 @@ class WordRepository(private val database: AppDatabase) {
     private suspend fun invalidateForecastCacheInternal() {        forecastCacheDao.clearAll()
     }
 
-    private suspend fun getProgressByWordIdsChunked(wordIds: Collection<Long>): List<Progress> {
+    private suspend fun getProgressByBookChunked(
+        bookId: Long,
+        wordIds: Collection<Long>
+    ): List<Progress> {
         if (wordIds.isEmpty()) return emptyList()
         val rows = ArrayList<Progress>()
         wordIds.distinct()
             .chunked(MAX_DB_IN_CLAUSE_SIZE)
             .forEach { chunk ->
-                rows += progressDao.getProgressByWordIds(chunk)
+                rows += progressDao.getProgressByBookAndWordIds(bookId, chunk)
             }
         return rows
     }
@@ -1331,14 +1362,12 @@ class WordRepository(private val database: AppDatabase) {
         private const val DEFAULT_NEW_WORDS_LIMIT = 20
         private const val MAX_DB_IN_CLAUSE_SIZE = 900
         private const val DAY_REFRESH_HOUR = 4
+        /** 种子默认方法标签；1.4.6 起按 word_method_map 刷成真正的那一招。 */
+        private const val DEFAULT_ROOT_METHOD = "root"
         private const val MASTERED_INTERVAL_DAYS_V4 = 30
         private const val MASTERED_MIN_REVIEW_COUNT_V4 = 4
         private const val MASTERED_MIN_EASE_V4 = 2.3f
         private val DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE
-        private val PROGRESS_PRIORITY_COMPARATOR =
-            compareBy<Progress> { it.reviewCount }
-                .thenBy { it.nextReviewTime }
-                .thenBy { it.id }
     }
 }
 

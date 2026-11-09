@@ -15,7 +15,9 @@ import com.kaoyan.wordhelper.data.dao.EarlyReviewDao
 import com.kaoyan.wordhelper.data.dao.ForecastCacheDao
 import com.kaoyan.wordhelper.data.dao.NewWordRefDao
 import com.kaoyan.wordhelper.data.dao.ProgressDao
+import com.kaoyan.wordhelper.data.dao.RewriteFeedbackDao
 import com.kaoyan.wordhelper.data.dao.RewriteQueueDao
+import com.kaoyan.wordhelper.data.dao.RewriteSkippedDao
 import com.kaoyan.wordhelper.data.dao.StudyLogDao
 import com.kaoyan.wordhelper.data.dao.SyncDao
 import com.kaoyan.wordhelper.data.dao.WordDao
@@ -38,7 +40,9 @@ import com.kaoyan.wordhelper.data.entity.EarlyReviewRef
 import com.kaoyan.wordhelper.data.entity.ForecastCache
 import com.kaoyan.wordhelper.data.entity.NewWordRef
 import com.kaoyan.wordhelper.data.entity.Progress
+import com.kaoyan.wordhelper.data.entity.RewriteFeedback
 import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
+import com.kaoyan.wordhelper.data.entity.RewriteSkippedResult
 import com.kaoyan.wordhelper.data.entity.StudyLog
 import com.kaoyan.wordhelper.data.entity.SyncOp
 import com.kaoyan.wordhelper.data.entity.SyncState
@@ -69,9 +73,11 @@ import kotlinx.coroutines.launch
         SyncOp::class,
         SyncState::class,
         BookMemory::class,
-        BookDailyStats::class
+        BookDailyStats::class,
+        RewriteFeedback::class,
+        RewriteSkippedResult::class
     ],
-    version = 17,
+    version = 20,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -93,6 +99,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncDao(): SyncDao
     abstract fun bookMemoryDao(): BookMemoryDao
     abstract fun bookDailyStatsDao(): BookDailyStatsDao
+    abstract fun rewriteFeedbackDao(): RewriteFeedbackDao
+    abstract fun rewriteSkippedDao(): RewriteSkippedDao
 
     companion object {
         @Volatile
@@ -126,7 +134,10 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_13_14,
                     MIGRATION_14_15,
                     MIGRATION_15_16,
-                    MIGRATION_16_17
+                    MIGRATION_16_17,
+                    MIGRATION_17_18,
+                    MIGRATION_18_19,
+                    MIGRATION_19_20
                 )
                 .build()
         }
@@ -772,6 +783,144 @@ abstract class AppDatabase : RoomDatabase() {
                     """.trimIndent()
                 )
                 ensureColumnExists(db, "tb_rewrite_queue", "book_id", "INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /**
+         * 1.4.6（DB 18）：进度按书彻底独立 + 撤销可回滚方法 + 反馈/跳过行两张表。
+         *
+         * ① 老进度归当前词书一次：1.4.5 之前 tb_progress 其实是「一个词一份进度、复制给所有书」，
+         *    所以升级时把非当前书的行删掉，其他书从零开始。当前词书 = tb_book.is_active
+         *    （不是 DataStore，迁移里能直接 SQL 读），迁移只跑一次，天然幂等，
+         *    不需要再加一个「启动后补跑」的一次性 flag。
+         *    生词本（type=2）例外：它是收藏夹不是「背的书」，删掉会丢用户刻意收藏词的 SM-2 状态；
+         *    而且它也是按书独立记账的一本书，留着不会串味。
+         *    找不到 active 书时一行都不删——宁可不清，也不能把用户唯一的一份进度删光。
+         * ② prev_method：撤销时和 prev_approach 一起回滚方法标签。
+         * ③ tb_rewrite_skipped：sync 跳过行不再随游标蒸发。
+         * ④ tb_feedback：卡背 👍/👎 本地落库，断网时等 sync 补发。
+         */
+        @VisibleForTesting
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureColumnExists(db, "tb_word_memory", "prev_method", "TEXT")
+                ensureColumnExists(db, "tb_book_memory", "prev_method", "TEXT")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS tb_rewrite_skipped (
+                        seq INTEGER NOT NULL,
+                        word TEXT NOT NULL,
+                        payload TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        attempts INTEGER NOT NULL,
+                        last_try_at INTEGER NOT NULL,
+                        PRIMARY KEY(seq)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS tb_feedback (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        word_id INTEGER NOT NULL,
+                        book_id INTEGER NOT NULL,
+                        word TEXT NOT NULL,
+                        rating TEXT NOT NULL,
+                        approach TEXT NOT NULL,
+                        method TEXT NOT NULL,
+                        model TEXT NOT NULL,
+                        instruction TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        synced INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                // 名字必须和 Room 给 @Entity(indices=...) 生成的一致，否则启动校验会报 schema 不匹配。
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_tb_feedback_word_id_book_id_rating " +
+                        "ON tb_feedback (word_id, book_id, rating)"
+                )
+
+                cleanupForeignProgress(db)
+            }
+        }
+
+        /**
+         * 1.4.6.1（DB 19）：反馈绑到「思路版本」。
+         *
+         * 旧表只按 (word_id, book_id, rating) 去重，换过思路之后旧评价还亮着，
+         * 而且没法再对新版评价。新增 approach_rev（老数据默认 0 = 种子思路），
+         * 唯一索引扩成 (word_id, book_id, rating, approach_rev)：
+         * 同一版同一态度仍然只记一次，换版后可以重新评。
+         */
+        @VisibleForTesting
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureColumnExists(
+                    db,
+                    "tb_feedback",
+                    "approach_rev",
+                    "INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL("DROP INDEX IF EXISTS index_tb_feedback_word_id_book_id_rating")
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                        "index_tb_feedback_word_id_book_id_rating_approach_rev " +
+                        "ON tb_feedback (word_id, book_id, rating, approach_rev)"
+                )
+            }
+        }
+
+        /**
+         * 1.4.6.1（DB 20）：把「跳过、等结果回来再插回」的意图持久化。
+         *
+         * 之前只记在 ViewModel 的内存集合里，进程一死就丢；而冷启动的自动同步可能
+         * 在学习页恢复等待集合之前先把队列行写成 done，恢复逻辑再查 pending/queued
+         * 就是空的，于是词永远插不回去。新增 needs_reinsert 后，恢复逻辑不看状态，
+         * done 行也能补插。ALTER 走 ensureColumnExists，重复迁移/已有列都安全。
+         */
+        @VisibleForTesting
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureColumnExists(
+                    db,
+                    "tb_rewrite_queue",
+                    "needs_reinsert",
+                    "INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
+        /**
+         * 把 tb_progress 收敛到「当前词书 + 生词本」，其他书从零。
+         * 只在 MIGRATION_17_18 里调用，所以不写成 suspend、也不看 DataStore。
+         */
+        private fun cleanupForeignProgress(db: SupportSQLiteDatabase) {
+            val activeBookId = queryLongOrZero(db, "SELECT id FROM tb_book WHERE is_active = 1 LIMIT 1")
+            if (activeBookId <= 0L) return
+            val newWordsBookId = queryLongOrZero(
+                db,
+                "SELECT MIN(id) FROM tb_book WHERE type = ?",
+                arrayOf<Any?>(Book.TYPE_NEW_WORDS)
+            )
+            val keep = ArrayList<Long>(2)
+            keep.add(activeBookId)
+            if (newWordsBookId > 0L && newWordsBookId != activeBookId) keep.add(newWordsBookId)
+            // 只拼 Long，没有用户输入，不担心注入；这样也不用处理 execSQL 的 bindArgs 变体。
+            db.execSQL(
+                "DELETE FROM tb_progress WHERE book_id NOT IN (${keep.joinToString(", ")})"
+            )
+        }
+
+        private fun queryLongOrZero(
+            db: SupportSQLiteDatabase,
+            sql: String,
+            args: Array<Any?> = emptyArray()
+        ): Long {
+            db.query(sql, args).use { cursor ->
+                if (!cursor.moveToFirst() || cursor.isNull(0)) return 0L
+                return cursor.getLong(0)
             }
         }
 

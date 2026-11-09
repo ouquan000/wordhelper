@@ -18,6 +18,24 @@ class LearningCheckInStateTest {
     }
 
     @Test
+    fun completionPanelWaitsForOpenRewrites() {
+        // 词都背完了，但当前书还有重写在排队/等结果：不能提前宣布「今日背词完成」。
+        assertFalse(shouldShowCompletionCheckInPanel(currentWord = null, totalCount = 8, openRewriteCount = 2))
+        assertTrue(shouldShowCompletionCheckInPanel(currentWord = null, totalCount = 8, openRewriteCount = 0))
+    }
+
+    @Test
+    fun waitingCountUsesMaxOfLocalSkipAndDatabaseOpen() {
+        // 只标记、没点跳过的词也要算进等待条数。
+        assertEquals(3, combinedWaitingRewriteCount(localWaitingCount = 1, openRewriteCount = 3))
+        // 同一批词两边都数到时不重复相加。
+        assertEquals(2, combinedWaitingRewriteCount(localWaitingCount = 2, openRewriteCount = 2))
+        // 本地集合还没来得及清（DONE 后差一帧）时以较大的为准，不会短暂显示 0。
+        assertEquals(1, combinedWaitingRewriteCount(localWaitingCount = 1, openRewriteCount = 0))
+        assertEquals(0, combinedWaitingRewriteCount(localWaitingCount = 0, openRewriteCount = 0))
+    }
+
+    @Test
     fun checkInStateUsesExplicitCheckInInsteadOfStudyOnly() {
         val today = LocalDate.of(2024, 1, 2)
         val weekStats = listOf(
@@ -38,6 +56,32 @@ class LearningCheckInStateTest {
         assertEquals(1, state.weekCheckInDays)
         assertEquals(0, state.streakDays)
         assertEquals(20, state.todayStudyCount)
+    }
+
+    @Test
+    fun checkInStateBlocksCompletionWhileRewritesOpen() {
+        val today = LocalDate.of(2024, 1, 2)
+        val weekStats = listOf(aggregate(date = "2024-01-02", newWordsCount = 20, checkInCount = 0))
+
+        val blocked = buildLearningCheckInUiState(
+            weekAggregates = weekStats,
+            heatmapAggregates = weekStats,
+            currentWord = null,
+            totalCount = 20,
+            openRewriteCount = 1,
+            today = today
+        )
+        assertFalse(blocked.showCompletionPanel)
+
+        val cleared = buildLearningCheckInUiState(
+            weekAggregates = weekStats,
+            heatmapAggregates = weekStats,
+            currentWord = null,
+            totalCount = 20,
+            openRewriteCount = 0,
+            today = today
+        )
+        assertTrue(cleared.showCompletionPanel)
     }
 
     @Test

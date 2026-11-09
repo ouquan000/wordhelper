@@ -37,6 +37,15 @@ data class RewriteQueueItem(
     /** 见 [RewriteStatus]。 */
     val status: String = RewriteStatus.PENDING,
     val error: String? = null,
+    /**
+     * 1.4.6.1（DB20）：用户点过「跳过，先背下一个」、但这个词还没被真正插回当天的队列。
+     *
+     * 光靠内存里的等待集合不行：进程一死，意图就丢了；而电脑端的结果可能在学习页恢复
+     * 之前先被自动同步写成 done。把「待插回」持久化，行就算已经 done 也仍然能补插。
+     * 正常点「重写思路」不置位；插回成功 / 发现已在队列 / 今天已答过 / 用户重写或撤销时清掉。
+     */
+    @ColumnInfo(name = "needs_reinsert", defaultValue = "0")
+    val needsReinsert: Boolean = false,
     @ColumnInfo(name = "created_at")
     val createdAt: Long,
     @ColumnInfo(name = "updated_at")

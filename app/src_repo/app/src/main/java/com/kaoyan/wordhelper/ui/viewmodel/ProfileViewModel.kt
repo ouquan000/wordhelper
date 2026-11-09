@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
@@ -127,6 +128,9 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     private val heatmapRange = DateUtils.learningHeatmapRange()
 
+    /** 当前词书热力图用的窗口：与全局热力图同一个 12 周窗口，只是数据源换成按书记账。 */
+    private val bookHeatmapRange = DateUtils.learningHeatmapRange()
+
     private val weekStatsFlow = repository.getDailyStatsAggregated(weekRange.first, weekRange.second)
     private val heatmapStatsFlow = repository.getDailyStatsAggregated(heatmapRange.first, heatmapRange.second)
 
@@ -203,6 +207,30 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 else flow {
                     val rows = repository.getBookDailyStats(book.id, weekRange.first.toString())
                     emit(buildBookLineData(rows))
+                }
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * 当前词书的热力图（1.4.6.1）。
+     *
+     * 数据只来自 tb_book_daily_stats 里**这本书**的行，不与全局汇总 ——
+     * 全局是「次数」、这里是「这本书一天做了多少」，混在一起就假了。
+     * 1.4.5 之前没有按书记账，升级前的格子必然是 0，这是正常现象，界面会写明。
+     */
+    val bookHeatmap: StateFlow<List<HeatmapCell>> = _statsScope.flatMapLatest { scope ->
+        if (scope != StatsScope.BOOK) {
+            flowOf(emptyList())
+        } else {
+            currentBookFlow.flatMapLatest { book ->
+                if (book == null) {
+                    flowOf(emptyList())
+                } else {
+                    repository.getBookDailyStatsFlow(book.id, bookHeatmapRange.first.toString())
+                        .map { rows ->
+                            buildBookHeatmap(bookHeatmapRange.first, bookHeatmapRange.second, rows)
+                        }
                 }
             }
         }
@@ -530,5 +558,61 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         private const val LEARNING_DAY_REFRESH_HOUR = 4
 
         private const val ONE_DAY_MILLIS = 24L * 60 * 60 * 1000
+    }
+}
+
+/**
+ * 当前词书热力图的纯计算（1.4.6.1）。
+ *
+ * 一天的量 = 新词 + 复习 + 拼写，与全局热力图同口径；但 rows 只能是这本书的行，
+ * 绝不能拿全局 tb_daily_stats 冒充 —— 1.4.5 之前没有按书记账，升级前的格子就是 0。
+ *
+ * 抽成顶层函数是为了单测：不用起 Room，也不用起 ViewModel。
+ */
+internal fun buildBookHeatmap(
+    startDate: LocalDate,
+    endDate: LocalDate,
+    rows: List<BookDailyStats>
+): List<HeatmapCell> {
+    val byDate = rows.mapNotNull { row ->
+        runCatching { LocalDate.parse(row.date) }.getOrNull()
+            ?.takeIf { !it.isBefore(startDate) && !it.isAfter(endDate) }
+            ?.let { date -> date to row }
+    }.toMap()
+    // 分档只看窗口内的量：窗口外的历史行画不出来，不该把当前这张图压暗。
+    val maxCount = byDate.values.maxOfOrNull { it.newCount + it.reviewCount + it.spellCount } ?: 0
+    // 和全局热力图一致：多画到本周日，让周一~周日按列对齐；超出 endDate 的格子标记 inRange=false。
+    val displayEnd = endDate.with(DayOfWeek.SUNDAY)
+    val result = mutableListOf<HeatmapCell>()
+    var cursor = startDate
+    while (!cursor.isAfter(displayEnd)) {
+        val inRange = !cursor.isAfter(endDate)
+        val count = if (inRange) {
+            byDate[cursor]?.let { row -> row.newCount + row.reviewCount + row.spellCount } ?: 0
+        } else {
+            0
+        }
+        result.add(
+            HeatmapCell(
+                date = cursor,
+                count = count,
+                level = if (inRange) heatmapLevel(count, maxCount) else 0,
+                inRange = inRange
+            )
+        )
+        cursor = cursor.plusDays(1)
+    }
+    return result
+}
+
+/** 与全局热力图同一分档：0 / 25% / 50% / 75% 四档。 */
+private fun heatmapLevel(count: Int, maxCount: Int): Int {
+    if (count <= 0 || maxCount <= 0) return 0
+    val ratio = count.toFloat() / maxCount.toFloat()
+    return when {
+        ratio <= 0.25f -> 1
+        ratio <= 0.5f -> 2
+        ratio <= 0.75f -> 3
+        else -> 4
     }
 }

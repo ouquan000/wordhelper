@@ -44,7 +44,13 @@ data class WordMemory(
      * 记忆方法标签（六脉神剑之一）：sound / meaning / shape / root / contrast / polysemy。
      * 空串 = 还没标注（老数据、用户自建词）。种子由 by-word 语料回填，重写时由生成结果带上。
      */
-    val method: String = ""
+    val method: String = "",
+    /**
+     * 上一版的方法标签（DB 18）：撤销时和 [prevApproach] 一起回滚，回滚完清空。
+     * 只够撤销一次；null = 没有可回滚的方法（老数据、从没重写过）。
+     */
+    @ColumnInfo(name = "prev_method")
+    val prevMethod: String? = null
 ) {
     companion object {
         const val SOURCE_SEED = "seed"

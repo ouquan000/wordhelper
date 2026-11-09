@@ -163,6 +163,10 @@ interface WordDao {
     @Query("SELECT id FROM tb_word WHERE word_key = :wordKey LIMIT 1")
     suspend fun getWordIdByKey(wordKey: String): Long?
 
+    /** 1.4.6：刷新 root 标签时按 id 反查词键，跟 word_method_map 对上。 */
+    @Query("SELECT word_key FROM tb_word WHERE id = :wordId LIMIT 1")
+    suspend fun getWordKeyById(wordId: Long): String?
+
     /** 词表是否已经导完（拉改写结果时，用来区分「查不到这个词」和「种子还没导完」）。 */
     @Query("SELECT COUNT(*) FROM tb_word")
     suspend fun countAll(): Int

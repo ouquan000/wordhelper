@@ -95,6 +95,9 @@ class Store:
         self.queue_path = os.path.join(data_dir, "queue.json")
         self.state_path = os.path.join(data_dir, "state.json")
         self.results_dir = os.path.join(data_dir, "results")
+        # 1.4.6：卡背 👍/👎 只追加、不改队列；按 clientId 幂等去重。
+        self.feedback_path = os.path.join(data_dir, "feedback.jsonl")
+        self._feedback_ids = None
         self.items = []
         self.results = {}
         self.seq = 0
@@ -165,6 +168,69 @@ class Store:
             self._save_queue()
             self._cond.notify_all()
         return accepted, rejected
+
+    # ------------------------------------------------------ 卡背反馈（1.4.6）
+
+    def add_feedback(self, items):
+        """收手机端卡背的 👍/👎：幂等追加到 data/feedback.jsonl。
+
+        反馈是旁路数据，只追加、不碰队列。手机断网会把同一批重推，
+        所以按 clientId 去重：重复的算「已接受」，但不会再写一行。
+        返回 (accepted, rejected)，形状和 add_marks 保持一致。
+        """
+        accepted, rejected = [], []
+        with self._lock:
+            self._load_feedback_ids()
+            os.makedirs(self.data_dir, exist_ok=True)
+            with open(self.feedback_path, "a", encoding="utf-8") as fh:
+                for raw in items:
+                    if not isinstance(raw, dict):
+                        rejected.append({"clientId": "", "reason": "反馈不是对象"})
+                        continue
+                    client_id = str(raw.get("clientId") or "").strip()
+                    rating = str(raw.get("rating") or "").strip().lower()
+                    if not client_id:
+                        rejected.append({"clientId": "", "reason": "缺 clientId"})
+                        continue
+                    if rating not in ("up", "down"):
+                        rejected.append({"clientId": client_id, "reason": "rating 只能是 up/down"})
+                        continue
+                    if client_id in self._feedback_ids:
+                        accepted.append(client_id)  # 幂等：之前收过了
+                        continue
+                    record = dict(raw)
+                    record["rating"] = rating
+                    record["receivedAt"] = _now()
+                    # print 自带换行：不手写转义，避免不同编辑器把换行写歪
+                    print(json.dumps(record, ensure_ascii=False), file=fh)
+                    fh.flush()
+                    self._feedback_ids.add(client_id)
+                    accepted.append(client_id)
+        return accepted, rejected
+
+    def _load_feedback_ids(self):
+        """第一次收到反馈时扫一遍文件，把已有 clientId 读进内存。"""
+        if self._feedback_ids is not None:
+            return
+        ids = set()
+        try:
+            with open(self.feedback_path, "r", encoding="utf-8-sig") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except ValueError:
+                        continue
+                    if not isinstance(row, dict):
+                        continue
+                    client_id = str(row.get("clientId") or "").strip()
+                    if client_id:
+                        ids.add(client_id)
+        except OSError:
+            pass
+        self._feedback_ids = ids
 
     def _enqueue(self, raw, client_id, word, model):
         for item in self.items:

@@ -58,6 +58,8 @@ class KaoyanWordApp : Application() {
             wordMemoryDao = database.wordMemoryDao(),
             bookMemoryDao = database.bookMemoryDao(),
             queueDao = database.rewriteQueueDao(),
+            feedbackDao = database.rewriteFeedbackDao(),
+            skippedDao = database.rewriteSkippedDao(),
             bookDao = database.bookDao()
         )
     }
@@ -101,6 +103,8 @@ class KaoyanWordApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // 1.4.6.1 P1：断网恢复时补一轮学习记录同步（改写链路已有自己的监听）。
+        syncRepository.startNetworkRecoverySync()
         appScope.launch {
             // 卡背结构：先读本地缓存，读不到就用内置默认；不阻塞首屏
             cardBackRepository.bootstrap()
@@ -144,15 +148,19 @@ class KaoyanWordApp : Application() {
                 settingsRepository.clearTodayNewWordsPlan()
                 settingsRepository.markCleanup132Done()
             }
-            // 1.4.4：老卡片补「记忆方法」标签。资产里是由 by-word 语料抽出来的 word→method，
-            // 只填空值、不覆盖用户重写过的词；升级后第一次启动做一次。
-            if (!settingsRepository.methodBackfillDone()) {
-                runCatching {
-                    val methodMap = WordMethodMapLoader.load(this@KaoyanWordApp)
-                    if (methodMap.isNotEmpty()) repository.backfillWordMethods(methodMap)
+            // 1.4.4/1.4.6：老卡片补「记忆方法」标签。资产里是由 by-word 语料抽出来的 word→method，
+            // 只填空值、不覆盖用户重写过的词。1.4.6 起每次启动幂等补一次，
+            // 这样种子重导新插入的空标签行也会在同一/下一次启动被补上，不再依赖一次性标记。
+            runCatching {
+                val methodMap = WordMethodMapLoader.load(this@KaoyanWordApp)
+                if (methodMap.isNotEmpty()) {
+                    repository.backfillWordMethods(methodMap)
+                    // P0：种子重导不带 method，新词/老行都会停在默认的 "root"；
+                    // 这里把种子行刷成 map 里真正的招式，用户重写过的（source=user）不碰。
+                    repository.refreshRootMethods(methodMap)
                 }
-                settingsRepository.markMethodBackfillDone()
             }
+            settingsRepository.markMethodBackfillDone()
             // 1.4.3.2：20 词测试书，只建书不切换；导入过一次就不再自动建（删了也不复活）。
             val testSeed = CardSeedLoader.loadTest(this@KaoyanWordApp)
             if (testSeed != null && testSeed.version > settingsRepository.testDeckVersion()) {

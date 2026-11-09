@@ -3,8 +3,11 @@ package com.kaoyan.wordhelper.ui.screen
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -42,6 +45,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AlertDialog
@@ -80,6 +84,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -171,11 +176,14 @@ fun LearningScreen(
     val swipeSnackbarEvent by viewModel.swipeSnackbarEvent.collectAsStateWithLifecycle()
     val showSwipeGuide by viewModel.showSwipeGuide.collectAsStateWithLifecycle()
     val checkInState by viewModel.checkInState.collectAsStateWithLifecycle()
+    val waitingRewriteCount by viewModel.waitingRewriteCount.collectAsStateWithLifecycle()
     val rewriteMark by viewModel.currentRewriteMark.collectAsStateWithLifecycle()
     val rewriteModels by viewModel.rewriteModels.collectAsStateWithLifecycle()
     val rewriteModelId by viewModel.rewriteModelId.collectAsStateWithLifecycle()
     val rewriteProgress by viewModel.rewriteProgress.collectAsStateWithLifecycle()
     val rewriteUpdatedTick by viewModel.rewriteUpdatedTick.collectAsStateWithLifecycle()
+    // 1.4.6：这条思路的 👍/👎 状态（null = 还没表过态）
+    val rewriteFeedback by viewModel.currentRewriteFeedback.collectAsStateWithLifecycle()
     // 回到前台就补发断网时的标记、拉电脑端跑完的结果；没网也只是静默跳过。
     LifecycleResumeEffect(Unit) {
         viewModel.syncRewrite()
@@ -230,6 +238,8 @@ fun LearningScreen(
     val shouldPollRewrite = isCardFlipped && (
         rewriteMark?.status == RewriteStatus.PENDING || rewriteMark?.status == RewriteStatus.QUEUED
         )
+    // H：只有点过重写、结果还没回来时才给「跳过」。
+    val showSkipRewrite = rewriteMark?.status.let { it != null && it != RewriteStatus.DONE }
     LifecycleStartEffect(shouldPollRewrite) {
         if (shouldPollRewrite) {
             viewModel.startRewriteProgressPolling()
@@ -470,70 +480,13 @@ fun LearningScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = androidx.compose.foundation.BorderStroke(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)
-                )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    TabRow(
-                        selectedTabIndex = learningMode.ordinal,
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                        divider = {},
-                        indicator = {}
-                    ) {
-                        Tab(
-                            selected = learningMode == LearningMode.RECOGNITION,
-                            onClick = {
-                                learningMode = LearningMode.RECOGNITION
-                                onModeChange(learningMode)
-                            },
-                            selectedContentColor = MaterialTheme.colorScheme.primary,
-                            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.testTag("learning_mode_recognition"),
-                            text = {
-                                Text(
-                                    text = "认词模式",
-                                    fontWeight = if (learningMode == LearningMode.RECOGNITION) {
-                                        FontWeight.SemiBold
-                                    } else {
-                                        FontWeight.Normal
-                                    }
-                                )
-                            }
-                        )
-                        Tab(
-                            selected = learningMode == LearningMode.SPELLING,
-                            onClick = {
-                                learningMode = LearningMode.SPELLING
-                                onModeChange(learningMode)
-                            },
-                            selectedContentColor = MaterialTheme.colorScheme.primary,
-                            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.testTag("learning_mode_spelling"),
-                            text = {
-                                Text(
-                                    text = "拼写模式",
-                                    fontWeight = if (learningMode == LearningMode.SPELLING) {
-                                        FontWeight.SemiBold
-                                    } else {
-                                        FontWeight.Normal
-                                    }
-                                )
-                            }
-                        )
-                    }
+            CollapsibleModeSwitcher(
+                mode = learningMode,
+                onModeChange = {
+                    learningMode = it
+                    onModeChange(it)
                 }
-            }
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -554,7 +507,15 @@ fun LearningScreen(
                         .weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (checkInState.showCompletionPanel) {
+                    if (waitingRewriteCount > 0) {
+                        LearningWaitingRewriteCard(
+                            count = waitingRewriteCount,
+                            onRefresh = viewModel::syncRewrite,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("learning_waiting_rewrite_card")
+                        )
+                    } else if (checkInState.showCompletionPanel) {
                         LearningCompletionCheckInCard(
                             state = checkInState,
                             onCheckIn = viewModel::completeTodayCheckIn,
@@ -626,19 +587,30 @@ fun LearningScreen(
                                             // 1.4.3.1：重写条挪进卡背底部，只在背面出现；
                                             // live = 背面当前可见，翻回正面时按钮跟着禁用，不接住正面的触摸。
                                             backActions = { live ->
-                                                RewriteBar(
-                                                    wordId = state.word.id,
-                                                    mark = rewriteMark,
-                                                    models = rewriteModels,
-                                                    selectedModelId = rewriteModelId,
-                                                    onSelectModel = viewModel::selectRewriteModel,
-                                                    onMark = viewModel::markRewrite,
-                                                    onCancel = viewModel::cancelRewrite,
-                                                    onUndo = viewModel::undoRewrite,
-                                                    enabled = live && !isAnswering,
-                                                    progress = rewriteProgress,
-                                                    justUpdated = rewriteJustUpdated
-                                                )
+                                                Column(
+                                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    RewriteBar(
+                                                        wordId = state.word.id,
+                                                        mark = rewriteMark,
+                                                        models = rewriteModels,
+                                                        selectedModelId = rewriteModelId,
+                                                        onSelectModel = viewModel::selectRewriteModel,
+                                                        onMark = viewModel::markRewrite,
+                                                        onCancel = viewModel::cancelRewrite,
+                                                        onUndo = viewModel::undoRewrite,
+                                                        enabled = live && !isAnswering,
+                                                        progress = rewriteProgress,
+                                                        justUpdated = rewriteJustUpdated,
+                                                        showSkip = showSkipRewrite,
+                                                        onSkip = viewModel::skipCurrentWordForRewrite
+                                                    )
+                                                    RewriteFeedbackRow(
+                                                        feedback = rewriteFeedback,
+                                                        onFeedback = viewModel::submitRewriteFeedback,
+                                                        enabled = live && !isAnswering
+                                                    )
+                                                }
                                             },
                                             modifier = swipeModifier.fillMaxHeight()
                                         )
@@ -720,6 +692,35 @@ private const val SM2_DESCRIPTION =
 private val RECOGNITION_SECTION_SPACING = 10.dp
 private const val SWIPE_TRIGGER_RATIO = 0.3f
 private const val SWIPE_ACTIVE_ZONE_RATIO = 0.8f
+
+/** H：当天词背完、但还有重写思路没回来时，不显示「完成」，显示这张等待卡。 */
+@Composable
+private fun LearningWaitingRewriteCard(
+    count: Int,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+            Text("还有 $count 条记忆思路在生成", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "生成好会自动插回今天的队列，请耐心等待。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            TextButton(onClick = onRefresh) {
+                Text("现在刷新")
+            }
+        }
+    }
+}
 
 @Composable
 private fun LearningCompletionCheckInCard(
@@ -1887,6 +1888,120 @@ private fun WordCard(
             }
             // 1.4.3.2：操作区已挪进卡背滚动内容（CardBackBlocks 的 backActions），
             // 这里不再固定贴底，避免正文被切走两百多像素。
+        }
+    }
+}
+
+/** 1.4.6.2：模式切换默认收起，只占一行；点开才出现两个 Tab。 */
+@Composable
+private fun CollapsibleModeSwitcher(
+    mode: LearningMode,
+    onModeChange: (LearningMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(200),
+        label = "modeArrowRotation"
+    )
+    val modeTitle = if (mode == LearningMode.RECOGNITION) "认词模式" else "拼写模式"
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .testTag("learning_mode_toggle")
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = modeTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = if (expanded) "收起" else "切换",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "收起模式" else "展开模式",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .rotate(arrowRotation)
+                )
+            }
+
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(
+                    animationSpec = tween(200),
+                    expandFrom = Alignment.Top
+                ) + fadeIn(tween(150)),
+                exit = shrinkVertically(
+                    animationSpec = tween(180),
+                    shrinkTowards = Alignment.Top
+                ) + fadeOut(tween(120))
+            ) {
+                TabRow(
+                    selectedTabIndex = mode.ordinal,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0f),
+                    divider = {},
+                    indicator = {}
+                ) {
+                    Tab(
+                        selected = mode == LearningMode.RECOGNITION,
+                        onClick = {
+                            onModeChange(LearningMode.RECOGNITION)
+                            expanded = false
+                        },
+                        selectedContentColor = MaterialTheme.colorScheme.primary,
+                        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("learning_mode_recognition"),
+                        text = {
+                            Text(
+                                text = "认词模式",
+                                fontWeight = if (mode == LearningMode.RECOGNITION) {
+                                    FontWeight.SemiBold
+                                } else {
+                                    FontWeight.Normal
+                                }
+                            )
+                        }
+                    )
+                    Tab(
+                        selected = mode == LearningMode.SPELLING,
+                        onClick = {
+                            onModeChange(LearningMode.SPELLING)
+                            expanded = false
+                        },
+                        selectedContentColor = MaterialTheme.colorScheme.primary,
+                        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("learning_mode_spelling"),
+                        text = {
+                            Text(
+                                text = "拼写模式",
+                                fontWeight = if (mode == LearningMode.SPELLING) {
+                                    FontWeight.SemiBold
+                                } else {
+                                    FontWeight.Normal
+                                }
+                            )
+                        }
+                    )
+                }
+            }
         }
     }
 }

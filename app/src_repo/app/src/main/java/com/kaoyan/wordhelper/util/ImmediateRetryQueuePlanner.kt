@@ -31,6 +31,19 @@ object ImmediateRetryQueuePlanner {
         excludeTailInRandom = true
     )
 
+    /**
+     * 1.4.6 H：跳过重写后词生成好了，插到当前词后 1–3 位。
+     * queueSize 是「当前词还在队首」的队列长度；队列短就直接贴到队尾。
+     */
+    fun resolveWaitingInsertIndex(
+        queueSize: Int,
+        randomSource: RetryRandomSource = RetryRandomSource.Default
+    ): Int {
+        val safeQueueSize = queueSize.coerceAtLeast(0)
+        if (safeQueueSize == 0) return 0
+        return (1 + randomSource.nextInt(0, 3)).coerceAtMost(safeQueueSize)
+    }
+
     fun resolveInsertIndex(
         queueSize: Int,
         policy: RetryInsertPolicy,

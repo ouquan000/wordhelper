@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.kaoyan.wordhelper.data.entity.BookDailyStats
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BookDailyStatsDao {
@@ -31,4 +32,12 @@ interface BookDailyStatsDao {
            ORDER BY date ASC"""
     )
     suspend fun getRange(bookId: Long, fromDate: String): List<BookDailyStats>
+
+    /** 统计页热力图的「当前词书」口径：跟着写入自动刷新，不用轮询。 */
+    @Query(
+        """SELECT * FROM tb_book_daily_stats
+           WHERE book_id = :bookId AND date >= :fromDate
+           ORDER BY date ASC"""
+    )
+    fun observeRange(bookId: Long, fromDate: String): Flow<List<BookDailyStats>>
 }

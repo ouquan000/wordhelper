@@ -228,7 +228,8 @@ class TodayNewWordsSelectViewModel(
         _loading.value = true
         val words = withContext(Dispatchers.IO) { repository.getWordsByBookList(bookId) }
         val progressByWordId = withContext(Dispatchers.IO) {
-            repository.getGlobalProgressMap(words.map { it.id })
+            // 1.4.6：候选词算不算「学过」，只看这本书自己的进度。
+            repository.getProgressMapForBook(bookId, words.map { it.id })
         }
         val unlearned = words
             .filter { progressByWordId[it.id] == null }

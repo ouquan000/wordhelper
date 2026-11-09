@@ -861,8 +861,12 @@ class Handler(BaseHTTPRequestHandler):
             return ""
 
     def _is_local(self):
-        """本机浏览器（编辑器页面）免票。"""
-        return _is_loopback_peer(self._peer())
+        """本机浏览器（编辑器页面）免票；Cloudflare 隧道回源不算本机。
+
+        cloudflared 从 127.0.0.1 回源，若只看 TCP peer，公网请求会被误判成本机、
+        直接跳过 token。Cloudflare 一定会带 CF-Connecting-IP，用它把隧道流量区分开。
+        """
+        return _is_loopback_peer(self._peer()) and not self.headers.get("CF-Connecting-IP")
 
     def _post_origin_ok(self):
         """挡跨站 POST —— 尤其是 text/plain 那种不用预检的「简单请求」。"""

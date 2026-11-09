@@ -41,5 +41,11 @@ data class BookMemory(
     val source: String = WordMemory.SOURCE_SEED,
     val rev: Int = 0,
     @ColumnInfo(name = "prev_approach")
-    val prevApproach: String? = null
+    val prevApproach: String? = null,
+    /**
+     * 上一版的方法标签（DB 18）：撤销时和 [prevApproach] 一起回滚，回滚完清空。
+     * 真正生效的是这份按书存的；[WordMemory.prevMethod] 只在 bookId=0 的老路径上用。
+     */
+    @ColumnInfo(name = "prev_method")
+    val prevMethod: String? = null
 )
