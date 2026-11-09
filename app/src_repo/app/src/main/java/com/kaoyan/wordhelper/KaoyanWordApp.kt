@@ -23,6 +23,7 @@ import com.kaoyan.wordhelper.util.withoutBuiltinFull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -105,6 +106,13 @@ class KaoyanWordApp : Application() {
         super.onCreate()
         // 1.4.6.1 P1：断网恢复时补一轮学习记录同步（改写链路已有自己的监听）。
         syncRepository.startNetworkRecoverySync()
+        // 1.4.7：发音索引要解析 5 MB 级 cet6_cards.json。原来在学习页首帧组合时同步加载，
+        // 冷启动能把主线程卡 5 秒以上直接 ANR；改到后台预热，首帧不再碰它。
+        // 稍等一下再预热，别和首帧渲染抢 CPU/GC。
+        appScope.launch {
+            delay(1_500)
+            runCatching { pronunciationRepository }
+        }
         appScope.launch {
             // 卡背结构：先读本地缓存，读不到就用内置默认；不阻塞首屏
             cardBackRepository.bootstrap()

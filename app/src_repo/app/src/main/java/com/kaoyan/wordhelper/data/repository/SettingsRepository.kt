@@ -78,6 +78,17 @@ enum class DarkMode(val value: Int) {
 }
 
 class SettingsRepository(private val context: Context) {
+
+    /**
+     * 1.4.7：用户改「地址/口令」时 +1。
+     *
+     * 两个仓库各自记着本次会话连通过的 activeOrigin（候选顺序第一）；
+     * 看到这个版本变了就把它丢掉，否则改完地址还会先打旧地址——
+     * 实测「改成 B、点重试，仍连 A 且显示已连接」。
+     */
+    @Volatile
+    var endpointRevision: Long = 0L
+        private set
     private val dataStore = context.dataStore
 
     val todayNewWordsPlanFlow: Flow<TodayNewWordsPlan> = dataStore.data.map { prefs ->
@@ -195,10 +206,12 @@ class SettingsRepository(private val context: Context) {
             prefs[KEY_CARD_BACK_URL] = parsedUrl
             if (parsedToken != null) prefs[KEY_CARD_BACK_TOKEN] = parsedToken
         }
+        endpointRevision++
     }
 
     suspend fun updateCardBackToken(token: String) {
         dataStore.edit { prefs -> prefs[KEY_CARD_BACK_TOKEN] = token.trim() }
+        endpointRevision++
     }
 
     /**

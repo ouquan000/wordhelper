@@ -198,9 +198,9 @@ fun LearningScreen(
         }
     }
     val context = LocalContext.current
-    val pronunciationRepository = remember(context) {
-        (context.applicationContext as KaoyanWordApp).pronunciationRepository
-    }
+    // 1.4.7：发音索引 5 MB 级，别在首帧组合时同步加载（冷启动会 ANR）；
+    // 用到时再取，Application 里已经在后台预热。
+    val appContext = remember(context) { context.applicationContext as KaoyanWordApp }
     val pronunciationPlayer: PronunciationPlayer = rememberPronunciationPlayer()
     val uiScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -322,7 +322,7 @@ fun LearningScreen(
         pronouncingWordId = word.id
         uiScope.launch {
             val result = withContext(Dispatchers.IO) {
-                pronunciationRepository.getPronunciationAudioUrl(
+                appContext.pronunciationRepository.getPronunciationAudioUrl(
                     word = word.word,
                     preferredSource = pronunciationSource
                 )

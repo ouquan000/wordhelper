@@ -11,6 +11,7 @@ import com.kaoyan.wordhelper.data.model.DailyStatsAggregate
 import com.kaoyan.wordhelper.data.model.AIPresets
 import com.kaoyan.wordhelper.data.model.MethodCount
 import com.kaoyan.wordhelper.data.repository.DarkMode
+import com.kaoyan.wordhelper.data.repository.SyncStatusStore
 import com.kaoyan.wordhelper.data.repository.UserSettings
 import com.kaoyan.wordhelper.util.DatabaseBackupManager
 import com.kaoyan.wordhelper.util.DateUtils
@@ -314,6 +315,8 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     fun updateCardBackUrl(url: String) {
         viewModelScope.launch {
             settingsRepository.updateCardBackUrl(url)
+            // 换地址后旧地址的状态不该再挂在状态页上。
+            SyncStatusStore.reset()
         }
     }
 
@@ -321,6 +324,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     fun updateCardBackToken(token: String) {
         viewModelScope.launch {
             settingsRepository.updateCardBackToken(token)
+            SyncStatusStore.reset()
         }
     }
 

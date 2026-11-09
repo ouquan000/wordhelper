@@ -3,6 +3,7 @@
 """卡背清单本地服务（App 1.4.2）
 
 - 手机：GET /cardback.json（拉配置）
+- 手机/运维：GET /health（版本与能力自报，1.4.7）
 - 编辑器网页：/api/state、/api/publish、/api/history、/api/rollback
 - 只用 Python 3 标准库，零第三方依赖
 - 所有落盘都在本文件同级的 published/ 下
@@ -41,6 +42,27 @@ from urllib.parse import parse_qs, unquote, urlsplit
 HOST = "0.0.0.0"
 DEFAULT_PORT = 8765
 PORT = DEFAULT_PORT
+
+# ---- 版本与能力自报（1.4.7）----
+# 单一来源：HTTP 的 Server 头、GET /health、启动日志都从这三个常量取，别在多处各写一份。
+# 升版本只改 SERVICE_VERSION；加/删能力才动 HEALTH_PROTOCOL 和 CAPABILITIES。
+SERVICE_NAME = "cardback-editor"  # /health 的 service 字段
+SERVICE_PRODUCT = "CardbackEditor"  # HTTP Server 头里的产品名
+SERVICE_VERSION = "1.4.2"
+SERVER_VERSION = "%s/%s" % (SERVICE_PRODUCT, SERVICE_VERSION)
+HEALTH_PROTOCOL = 1  # App 握手用：协议变了就说清楚，别靠字段猜
+
+# /health 只列真实存在的接口 —— App 拿它判断「电脑端版本过旧」，所以宁缺毋滥：
+# - rewrite：POST /rewrite/marks 入队 + GET /rewrite/results 回拉 + /rewrite/status
+# - feedback：POST /rewrite/feedback（按 clientId 去重，可重复补发）
+# - sync_push：POST /sync/push（按 lrt/op_id 去重，重复的也算 acked）
+# - sync_cursor：GET /sync/pull?since_rev= 游标翻页（回 next_since_rev）
+# 不列 skip / outbox：两者都是 App 本地队列（needs_reinsert、补发），服务端没有对应接口。
+CAPABILITIES = ("rewrite", "feedback", "sync_push", "sync_cursor")
+
+# 进程启动时刻：/health 的 started_at / uptime_s。import 时先记一次，main() 会再对齐。
+_STARTED_AT = datetime.now().astimezone()
+_STARTED_MONO = time.monotonic()
 
 # 打包成 exe 后（PyInstaller）：网页文件在解包出来的临时目录里，
 # 而 published/ 要落在 exe 旁边，用户才找得到、才不会每次重装就丢。
@@ -302,6 +324,13 @@ class ApiError(Exception):
 
 def _now():
     return datetime.now().astimezone()
+
+
+def mark_process_start():
+    """真正开始服务时对一次表：import 到 main() 之间还隔着参数解析，别把那段算进 uptime。"""
+    global _STARTED_AT, _STARTED_MONO
+    _STARTED_AT = datetime.now().astimezone()
+    _STARTED_MONO = time.monotonic()
 
 
 def _iso(dt):
@@ -848,7 +877,7 @@ class CardbackServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "CardbackEditor/1.4.2"
+    server_version = SERVER_VERSION
     # 关掉 keep-alive：本地小工具不需要，省得连接复用时一个异常把后面全带崩
     protocol_version = "HTTP/1.1"
 
@@ -958,6 +987,8 @@ class Handler(BaseHTTPRequestHandler):
     def _route_get(self, path):
         if path in ("/", "/index.html"):
             return self._serve_index()
+        if path == "/health":
+            return self._api_health()
         if path == "/cardback.json":
             return self._serve_config()
         if path == "/api/state":
@@ -991,6 +1022,29 @@ class Handler(BaseHTTPRequestHandler):
         return self._fail(404, "没有这个路径：%s" % path)
 
     # ------------------------------------------------------------ 接口
+
+    def _api_health(self):
+        """GET /health：给 App 握手，也给人 curl 一眼看服务状态。
+
+        - 只报版本 / 协议 / 能力 / 进程信息；**不含口令**，也不把口令写进日志；
+        - 鉴权走 do_GET 里那条 _guard，和别的接口同一套：loopback 且无 CF 头免票，
+          其余必须带 X-Cardback-Token（App 走隧道时就是这一支）。
+        - 不参与限流：_rate_limited() 只管写请求，这里 GET 天然不受影响。
+        """
+        self._send_json(
+            {
+                "ok": True,
+                "service": SERVICE_NAME,
+                "version": SERVICE_VERSION,
+                "server": SERVER_VERSION,
+                "protocol": HEALTH_PROTOCOL,
+                "started_at": _iso(_STARTED_AT),
+                "uptime_s": max(0, int(time.monotonic() - _STARTED_MONO)),
+                "pid": os.getpid(),
+                "port": PORT,
+                "capabilities": list(CAPABILITIES),
+            }
+        )
 
     def _api_state(self):
         payload = {"ok": True}
@@ -1356,6 +1410,9 @@ def main(argv=None):
 
     open_browser = "--no-browser" not in args and "--no-open" not in args
 
+    # 进程真的开始干活了，从这一刻算 uptime（/health 的 started_at 用它）
+    mark_process_start()
+
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(errors="replace")  # type: ignore[attr-defined]
@@ -1383,8 +1440,12 @@ def main(argv=None):
         LAN_URL = "http://127.0.0.1:%d/cardback.json" % PORT
 
     local_url = "http://127.0.0.1:%d/" % PORT
-    print("卡背编辑器已启动", flush=True)
+    health_url = "http://127.0.0.1:%d/health" % PORT
+    print(
+        "卡背编辑器已启动（%s，pid %d）" % (SERVER_VERSION, os.getpid()), flush=True
+    )
     print("  浏览器打开：%s" % local_url, flush=True)
+    print("  自检：%s" % health_url, flush=True)
     _start_rewrite()
     if primary:
         print("  手机：粘贴这一行 → %s" % pair_url(), flush=True)

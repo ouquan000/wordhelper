@@ -1,5 +1,6 @@
 package com.kaoyan.wordhelper.data.repository
 
+import android.util.Log
 import com.google.gson.Gson
 import com.kaoyan.wordhelper.data.dao.BookDao
 import com.kaoyan.wordhelper.data.dao.BookMemoryDao
@@ -19,9 +20,13 @@ import com.kaoyan.wordhelper.data.model.ApproachRevision
 import com.kaoyan.wordhelper.data.model.RewriteModel
 import com.kaoyan.wordhelper.data.model.RewriteModels
 import com.kaoyan.wordhelper.data.network.CardBackAddress
+import com.kaoyan.wordhelper.data.network.RetryPolicy
+import com.kaoyan.wordhelper.data.network.ServerHealth
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
@@ -38,7 +43,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
 import java.text.SimpleDateFormat
 import java.time.OffsetDateTime
 import java.util.Date
@@ -110,6 +114,7 @@ class RewriteRepository(
      */
     @Volatile
     private var activeOrigin: String? = null
+    private var endpointRevisionSeen = -1L
 
     /** 已经写进 DataStore 的 last-good；一次同步要发十几页请求，别每页都写盘。 */
     @Volatile
@@ -118,6 +123,33 @@ class RewriteRepository(
     /** 自动补发节流：断网/重连常常连着抖几个回调，不必每次都全量 sync。 */
     @Volatile
     private var lastAutoSyncAt = 0L
+
+    /**
+     * 1.4.7：被 429 限流到什么时候（epoch ms）。
+     *
+     * 服务端的限流只掐 POST /rewrite/ 下的接口（marks、feedback）：单 IP 每分钟 20 次、每天 200 次。
+     * 这个值大于现在时，**POST** 在闸内直接短路，连包都不发 —— 1.4.6 那次事故就是
+     * App 4 秒一轮把 20 次额度打满，然后 22 次 429 之后越试越糟。
+     * GET（/rewrite/status 的 4 秒轮询、/rewrite/results）不占额度，不能被这个闸冻住。
+     */
+    @Volatile
+    private var rateLimitedUntil = 0L
+
+    /** 上次 GET /health 的时间：60 秒最多探一次。 */
+    @Volatile
+    private var lastHealthProbeAt = 0L
+
+    /**
+     * 电脑端 `/health` 的自述（null = 没探到 / 老服务端没有这个接口）。
+     *
+     * 只用来判能力，**不拿版本号比大小**：服务端版本还停在 1.4.2，比大小会把新端也判成旧的。
+     */
+    @Volatile
+    private var serverHealth: ServerHealth.Info? = null
+
+    /** 上一次上报的状态；同一句话不重复写，免得 4 秒轮询把状态页刷成流水账。 */
+    @Volatile
+    private var lastReport: Triple<SyncPhase, Int?, String?>? = null
 
     private val autoSyncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -347,6 +379,9 @@ class RewriteRepository(
     suspend fun sync(): RewriteSyncResult {
         return syncMutex.withLock {
         if (!hasAddress()) return@withLock RewriteSyncResult(error = NO_ADDRESS)
+        // 先问一句「你是谁、会什么」：老服务端没有 /health（回 404）就是「电脑端版本过旧」，
+        // 这一句比等后面某个接口 404 更早、更准。探测本身失败不阻塞主流程。
+        probeHealth()
         var uploaded = 0
         val touched = ArrayList<Long>()
         var failed = 0
@@ -358,8 +393,13 @@ class RewriteRepository(
         }
 
         val pending = queueDao.getPending()
-        if (pending.isNotEmpty()) {            val accepted = upload(pending)
-            if (accepted == null) return@withLock RewriteSyncResult(error = UNREACHABLE)
+        if (pending.isNotEmpty()) {
+            val result = upload(pending)
+            val accepted = result.accepted
+            if (accepted == null) {
+                // 1.4.7：不再一律说「电脑没连上」—— 404 要说「电脑端版本过旧」，401 要说口令。
+                return@withLock RewriteSyncResult(error = result.error ?: UNREACHABLE)
+            }
             val now = System.currentTimeMillis()
             pending.forEach { item ->
                 if (accepted.contains(clientIdOf(item))) {
@@ -373,8 +413,12 @@ class RewriteRepository(
         // 游标早就走过它们了，不补就是永久丢。
         retrySkipped()
 
-        // 1.4.6：攒下来的 👍/👎 顺手补发；发不出去不影响这次同步的结果。
+        // 1.4.6：攒下来的 👍/👎 顺手补发；它坏了不该把整轮判死。
+        // 1.4.7：但也不能静默 —— 404（电脑端没有 /rewrite/feedback）之类会带一句话进本次结果，
+        // 状态页据此显示「电脑端版本过旧」，而不是每次同步都悄悄丢一批反馈。
+        var feedbackIssue: String? = null
         runCatching { pushFeedback(feedbackDao.getUnsynced(FEEDBACK_BATCH)) }
+            .getOrNull()?.let { feedbackIssue = it }
 
         var since = settingsRepository.rewriteLastSeq()
         var seqRewound = false
@@ -384,9 +428,16 @@ class RewriteRepository(
             skippedAttempts[it.seq] = it.attempts
         }
         repeat(MAX_PAGES) {
-            val body = httpGet("/rewrite/results?since=$since&limit=50")
-            if (body == null) {
-                return@withLock RewriteSyncResult(uploaded, touched, failed, UNREACHABLE)
+            val outcome = send("/rewrite/results?since=$since&limit=50")
+            if (outcome.kind != RetryPolicy.Kind.OK) {
+                // 404 → 版本过旧；429 → 限流（带剩余秒数）；连不上 → 电脑没连上。
+                return@withLock RewriteSyncResult(
+                    uploaded, touched, failed, outcome.message ?: UNREACHABLE
+                )
+            }
+            val body = outcome.body
+            if (body.isNullOrBlank()) {
+                return@withLock RewriteSyncResult(uploaded, touched, failed, "电脑返回的结果是空的")
             }
             val page = runCatching { gson.fromJson(body, ResultsPage::class.java) }.getOrNull()
                 ?: return@withLock RewriteSyncResult(uploaded, touched, failed, "电脑返回的结果读不懂")
@@ -442,9 +493,11 @@ class RewriteRepository(
                 since = next
                 settingsRepository.updateRewriteLastSeq(since)
             }
-            if (page.more != true) return@withLock RewriteSyncResult(uploaded, touched, failed, null)
+            if (page.more != true) {
+                return@withLock RewriteSyncResult(uploaded, touched, failed, feedbackIssue)
+            }
         }
-        RewriteSyncResult(uploaded, touched, failed, null)
+        RewriteSyncResult(uploaded, touched, failed, feedbackIssue)
         }
     }
 
@@ -533,11 +586,20 @@ class RewriteRepository(
     }
 
     /**
-     * 把没发出去的反馈推给电脑端。失败只返回 false，不抛异常；
-     * 服务端按 clientId 幂等去重，所以整批重推是安全的。
+     * 把没发出去的反馈推给电脑端。
+     *
+     * 返回 null = 成功（或本来就没东西要发）；非 null = 给用户看的一句失败原因。
+     * 服务端按 clientId 幂等去重，所以整批重推是安全的；但 429 之后不会再硬怼，
+     * 而是等冷却窗口（见 [rateLimitedUntil]），这期间同一批留在本地等下一轮。
      */
-    private suspend fun pushFeedback(items: List<RewriteFeedback>): Boolean {
-        if (items.isEmpty()) return true
+    private suspend fun pushFeedback(items: List<RewriteFeedback>): String? {
+        if (items.isEmpty()) return null
+        // /health 明说「这台电脑没有 feedback 能力」：请求干脆不发（1.4.6 的 186 次 404 就是这么来的）。
+        if (ServerHealth.supports(serverHealth, CAP_FEEDBACK) == false) {
+            val message = RetryPolicy.missingCapabilityMessage(CAP_FEEDBACK)
+            publish(SyncPhase.SERVER_TOO_OLD, null, message)
+            return message
+        }
         val payload = FeedbackPayload(
             items = items.map { item ->
                 FeedbackDto(
@@ -554,18 +616,28 @@ class RewriteRepository(
                 )
             }
         )
-        val body = httpPost("/rewrite/feedback", gson.toJson(payload)) ?: return false
-        val response = runCatching { gson.fromJson(body, FeedbackPage::class.java) }
-            .getOrNull() ?: return false
-        if (response.ok != true) return false
+        val outcome = send(
+            path = "/rewrite/feedback",
+            payload = gson.toJson(payload),
+            attempts = POST_ATTEMPTS,
+            respectRateLimit = true
+        )
+        if (outcome.kind != RetryPolicy.Kind.OK) return outcome.message ?: UNREACHABLE
+        val response = runCatching { gson.fromJson(outcome.body, FeedbackPage::class.java) }
+            .getOrNull() ?: return "电脑返回的回执读不懂，反馈先留在本地"
+        if (response.ok != true) return "电脑没接受这批判注，反馈先留在本地"
         feedbackDao.markSynced(items.map { it.id })
-        return true
+        return null
     }
 
     /** 电脑端模型列表；连不上就用内置 5 个兜底。成功一次后缓存到进程结束。 */
     suspend fun models(): List<RewriteModel> {
         cachedModels?.let { return it }
-        val body = httpGet("/models") ?: return RewriteModels.DEFAULT
+        // 后台小请求：只问一次、失败静默（内置兜底模型永远可用，不该为它弹任何提示）。
+        val outcome = send("/models", attempts = 1, report = false)
+        if (outcome.kind != RetryPolicy.Kind.OK) return RewriteModels.DEFAULT
+        val body = outcome.body
+        if (body.isNullOrBlank()) return RewriteModels.DEFAULT
         val parsed = runCatching { gson.fromJson(body, ModelsPage::class.java) }.getOrNull()
         val list = parsed?.models.orEmpty().mapNotNull { dto ->
             val id = dto.id ?: return@mapNotNull null
@@ -587,7 +659,12 @@ class RewriteRepository(
      * 用户看到的进度反而更卡。断网就静默返回 null，界面上显示「等电脑上线」。
      */
     suspend fun statusOf(word: String, sinceMillis: Long = 0L): RewriteStatusSnapshot? {
-        val body = httpGet("/rewrite/status", attempts = 1, rotate = false) ?: return null
+        // /health 已经说过「这台电脑没有 rewrite 能力」：别再每 4 秒撞一次 404。
+        if (ServerHealth.supports(serverHealth, CAP_REWRITE) == false) return null
+        val outcome = send("/rewrite/status", attempts = 1, rotate = false, report = false)
+        if (outcome.kind != RetryPolicy.Kind.OK) return null
+        val body = outcome.body
+        if (body.isNullOrBlank()) return null
         val page = runCatching { gson.fromJson(body, StatusPage::class.java) }.getOrNull() ?: return null
         val key = word.trim().lowercase(Locale.ROOT)
         val matches = page.items.orEmpty().filter {
@@ -722,7 +799,13 @@ class RewriteRepository(
         return wordId
     }
 
-    private suspend fun upload(items: List<RewriteQueueItem>): Set<String>? {
+    /** 推送标记的结果：成功给出「电脑端收下了哪些 clientId」，失败给一句能直接给用户看的话。 */
+    private suspend fun upload(items: List<RewriteQueueItem>): UploadResult {
+        if (ServerHealth.supports(serverHealth, CAP_REWRITE) == false) {
+            val message = RetryPolicy.missingCapabilityMessage(CAP_REWRITE)
+            publish(SyncPhase.SERVER_TOO_OLD, null, message)
+            return UploadResult(null, message)
+        }
         // 词头要给全：只有单词的话，模型分不清是哪个词义、什么词性，重生质量会明显掉。
         val marks = items.map { item ->
             val word = wordDao.getWordById(item.wordId)
@@ -752,9 +835,18 @@ class RewriteRepository(
             )
         }
         val payload = MarksPayload(marks = marks)
-        val body = httpPost("/rewrite/marks", gson.toJson(payload)) ?: return null
-        val response = runCatching { gson.fromJson(body, MarksPage::class.java) }.getOrNull() ?: return null
-        return response.accepted.orEmpty().toSet()
+        val outcome = send(
+            path = "/rewrite/marks",
+            payload = gson.toJson(payload),
+            attempts = POST_ATTEMPTS,
+            respectRateLimit = true
+        )
+        if (outcome.kind != RetryPolicy.Kind.OK) {
+            return UploadResult(null, outcome.message ?: UNREACHABLE)
+        }
+        val response = runCatching { gson.fromJson(outcome.body, MarksPage::class.java) }.getOrNull()
+            ?: return UploadResult(null, "电脑返回的回执读不懂，标记先留在本地")
+        return UploadResult(response.accepted.orEmpty().toSet(), null)
     }
 
     private fun clientIdOf(item: RewriteQueueItem): String = "w${item.wordId}-${item.createdAt}"
@@ -786,46 +878,275 @@ class RewriteRepository(
         return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(Date(millis))
     }
 
-    private suspend fun httpGet(path: String, attempts: Int = 3, rotate: Boolean = true): String? =
-        request(path, attempts, rotate) { url, token ->
-            client.newCall(withToken(Request.Builder().url(url).get(), token).build())
-                .execute().use { response -> readBody(response) }
-        }
+    /** 一次请求的结局：归类、状态码、响应体、异常、「下次可试」的时间和给用户的那句话。 */
+    private data class HttpOutcome(
+        val kind: RetryPolicy.Kind,
+        val code: Int?,
+        val body: String?,
+        val error: Throwable? = null,
+        val retryAfterMs: Long? = null,
+        val message: String? = null,
+        val retryAtEpochMs: Long? = null
+    )
 
-    private suspend fun httpPost(path: String, json: String): String? =
-        request(path, attempts = 1, rotate = true) { url, token ->
-            val body = json.toRequestBody(JSON_MEDIA_TYPE)
-            client.newCall(withToken(Request.Builder().url(url).post(body), token).build())
-                .execute().use { response -> readBody(response) }
-        }
+    /** upload() 的结果：要么给回「电脑端收下了哪些 clientId」，要么给一句失败原因。 */
+    private data class UploadResult(val accepted: Set<String>?, val error: String?)
 
     /**
-     * 按候选顺序发请求（1.4.6.1）：当前地址 → 手填地址 → 上次成功地址，
+     * 所有联网请求的唯一出口（与 SyncRepository.call 同一套规则；两个仓库各自持有自己的限流闸）。
+     *
+     * - 2xx 直接成功；401 / 404 / 429 / 其他 4xx 一律不重试（重试也变不好，只会把限流额度打满）；
+     * - 只有 5xx / 408 / 超时 / IO 才按指数退避就地重试，最多 [maxAttempts] 次；
+     * - 429 把冷却写进 [rateLimitedUntil]，之后 **respectRateLimit = true** 的请求在闸内直接短路，
+     *   连包都不发；
+     * - 协程取消原样抛出，不记成失败、不重试。
+     */
+    private suspend fun call(
+        build: () -> Request,
+        maxAttempts: Int = RetryPolicy.DEFAULT_MAX_ATTEMPTS,
+        respectRateLimit: Boolean = false,
+        report: Boolean = true
+    ): HttpOutcome = withContext(Dispatchers.IO) {
+        var attempt = 0
+        var lastCode: Int? = null
+        var lastError: Throwable? = null
+        var lastRetryAfter: Long? = null
+        while (true) {
+            val gate = rateLimitedUntil
+            val now = System.currentTimeMillis()
+            if (respectRateLimit && gate > now) {
+                val wait = gate - now
+                val message = RetryPolicy.rateLimitedMessage(wait)
+                if (report) publish(SyncPhase.RATE_LIMITED, 429, message, gate)
+                return@withContext HttpOutcome(
+                    kind = RetryPolicy.Kind.RATE_LIMITED,
+                    code = null,
+                    body = null,
+                    retryAfterMs = wait,
+                    message = message,
+                    retryAtEpochMs = gate
+                )
+            }
+            try {
+                client.newCall(build()).execute().use { response ->
+                    val code = response.code
+                    // 读响应体失败（例如服务端提前断流）不能吞成 null —— 那会被当成
+                    // 「200 + 空正文」，既不重试也说不清原因。让它冒到外层按 IO 重试。
+                    val body = response.body?.string()
+                    when (RetryPolicy.classify(code)) {
+                        RetryPolicy.Kind.OK -> {
+                            if (report) publish(SyncPhase.OK, code)
+                            return@withContext HttpOutcome(RetryPolicy.Kind.OK, code, body)
+                        }
+                        RetryPolicy.Kind.UNAUTHORIZED -> {
+                            // 调用方只能拿到「没成功」，分不清「电脑没开」和「口令错」——
+                            // 这个标记就是给 consumeAuthFailure() 用的（界面据此显示粘连接串）。
+                            authFailed = true
+                            val message = "HTTP 401：${CardbackAuth.HINT}"
+                            if (report) publish(SyncPhase.UNAUTHORIZED, code, message)
+                            return@withContext HttpOutcome(
+                                RetryPolicy.Kind.UNAUTHORIZED, code, body, message = message
+                            )
+                        }
+                        RetryPolicy.Kind.NOT_FOUND -> {
+                            // 旧服务端没有这个接口（1.4.6 的 /rewrite/feedback 就是这么 404 的 186 次）：
+                            // 不重试、不静默，直接说「电脑端版本过旧」。
+                            if (report) publish(SyncPhase.SERVER_TOO_OLD, code, RetryPolicy.MSG_SERVER_TOO_OLD)
+                            return@withContext HttpOutcome(
+                                RetryPolicy.Kind.NOT_FOUND, code, body,
+                                message = RetryPolicy.MSG_SERVER_TOO_OLD
+                            )
+                        }
+                        RetryPolicy.Kind.RATE_LIMITED -> {
+                            // 服务端 60 秒 20 次 / 每天 200 次，超了就是这个分支。
+                            // 不就地重试：算好冷却时间、记进闸里，这一轮到此为止。
+                            val retryAfter = RetryPolicy.parseRetryAfterMs(
+                                raw = response.header("Retry-After"),
+                                nowEpochMs = System.currentTimeMillis()
+                            )
+                            val wait = RetryPolicy.delayFor(RetryPolicy.Kind.RATE_LIMITED, attempt, retryAfter)
+                            val until = System.currentTimeMillis() + wait
+                            rateLimitedUntil = until
+                            val message = RetryPolicy.rateLimitedMessage(wait)
+                            if (report) publish(SyncPhase.RATE_LIMITED, code, message, until)
+                            return@withContext HttpOutcome(
+                                kind = RetryPolicy.Kind.RATE_LIMITED,
+                                code = code,
+                                body = body,
+                                retryAfterMs = wait,
+                                message = message,
+                                retryAtEpochMs = until
+                            )
+                        }
+                        RetryPolicy.Kind.FATAL -> {
+                            val message = "电脑拒绝了请求${RetryPolicy.httpTag(code)}"
+                            if (report) publish(SyncPhase.FAILED, code, message)
+                            return@withContext HttpOutcome(
+                                RetryPolicy.Kind.FATAL, code, body, message = message
+                            )
+                        }
+                        RetryPolicy.Kind.RETRYABLE -> {
+                            // 5xx / 408：交给循环末尾的退避；有 Retry-After 就听它的。
+                            lastCode = code
+                            lastError = null
+                            lastRetryAfter = RetryPolicy.parseRetryAfterMs(
+                                raw = response.header("Retry-After"),
+                                nowEpochMs = System.currentTimeMillis()
+                            )
+                        }
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                // 协程被取消不是「同步失败」：原样抛出去，别写进状态、别重试。
+                throw cancelled
+            } catch (t: Throwable) {
+                lastCode = null
+                lastError = t
+                lastRetryAfter = null
+            }
+
+            if (!RetryPolicy.shouldRetryInline(RetryPolicy.Kind.RETRYABLE, attempt, maxAttempts)) {
+                val message = RetryPolicy.retryingMessage(
+                    reason = RetryPolicy.describe(lastError),
+                    httpCode = lastCode
+                )
+                if (report) publish(SyncPhase.RETRYING, lastCode, message)
+                return@withContext HttpOutcome(
+                    kind = RetryPolicy.Kind.RETRYABLE,
+                    code = lastCode,
+                    body = null,
+                    error = lastError,
+                    retryAfterMs = lastRetryAfter,
+                    message = message
+                )
+            }
+            // 可取消的等待（协程取消时立刻退出），替代原来的 Thread.sleep。
+            delay(RetryPolicy.delayFor(RetryPolicy.Kind.RETRYABLE, attempt, lastRetryAfter))
+            attempt++
+        }
+        @Suppress("UNREACHABLE_CODE")
+        HttpOutcome(RetryPolicy.Kind.RETRYABLE, lastCode, null)
+    }
+
+    /**
+     * 按候选顺序发一次请求（1.4.6.1 的地址轮试保留）：当前地址 → 手填地址 → 上次成功地址，
      * 前一个连不上才试下一个，成功后把这个地址记成「上次成功」。
      *
-     * attempts 是对同一个地址的重试次数；`rotate=false` 时只打最可信的那一个
-     * （4 秒一次的进度轮询不能把一次轮询拖成两个连接超时）。
-     * 全部候选都失败返回 null —— 调用方原本就把 null 当「没连上」，判断不用改。
+     * 谁先「回话」（拿到任何 HTTP 状态码）就用谁 —— 偶发连不上多半是 Python 的 HTTPServer
+     * 单线程、上一个请求还没收尾，不应该因为一个地址慢就把整轮同步拖成几个连接超时。
+     * `rotate=false` 只打最可信的那一个（4 秒一次的进度轮询不能拖成两个连接超时）。
      */
-    private suspend fun <T : Any> request(
+    private suspend fun send(
         path: String,
-        attempts: Int,
-        rotate: Boolean,
-        call: (url: String, token: String) -> T?
-    ): T? = withContext(Dispatchers.IO) {
-        val endpoint = cardBackEndpoint(rotate) ?: return@withContext null
-        endpoint.origins.forEach { origin ->
-            repeat(attempts) {
-                val result = runCatching { call(origin + path, endpoint.token) }
-                    .onFailure { Thread.sleep(RETRY_BACKOFF_MS) }
-                    .getOrNull()
-                if (result != null) {
-                    rememberSuccess(origin)
-                    return@withContext result
-                }
+        payload: String? = null,
+        attempts: Int = RetryPolicy.DEFAULT_MAX_ATTEMPTS,
+        rotate: Boolean = true,
+        respectRateLimit: Boolean = false,
+        report: Boolean = true
+    ): HttpOutcome {
+        val endpoint = cardBackEndpoint(rotate)
+            ?: return HttpOutcome(RetryPolicy.Kind.FATAL, null, null, message = NO_ADDRESS)
+        var last: HttpOutcome? = null
+        for (origin in endpoint.origins) {
+            val outcome = call(
+                build = {
+                    val builder = Request.Builder()
+                        .url(origin + path)
+                        .header("Connection", "close")
+                    val bodyText = payload
+                    if (bodyText == null) {
+                        builder.get()
+                    } else {
+                        builder.post(bodyText.toRequestBody(JSON_MEDIA_TYPE))
+                    }
+                    withToken(builder, endpoint.token).build()
+                },
+                maxAttempts = attempts,
+                respectRateLimit = respectRateLimit,
+                report = report
+            )
+            last = outcome
+            if (outcome.code != null) {
+                rememberSuccess(origin)
+                return outcome
             }
+            // 限流闸内短路：换地址也没用（限流按 IP 算），直接返回（已经上报过）。
+            if (outcome.kind == RetryPolicy.Kind.RATE_LIMITED) return outcome
         }
-        null
+        return last ?: HttpOutcome(RetryPolicy.Kind.FATAL, null, null, message = NO_ADDRESS)
+    }
+
+    /**
+     * 1.4.7：GET /health 问出电脑端版本与能力（60 秒最多一次）。
+     *
+     * 判旧端**不看版本号**（服务端还是 1.4.2，没升）：只看 `/health` 在不在、能力清单缺不缺。
+     * 探测失败不阻塞主流程 —— 后面真正的请求会给出最终结论。
+     */
+    private suspend fun probeHealth() {
+        val now = System.currentTimeMillis()
+        if (now - lastHealthProbeAt < HEALTH_PROBE_MIN_INTERVAL_MS) return
+        val endpoint = cardBackEndpoint(rotate = true) ?: return
+        lastHealthProbeAt = now
+        for (origin in endpoint.origins) {
+            val outcome = call(
+                build = {
+                    withToken(
+                        Request.Builder()
+                            .url(origin + ServerHealth.PATH)
+                            .header("Connection", "close")
+                            .get(),
+                        endpoint.token
+                    ).build()
+                },
+                maxAttempts = 1,
+                // /health 不参与限流：状态页不该因为我们自己贴着 429 冷却就看不到电脑端信息。
+                respectRateLimit = false,
+                // 探测失败不该把状态页从 OK 翻成 RETRYING；只有 404 / 401 这种「确定结论」才报。
+                report = false
+            )
+            if (outcome.code == null) continue
+            rememberSuccess(origin)
+            when (outcome.kind) {
+                RetryPolicy.Kind.OK -> {
+                    val info = ServerHealth.parse(outcome.body)
+                    if (info == null) {
+                        Log.w(TAG, "/health 回了 200 但读不懂：${outcome.body?.take(120)}")
+                    } else {
+                        serverHealth = info
+                        SyncStatusStore.reportServer(info.version, info.startedAt, info.capabilities)
+                        Log.i(TAG, "/health: ${info.version} protocol=${info.protocol} caps=${info.capabilities}")
+                    }
+                }
+                RetryPolicy.Kind.NOT_FOUND -> {
+                    // 老服务端没有 /health：之后每个 /sync、/rewrite/* 都会 404，早点说清楚。
+                    serverHealth = null
+                    publish(SyncPhase.SERVER_TOO_OLD, outcome.code, RetryPolicy.MSG_SERVER_TOO_OLD)
+                }
+                RetryPolicy.Kind.UNAUTHORIZED -> {
+                    publish(SyncPhase.UNAUTHORIZED, outcome.code, outcome.message)
+                }
+                else -> Unit // 5xx / 超时：静默，别用一个探测失败打扰用户
+            }
+            return
+        }
+    }
+
+    /** 上报一次状态；同一句话不重复写（4 秒轮询下重复写会把时间戳刷成假的「一直在重试」）。 */
+    private fun publish(
+        phase: SyncPhase,
+        httpCode: Int? = null,
+        message: String? = null,
+        retryAtEpochMs: Long? = null
+    ) {
+        val key = Triple(phase, httpCode, message)
+        if (key == lastReport) {
+            if (retryAtEpochMs != null) {
+                SyncStatusStore.report(phase, httpCode, message, retryAtEpochMs)
+            }
+            return
+        }
+        lastReport = key
+        SyncStatusStore.report(phase, httpCode, message, retryAtEpochMs)
     }
 
     /**
@@ -835,6 +1156,12 @@ class RewriteRepository(
     private suspend fun cardBackEndpoint(rotate: Boolean): CardBackEndpoint? {
         val settings = runCatching { settingsRepository.settingsFlow.first() }.getOrNull()
             ?: return null
+        // 1.4.7：用户改过地址/口令就丢掉本会话缓存的 activeOrigin，否则新地址不会被优先尝试。
+        val revision = settingsRepository.endpointRevision
+        if (revision != endpointRevisionSeen) {
+            endpointRevisionSeen = revision
+            activeOrigin = null
+        }
         val origins = if (rotate) {
             CardBackAddress.candidates(
                 active = activeOrigin,
@@ -859,6 +1186,7 @@ class RewriteRepository(
      * 同时写进 DataStore，下次冷启动 / 换 Wi-Fi 还能兜底。
      */
     private suspend fun rememberSuccess(origin: String) {
+        SyncStatusStore.reportOrigin(origin)
         activeOrigin = origin
         if (origin == savedLastGood) return
         savedLastGood = origin
@@ -873,19 +1201,6 @@ class RewriteRepository(
         return builder
     }
 
-    /**
-     * 401 要单独记一笔：调用方只能拿到 null，分不清「电脑没开」和「口令错」，
-     * 界面就会把口令问题说成「等电脑连上」，用户照着做一辈子都连不上。
-     */
-    private fun readBody(response: Response): String? {
-        if (response.code == HTTP_UNAUTHORIZED) {
-            authFailed = true
-            return null
-        }
-        if (!response.isSuccessful) return null
-        return response.body?.string()
-    }
-
     /** 上一次请求是不是被电脑端的口令拦住了；读一次就清掉，免得同一句提示反复弹。 */
     fun consumeAuthFailure(): Boolean {
         if (!authFailed) return false
@@ -895,7 +1210,7 @@ class RewriteRepository(
 
     // 1.4.6.1：原来这里只有一个 baseOrigin()（只读手填地址）。
     // 地址解析与候选顺序挪到 CardBackAddress（纯函数，单测覆盖），
-    // 失败轮试 / 成功回写在 cardBackEndpoint() 与 request() 里。
+    // 失败轮试 / 成功回写在 cardBackEndpoint() 与 send() 里。
 
     private data class MarksPayload(val marks: List<MarkDto>)
 
@@ -979,13 +1294,23 @@ class RewriteRepository(
     )
 
     companion object {
+        private const val TAG = "RewriteRepository"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val MAX_PAGES = 20
         private const val STATUS_FAILED = "failed"
-        private const val HTTP_UNAUTHORIZED = 401
 
-        /** 同一个地址失败后的退避，别把重试打成忙等。 */
-        private const val RETRY_BACKOFF_MS = 150L
+        /**
+         * POST 的重试次数：标记/反馈在服务端按 clientId 幂等，重发安全；
+         * 但只给一次重试 —— 限流额度按请求数算，不能把一个 POST 拖成长尾。
+         */
+        private const val POST_ATTEMPTS = 2
+
+        /** /health 探测节流：60 秒最多问一次。 */
+        private const val HEALTH_PROBE_MIN_INTERVAL_MS = 60_000L
+
+        /** /health 能力清单里重写链路真正依赖的两项。 */
+        private const val CAP_REWRITE = "rewrite"
+        private const val CAP_FEEDBACK = "feedback"
 
         /** 网络恢复自动补发的最小间隔：连重连抖动几下也只发一次。 */
         private const val AUTO_SYNC_MIN_INTERVAL_MS = 30_000L

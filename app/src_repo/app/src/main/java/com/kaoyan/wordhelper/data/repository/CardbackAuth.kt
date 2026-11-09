@@ -29,7 +29,9 @@ object CardbackAuth {
      * 老用户单独填过口令的，只改地址不能把它弄丢。
      */
     fun parsePair(raw: String): Pair<String, String?> {
-        val text = raw.trim()
+        // 地址框能接受粘贴：多行文本（例如整段诊断信息）只取第一行。
+        // 否则带换行的地址解析失败，会静默回退到上次成功地址，用户却以为新地址生效了。
+        val text = raw.trim().lineSequence().firstOrNull()?.trim().orEmpty()
         if (text.isEmpty()) return "" to null
         val cut = text.indexOf('#')
         val rawUrl = if (cut >= 0) text.substring(0, cut) else text

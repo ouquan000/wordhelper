@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kaoyan.wordhelper.BuildConfig
 import com.kaoyan.wordhelper.data.repository.DarkMode
+import com.kaoyan.wordhelper.data.repository.SyncStatusStore
 import com.kaoyan.wordhelper.ui.component.HeatmapGrid
 import com.kaoyan.wordhelper.ui.component.HeatmapLegend
 import com.kaoyan.wordhelper.ui.component.MemoryLineChart
@@ -73,7 +75,8 @@ import java.time.format.DateTimeFormatter
 fun ProfileScreen(
     viewModel: ProfileViewModel = viewModel(),
     onOpenStats: () -> Unit = {},
-    onOpenAiLab: () -> Unit = {}
+    onOpenAiLab: () -> Unit = {},
+    onOpenSyncStatus: () -> Unit = {}
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val showBuiltinFullBooks by viewModel.showBuiltinFullBooks.collectAsStateWithLifecycle()
@@ -88,6 +91,8 @@ fun ProfileScreen(
     val rewritePendingCount by viewModel.rewritePendingCount.collectAsStateWithLifecycle()
     val syncPending by viewModel.syncPending.collectAsStateWithLifecycle()
     val syncing by viewModel.syncing.collectAsStateWithLifecycle()
+    // 1.4.7：状态页与「我的」入口读的是同一份快照，入口那行不用再单独请求一次。
+    val syncStatus by SyncStatusStore.state.collectAsStateWithLifecycle()
     val syncMessage by viewModel.syncMessage.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var statsVisible by remember { mutableStateOf(false) }
@@ -216,7 +221,9 @@ fun ProfileScreen(
                         syncPending = syncPending,
                         syncing = syncing,
                         syncMessage = syncMessage,
-                        onSync = viewModel::syncLearningRecords
+                        syncStatusSummary = syncStatusEntrySummary(syncStatus),
+                        onSync = viewModel::syncLearningRecords,
+                        onOpenSyncStatus = onOpenSyncStatus
                     )
                 }
             }
@@ -506,7 +513,9 @@ private fun DataManageCard(
     syncPending: Int,
     syncing: Boolean,
     syncMessage: String?,
-    onSync: () -> Unit
+    syncStatusSummary: String,
+    onSync: () -> Unit,
+    onOpenSyncStatus: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -558,6 +567,34 @@ private fun DataManageCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+            // 1.4.7：同步状态入口。一行就够 —— 当前阶段 + 最后成功时间，详情进状态页。
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenSyncStatus)
+                    .testTag("profile_sync_status")
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "同步状态",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = syncStatusSummary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    text = "查看 ›",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }
