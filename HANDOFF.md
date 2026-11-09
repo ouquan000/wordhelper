@@ -672,3 +672,19 @@ C 盘、`syncPresetWords` 早退、`Card(onClick)` 8dp touchSlop、`contentKey`�
 - 本版修掉的坑：读响应体 `ProtocolException` 被吞成「空数据」→ 现在冒泡重试；换地址后沿用旧游标会漏行 → `serverRev` 归零，且**保存连接串时就清**（`resetCursorForEndpointChange()`，杀进程也不丢）；手填地址多行粘贴 → 只取第一行；冷启动首拉全量 → 记录已见 revision（N1）。
 - 验证证据：141 单测 0 失败；功能闸 T1–T9、定点复测 R1–R8 全 PASS；独立验收 **88/100「可交付」**（原 78，B1/B2 修复后复核）。报告与截图在 `_recon/1.4.7/`（gitignored）。
 - 未验证（下版或真机再做）：WiFi⇄4G 来回切换、电脑重启、24h soak、远程四链路。**4G 单程已验证 PASS**（2026-11-09 20:50，WiFi 关闭、仅 rmnet 路由，冷启动后 20:50:43 `/health` 200、20:50:46/47 `/sync/pull?since_rev=272` 200，全程走 Quick Tunnel）。真机已装 1.4.7（2026-11-09 20:23 覆盖安装；状态页已连接、实际连接公网域名、电脑端 1.4.2/19:04:59）。
+
+## 15.11 1.4.7.1 交付记录（2026-11-10）
+
+- 交付包：`dist/english-app-1.4.7.1.apk`，33,379,406 B，md5 `e1993c417d2f88fd01cbc1c6f981692b`；versionCode 14 / versionName 1.4.7.1 / DB 21。
+- 三条线：F1 反馈闭环（评委第 7 维「诉求落实」、两段式通过、禁令硬约束、两轮不过交 unverified 历史最佳）；S1 服务端加固（`_guard` 401→403→429、`/sync/*` 独立桶、`sync_store` 原子写/坏文件重建/冲突保留/行数上限）；A1 App（版本号、未复核角标全链路、JobScheduler 后台同步）。
+- 验收后补丁：`normalize()` 允许「末行旁注、倒数第二行有箭头」；润色后按最终稿复扫用户禁令，命中禁令不当「已复核」交付；单行文本禁令检查不再跳空。`tests/test_feedback.py` 19/19。
+- 验证证据：
+  - Android 141 单测 0 失败；F1 19、S1 契约 30、cardback 18/53/20 全 PASS。
+  - 功能闸 T1–T9 全 PASS（`_recon/1.4.7.1/test-report.md`）：版本展示、状态页 10 字段、未复核角标 + 反向对照、后台任务 force-run 真发 `/sync`、404/401/429 + 冷却期零请求、冷启动、无新 ANR/崩溃。
+  - 20→21 覆盖升级实测：先装 1.4.7 得 `dbver=20 / words=5228`，`install -r` 1.4.7.1 后 `dbver=21 / words=5228`，logcat 无 Room/FATAL（`upgrade-test.sh`、`db-old/`、`db-new/`）。
+  - JobScheduler 实测：`JOB #u0a192/23063 .../.sync.BackgroundSyncJobService`，PERIODIC 15m/flex 5m、PERSISTED、RUNNABLE。
+  - 真实链路：重启后跑 `ephemeral`（instruction=用谐音联想，别用词根词缀）→ 4 步交付、末行 `——>`、`unverified=false`。
+  - 独立验收：**82/100「有条件可交付」**（F1 80 / S1 88 / A1 78）；B1/B2/B3 已处理并送复核，复核结论见 `_recon/1.4.7.1/acceptance-report.md` 末尾。
+- 服务端现状：8765 PID 43236，started_at `2026-11-10T00:48:45+08:00`，`/health` 200，能力四项；重启前队列空。
+- 回滚：DB 21 无降级迁移，旧包不能覆盖安装回去，必须先卸载 / 清 App 数据（进度会丢）；README 与 `docs/decisions-1.4.7.1.md` 已写明。
+- 未验证：WiFi⇄4G 来回、电脑重启、24h soak、远程四链路；真实库里 `unverified=true` 的端到端仍是注入数据验证，没有自然产生的未复核卡；真机尚未装 1.4.7.1（等用户点头）。

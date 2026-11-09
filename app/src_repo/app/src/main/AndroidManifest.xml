@@ -3,6 +3,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 1.4.7.1：后台定时同步的 JobInfo.setPersisted(true) 需要它，否则 schedule 会抛 SecurityException。 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".KaoyanWordApp"
@@ -22,6 +24,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          1.4.7.1：后台定时同步（JobScheduler）。
+          BIND_JOB_SERVICE 是系统绑定 JobService 的硬要求，exported=false：只允许系统来绑。
+          只在填过电脑地址时才调度（见 BackgroundSync.ensure），没配地址的用户不会有后台任务。
+        -->
+        <service
+            android:name=".sync.BackgroundSyncJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 
 </manifest>

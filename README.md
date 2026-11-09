@@ -105,14 +105,15 @@ Gradle 发行版走腾讯云镜像，两者都不改项目源码。
 |---|---|
 | 签名 | `_toolchain/signing/wordhelper.jks`（别名 `wordhelper`），**这把 key 不能换、不能丢** |
 | 包名 | `com.kaoyan.wordhelper`，与官方版相同 |
-| 版本号 | `versionCode` 与 `versionName` 同步维护（当前 `versionCode 13 / versionName 1.4.6.2`，DB 20） |
+| 版本号 | `versionCode` 与 `versionName` 同步维护（当前 `versionCode 14 / versionName 1.4.7.1`，DB 21） |
 
-数据库版本只升不降，每次升级都带迁移。当前 **20**：
+数据库版本只升不降，每次升级都带迁移。当前 **21**：
 17 → 18 加 `prev_method`、`tb_rewrite_skipped`、`tb_feedback`；
 18 → 19 反馈绑到思路版本（`tb_feedback.approach_rev`）；
-19 → 20 冷启动回插（`tb_rewrite_queue.needs_reinsert`）。
+19 → 20 冷启动回插（`tb_rewrite_queue.needs_reinsert`）；
+20 → 21 未复核卡（`tb_word_memory` / `tb_book_memory` 加 `unverified`、`unverified_reason`）。
 17 → 18 与 19 → 20 分别在测试库里跑过（`_recon/1.4.6-test-report.md`、`_recon/1.4.6.1-fix2-report.md`）；
-**17 → 20 的整链本轮没有单独复测**，交付前建议在真机备份副本上再跑一次。
+20 → 21 已在模拟器与真机覆盖安装验证；**17 → 21 的整链本轮没有单独复测**，交付前建议在真机备份副本上再跑一次。
 
 > 唯一的例外：官方版用的是作者的签名，与本项目不同，所以**从官方版切过来必须卸载一次**，
 > 学习进度会清空。切过来之后，后续版本都能互相覆盖。
@@ -319,7 +320,22 @@ export MSYS2_ARG_CONV_EXCL='*'
      [srs-benchmark](https://github.com/open-spaced-repetition/srs-benchmark)、
      [Anki 手册](https://docs.ankiweb.net/deck-options.html)
 7. **安全收口**（当时）：8765 绑 `0.0.0.0` 且无鉴权，`/rewrite/marks` 会花模型钱。
-   2026-11-09 已补 token + CF 回源头判断，见 [`HANDOFF.md`](HANDOFF.md) §15.3；限流与版本提示仍在 1.4.7。
+   2026-11-09 已补 token + CF 回源头判断，见 [`HANDOFF.md`](HANDOFF.md) §15.3；限流、状态页与版本提示已在 1.4.7 交付，反馈闭环在 1.4.7.1。
+
+## 1.4.7 系列（远程同步与反馈闭环）
+
+- **1.4.7**：`/health` 版本/能力自报；同步状态页（连接、最后成功、待发送、下次重试、电脑端版本、立即重试、诊断复制）；429/`Retry-After` 指数退避；换地址游标归零（保存即清）；401/404 人话提示；电脑端口令轮换；真实 4G 经 Quick Tunnel 单程同步 PASS。
+- **1.4.7.1**：版本号 1.4.7.1 / vc14 / DB21；反馈闭环（评委看用户诉求、两段式通过、同方法硬闸、两轮不过按 unverified 交付并在卡片标「未复核 原因」）；后台同步 JobScheduler；服务端 401→403→429 顺序、`/sync/*` 独立限流、`sync_store` 原子写/坏文件重建/冲突返回；`_key` 真 NUL 修复。
+
+## 1.4.7 系列（远程同步 + 反馈闭环）
+
+- **1.4.7 远程同步专版**（按用户要求不 bump，显示仍 1.4.6.2 / vc13）：公网入口（Quick Tunnel 已实测 4G 单程同步）、一次配置连接串、`/health` 版本与能力握手、同步状态页（含「实际连接」）、429/Retry-After 指数退避、换地址即清游标、口令轮换。
+- **1.4.7.1 反馈闭环**：评测看得见用户原话（第 7 维「诉求落实」）、两段式通过（六维全 ≥8，或诉求 ≥8 且六维 ≥6 且无 0）、重试把用户原话当硬约束、两轮不过交付历史最佳并标「未复核」（App 里显示角标+原因）；后台 JobScheduler 同步（15 分钟）；DB 20→21。
+
+当前包：`dist/english-app-1.4.7.1.apk`，33,379,406 B，md5 `e1993c417d2f88fd01cbc1c6f981692b`，vc14 / 1.4.7.1 / DB21。
+> 回滚注意：DB 已升到 21，旧包（1.4.6.x）**不能覆盖安装回去**，Room 会拒绝降级；要回退只能先卸载或清 App 数据再装旧包（本机进度会丢）。
+1.4.6 与 1.4.6.1 没有单独 tag，`v1.4.6.2` 覆盖三版；141 项单测全过。
+完整交接与 1.4.7.1 计划见 [`HANDOFF.md`](HANDOFF.md) §15。
 
 ## 1.4.6 系列已交付（1.4.6 / 1.4.6.1 / 1.4.6.2）
 
@@ -327,14 +343,14 @@ export MSYS2_ARG_CONV_EXCL='*'
 - **1.4.6.1**：冷启动后跳过的词能插回（`needs_reinsert`，DB20）；DB19 反馈绑思路版本；地址兜底 / 网络恢复补发；普通卡也能反馈；最终验收 50 项 100/100。
 - **1.4.6.2**：顶部「认词 / 拼写」可折叠；点赞行移进卡背滚动区最底部，普通卡可见；纯 UI，不改 DB。
 
-当前包：`dist/english-app-1.4.6.2.apk`，33,788,038 B，md5 `906aa1e71f079201fd1ef11e975b3ad2`，vc13 / DB20。
 1.4.6 与 1.4.6.1 没有单独 tag，`v1.4.6.2` 覆盖三版；141 项单测全过。
-完整交接与 1.4.7 计划见 [`HANDOFF.md`](HANDOFF.md) §15。
 
-## 远程同步（1.4.7 方向，未开工）
+## 远程同步（1.4.7 已交付，公网 named tunnel 待接）
 
-> 现状：**1.4.6.2 仍只支持手机和电脑在同一个 WiFi**。下面是把电脑端搬到公网的目标流程，
-> 截至 2026-11-09 只完成了 8765 鉴权修复，公网入口还没打通。
+> 现状：**1.4.7 起手机可以用公网地址同步**。Quick Tunnel 已实测 4G 单程同步通过；
+> 固定域名（named tunnel）还需要用户本人登录 Cloudflare、改 NS，步骤见
+> [`docs/runbook-remote-1.4.7.md`](docs/runbook-remote-1.4.7.md) 与
+> [`docs/cloudflare-onboarding-1.4.7.md`](docs/cloudflare-onboarding-1.4.7.md)。
 
 ### 目标
 
@@ -375,7 +391,7 @@ export MSYS2_ARG_CONV_EXCL='*'
 - **手机不需要常驻 VPN**：Tailscale Funnel 是公网入口，手机端不用装 Tailscale；只有 Tailscale 私有组网才需要手机装客户端。它仍只作备选（国内连通性 / 带宽待实测）。
 - `.cn` 域名 + 家宽公网 Web 可能被要求 ICP 备案或被墙；先技术验证，不行就换非 `.cn` 域名。
 
-决策记录见 [`docs/decisions-1.4.7.md`](docs/decisions-1.4.7.md)。
+决策记录见 [`docs/decisions-1.4.7.md`](docs/decisions-1.4.7.md) 与 [`docs/decisions-1.4.7.1.md`](docs/decisions-1.4.7.1.md)。
 
 ## 版本号约定
 

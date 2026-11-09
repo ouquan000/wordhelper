@@ -16,6 +16,7 @@ import com.kaoyan.wordhelper.ml.core.PersonalRetentionPredictor
 import com.kaoyan.wordhelper.ml.integration.MLEnhancedScheduler
 import com.kaoyan.wordhelper.ml.training.ColdStartManager
 import com.kaoyan.wordhelper.ml.training.ModelPersistence
+import com.kaoyan.wordhelper.sync.BackgroundSync
 import com.kaoyan.wordhelper.util.WordbookFullLoader
 import com.kaoyan.wordhelper.util.WordMethodMapLoader
 import com.kaoyan.wordhelper.util.BuiltinBooks
@@ -106,6 +107,11 @@ class KaoyanWordApp : Application() {
         super.onCreate()
         // 1.4.6.1 P1：断网恢复时补一轮学习记录同步（改写链路已有自己的监听）。
         syncRepository.startNetworkRecoverySync()
+        // 1.4.7.1：填过电脑地址就挂一个后台定时同步（JobScheduler，15 分钟一次、要联网），
+        // 没填就撤掉任务。用户在设置里清了地址也不用慌：下一次启动会重新判定。
+        appScope.launch {
+            runCatching { BackgroundSync.ensure(this@KaoyanWordApp) }
+        }
         // 1.4.7：发音索引要解析 5 MB 级 cet6_cards.json。原来在学习页首帧组合时同步加载，
         // 冷启动能把主线程卡 5 秒以上直接 ANR；改到后台预热，首帧不再碰它。
         // 稍等一下再预热，别和首帧渲染抢 CPU/GC。

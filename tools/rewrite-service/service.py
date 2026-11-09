@@ -77,9 +77,23 @@ def _work(item):
 
     try:
         out = pipeline.run(item, log=log, on_stage=on_stage)
-        entry = store.finish_ok(item, out["approach"], out)
+        # 1.4.7.1 契约（与 F1 约定）：流水线可能带 unverified/reason 回来——
+        # 表示「结果照发，但检查没过/没复核」。这里照常 finish_ok（不能当失败丢掉），
+        # 只把标记显式落到队列与结果记录，并在日志里留痕，方便面板和手机端提示。
+        unverified = bool(out.get("unverified"))
+        reason = str(out.get("reason") or "")
+        meta = {
+            "method": out.get("method") or "",
+            "scores": out.get("scores") or {},
+            "attempts": out.get("attempts", 1),
+            "unverified": unverified,
+            "reason": reason,
+        }
+        entry = store.finish_ok(item, out["approach"], meta)
         if entry:
             log("[%s] 完成 seq=%s rev=%s %s" % (item["word"], entry["seq"], entry["rev"], out["timings"]))
+            if unverified:
+                log("[%s] 未复核（unverified）：%s" % (item["word"], reason or "流水线未给原因"))
     except providers.ProviderError as exc:
         store.finish_fail(item, str(exc))
         log("[%s] 失败（模型调用）：%s" % (item["word"], exc))

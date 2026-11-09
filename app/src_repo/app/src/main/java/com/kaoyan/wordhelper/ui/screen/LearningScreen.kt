@@ -155,6 +155,8 @@ fun LearningScreen(
     val liveApproach by viewModel.liveApproach.collectAsStateWithLifecycle()
     // 方法标签也订阅库：重写落地后胶囊立刻换，不等下一次翻面
     val liveMethod by viewModel.liveMethod.collectAsStateWithLifecycle()
+    // 1.4.7.1：这版思路是不是「没复核」——同样盯库，角标跟着卡背正文一起换
+    val liveApproachReview by viewModel.liveApproachReview.collectAsStateWithLifecycle()
     val currentIndex by viewModel.currentIndex.collectAsStateWithLifecycle()
     val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
     val isInNewWords by viewModel.isInNewWords.collectAsStateWithLifecycle()
@@ -584,6 +586,10 @@ fun LearningScreen(
                                             },
                                             starEnabled = !isAnswering,
                                             cardBackConfig = cardBackConfig,
+                                            // 1.4.7.1：服务端标了 unverified 的那版思路，卡背挂个中性角标；
+                                            // 点角标展开原因。没这个字段（老服务端）就是 false，什么都不显示。
+                                            unverified = liveApproachReview.unverified,
+                                            unverifiedReason = liveApproachReview.reason,
                                             // 1.4.3.1：重写条挪进卡背底部，只在背面出现；
                                             // live = 背面当前可见，翻回正面时按钮跟着禁用，不接住正面的触摸。
                                             backActions = { live ->
@@ -1639,6 +1645,10 @@ private fun WordCard(
     onFlipChanged: (Boolean) -> Unit,
     starEnabled: Boolean,
     cardBackConfig: CardBackConfig,
+    /** 1.4.7.1：这版思路没复核（服务端 unverified）。false = 什么都不显示。 */
+    unverified: Boolean = false,
+    /** 未复核的原因；点角标时展开它。空 = 只有角标没有说明。 */
+    unverifiedReason: String? = null,
     backActions: (@Composable (Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -1852,6 +1862,8 @@ private fun WordCard(
                             backWordStyle = backWordStyle,
                             scrollState = backContentScrollState,
                             interactive = backVisible,
+                            unverified = unverified,
+                            unverifiedReason = unverifiedReason,
                             backActions = backActions
                         )
                     }
@@ -2021,6 +2033,9 @@ private fun CardBackBlocks(
     backWordStyle: TextStyle,
     scrollState: androidx.compose.foundation.ScrollState,
     interactive: Boolean,
+    /** 1.4.7.1：这版思路没复核时，MEMORY 区块标题旁挂一个中性角标。 */
+    unverified: Boolean = false,
+    unverifiedReason: String? = null,
     backActions: (@Composable (Boolean) -> Unit)? = null
 ) {
     Column(
@@ -2040,7 +2055,9 @@ private fun CardBackBlocks(
                 block = block,
                 word = word,
                 displayWord = displayWord,
-                backWordStyle = backWordStyle
+                backWordStyle = backWordStyle,
+                unverified = unverified,
+                unverifiedReason = unverifiedReason
             )
         }
         // 1.4.3.2：重写区放在正文最后，跟着滚动；用分隔线把「内容」和「操作」分开。
@@ -2073,7 +2090,9 @@ private fun CardBackBlockView(
     block: CardBackBlock,
     word: Word,
     displayWord: String,
-    backWordStyle: TextStyle
+    backWordStyle: TextStyle,
+    unverified: Boolean = false,
+    unverifiedReason: String? = null
 ) {
     val overrideColor = block.style.color.resolveCardBackColor()
     val bodyStyle = block.style.size
@@ -2131,7 +2150,10 @@ private fun CardBackBlockView(
             title = block.resolvedTitle,
             content = word.approach,
             titleColor = overrideColor ?: MaterialTheme.colorScheme.primary,
-            contentStyle = MaterialTheme.typography.bodyMedium.scaledBy(bodyStyle)
+            contentStyle = MaterialTheme.typography.bodyMedium.scaledBy(bodyStyle),
+            // 角标只挂在「思路」这一块：unverified 说的是这一版重写结果，不是搭配。
+            unverified = unverified,
+            unverifiedReason = unverifiedReason
         )
 
         CardBackBlockType.COLLOCATIONS -> WordMemorySection(
@@ -2287,21 +2309,51 @@ private fun WordMemorySection(
     content: String,
     modifier: Modifier = Modifier,
     titleColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary,
-    contentStyle: TextStyle = MaterialTheme.typography.bodyMedium
+    contentStyle: TextStyle = MaterialTheme.typography.bodyMedium,
+    /** 1.4.7.1：这段内容是「没复核」的产出（只有 MEMORY 区块会传 true）。 */
+    unverified: Boolean = false,
+    /** 未复核的原因；点角标展开，空 = 只有角标没有说明。 */
+    unverifiedReason: String? = null
 ) {
     val lines = remember(content) {
         content.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
     }
     if (lines.isEmpty()) return
+    // 换版（正文或原因变了）自动收起：别把上一版的原因留在新正文旁边。
+    var reasonExpanded by remember(content, unverifiedReason, unverified) { mutableStateOf(false) }
+    val reason = unverifiedReason?.takeIf { it.isNotBlank() }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        if (!title.isNullOrEmpty()) {
+        if (!title.isNullOrEmpty() || unverified) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (!title.isNullOrEmpty()) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = titleColor
+                    )
+                }
+                if (unverified) {
+                    UnverifiedChip(
+                        hasReason = reason != null,
+                        expanded = reasonExpanded,
+                        onClick = { reasonExpanded = !reasonExpanded }
+                    )
+                }
+            }
+        }
+        // 原因跟在标题行下面、正文上面：点开就看到，不打断读思路。
+        if (unverified && reasonExpanded && reason != null) {
             Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = titleColor
+                text = reason,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Surface(
@@ -2320,6 +2372,46 @@ private fun WordMemorySection(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 「未复核」角标（1.4.7.1）。
+ *
+ * 刻意用中性色（onSurface 低透明度底 + onSurfaceVariant 字）、小字号、药丸形：
+ * 它只是说「这版没走完复核」，不是错误，不能用 error 色去吓人。
+ * 有原因时点一下展开 / 收起；没有原因就保持静态，别装作能点。
+ */
+@Composable
+private fun UnverifiedChip(hasReason: Boolean, expanded: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+        modifier = Modifier.clickable(
+            enabled = hasReason,
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onClick
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "未复核",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (hasReason) {
+                Text(
+                    text = if (expanded) "收起" else "原因",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
             }
         }
     }

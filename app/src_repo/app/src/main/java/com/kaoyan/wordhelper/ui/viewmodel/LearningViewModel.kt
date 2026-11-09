@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.kaoyan.wordhelper.KaoyanWordApp
 import com.kaoyan.wordhelper.data.entity.Book
 import com.kaoyan.wordhelper.data.model.AIContentType
+import com.kaoyan.wordhelper.data.model.ApproachReview
 import com.kaoyan.wordhelper.data.model.CardBackConfig
 import com.kaoyan.wordhelper.data.entity.Progress
 import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
@@ -257,6 +258,20 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             else rewriteRepository.observeMethod(word.id, bookId)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * 1.4.7.1：当前这版思路的「未复核」标记（服务端 unverified + reason）。
+     * 和 [liveApproach] 用同一套按书回退规则，角标永远跟着正文走；
+     * EMPTY = 已复核 / 老数据 / 老服务端，卡背不显示角标。
+     */
+    val liveApproachReview: StateFlow<ApproachReview> = combine(activeBook, _currentWord) { book, word ->
+        (book?.id ?: 0L) to word
+    }
+        .flatMapLatest { (bookId, word) ->
+            if (word == null) flowOf(ApproachReview.EMPTY)
+            else rewriteRepository.observeApproachReview(word.id, bookId)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ApproachReview.EMPTY)
 
     /**
      * 1.4.6.1：当前词在当前书里、**当前这一版思路**上的 👍/👎（null = 这一版还没表过态）。

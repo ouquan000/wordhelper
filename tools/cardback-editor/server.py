@@ -100,10 +100,15 @@ TOKEN_HEADER = "X-Cardback-Token"
 TOKEN_LENGTH = 16  # secrets.token_urlsafe(16) → 22 个字符
 TOKEN = ""  # 启动时填；见 ensure_token()
 
-# ---- 限流：只卡「会调模型 / 会改数据」的写请求，读接口不限（手机轮询不受影响）。
+# ---- 限流：只卡「会调模型 / 会改数据」的请求，普通读接口不限（手机轮询不受影响）。
 # (窗口秒数, 窗口内次数)；本机也计，否则额度漏了照样能刷穿。
+# 鉴权在限流之前：401 不消耗额度，隧道下别人拿不到口令也打不空你的预算。
 RATE_BUDGETS = ((60, 20), (86400, 200))
 RATE_LIMITED_PATHS = ("/api/publish", "/api/rollback")
+# /sync/* 单独一档：App 约 30 秒自动同步一次，还要容忍补发突发。
+# 120/min = 每 0.5 秒一次，正常同步（约 2 次/分钟）远远够；20000/天 ≈ 13.9 次/分钟。
+SYNC_RATE_BUDGETS = ((60, 120), (86400, 20000))
+SYNC_RATE_LIMITED_PATHS = ("/sync/push", "/sync/pull")
 _RATE_LOCK = threading.Lock()
 _RATE_HITS = {}
 
@@ -272,41 +277,78 @@ def _origin_ok(origin):
     return _origin_host_ok(parts.hostname)
 
 
+def _rate_budget_for(method, path):
+    """返回 (桶名, 预算)；不需要限流时返回 (None, None)。
+
+    桶分开记，互不挤占：写接口 20/分钟，/sync/* 120/分钟。
+    记录页 5 秒轮询的 /rewrite/status、/rewrite/records 不是 POST /rewrite*，不算。
+    """
+    if (method == "POST" and path.startswith("/rewrite")) or path in RATE_LIMITED_PATHS:
+        return "write", RATE_BUDGETS
+    if path in SYNC_RATE_LIMITED_PATHS:
+        return "sync", SYNC_RATE_BUDGETS
+    return None, None
+
+
 def _rate_limited(method, path):
-    """要记一笔限流的请求：会改数据或触发模型的写请求（记录页的只读轮询不算）。"""
-    return (method == "POST" and path.startswith("/rewrite")) or path in RATE_LIMITED_PATHS
+    """兼容旧调用：这个请求要不要记一笔限流。"""
+    bucket, _budgets = _rate_budget_for(method, path)
+    return bucket is not None
 
 
 def _prune_rate(now):
     for peer in list(_RATE_HITS):
-        windows = _RATE_HITS[peer]["windows"]
-        if all(
-            now - (slot[0] + RATE_BUDGETS[i][0]) > RATE_BUDGETS[i][0]
-            for i, slot in enumerate(windows)
-        ):
+        buckets = _RATE_HITS[peer].get("buckets", {})
+        idle = True
+        for bucket in list(buckets):
+            slot_data = buckets[bucket]
+            budgets = slot_data["budgets"]
+            windows = slot_data["windows"]
+            if any(
+                now - (slot[0] + window) <= window
+                for slot, (window, _limit) in zip(windows, budgets)
+            ):
+                idle = False
+                break
+            buckets.pop(bucket, None)
+        if idle or not buckets:
             _RATE_HITS.pop(peer, None)
 
 
-def rate_limit_take(peer, now=None):
-    """按 IP 记一笔。返回 (ok, retry_after_seconds, 窗口名)。"""
+def reset_rate_limits():
+    """清空限流计数（测试/排障用；运行中也能安全调用）。"""
+    with _RATE_LOCK:
+        _RATE_HITS.clear()
+
+
+def rate_limit_take(peer, now=None, budgets=None, bucket="default"):
+    """按 IP + 桶记一笔。返回 (ok, retry_after_seconds, 窗口名)。"""
     now = time.time() if now is None else now
+    budgets = RATE_BUDGETS if budgets is None else budgets
     with _RATE_LOCK:
         if len(_RATE_HITS) > 256:
             _prune_rate(now)
         entry = _RATE_HITS.get(peer)
         if entry is None:
-            entry = {"windows": [[0, 0] for _ in RATE_BUDGETS]}
+            entry = {"buckets": {}}
             _RATE_HITS[peer] = entry
-        for index, (window, limit) in enumerate(RATE_BUDGETS):
-            slot = entry["windows"][index]
+        slot_data = entry["buckets"].get(bucket)
+        if slot_data is None:
+            slot_data = {
+                "budgets": budgets,
+                "windows": [[0, 0] for _ in budgets],
+            }
+            entry["buckets"][bucket] = slot_data
+        for index, (window, limit) in enumerate(budgets):
+            slot = slot_data["windows"][index]
             start = int(now // window) * window
             if slot[0] != start:
                 slot[0] = start
                 slot[1] = 0
             if slot[1] >= limit:
                 return False, max(1, int(start + window - now)), ("分钟" if window < 3600 else "天")
-        for index, _budget in enumerate(RATE_BUDGETS):
-            entry["windows"][index][1] += 1
+        for index, _budget in enumerate(budgets):
+            slot_data["windows"][index][1] += 1
         return True, 0, ""
 
 
@@ -916,26 +958,33 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def _guard(self, method, path):
-        """返回 True = 已经回包拒绝了，路由别再走。"""
-        # 只掐「会改数据 / 会触发模型」的：记录页 5 秒轮询 /rewrite/status 和 /rewrite/records，
-        # 把它们也算进 20 次/分钟会把自己的页面 429 掉。
-        if _rate_limited(method, path):
-            ok, retry_after, window = rate_limit_take(self._peer())
-            if not ok:
-                self._reject(
-                    429,
-                    "rate_limited",
-                    "请求太密：单 IP 每分钟 %d 次 / 每天 %d 次，%d 秒后再试"
-                    % (RATE_BUDGETS[0][1], RATE_BUDGETS[1][1], retry_after),
-                    extra_headers={"Retry-After": str(retry_after)},
-                )
-                return True
+        """返回 True = 已经回包拒绝了，路由别再走。
+
+        顺序是刻意的：**先鉴权，后限流**。
+        隧道回源时所有请求的 TCP peer 都是 127.0.0.1，若先记额度，没口令的人
+        随便打几下就能把本机 200 次/天的额度耗光。先 401 就能让未授权请求
+        一个计数都不花；带上口令之后仍按每 IP 的额度限流。
+        """
         if not self._is_local() and not _token_ok(self.headers.get(TOKEN_HEADER, "")):
             self._reject(401, "token_required", "核对口令")
             return True
         if method == "POST" and not self._post_origin_ok():
             self._reject(403, "origin_rejected", "只接受本机或局域网页面发起的写请求")
             return True
+        bucket, budgets = _rate_budget_for(method, path)
+        if bucket is not None:
+            ok, retry_after, window = rate_limit_take(
+                self._peer(), budgets=budgets, bucket=bucket
+            )
+            if not ok:
+                self._reject(
+                    429,
+                    "rate_limited",
+                    "请求太密：单 IP 每分钟 %d 次 / 每天 %d 次，%d 秒后再试（%s额度）"
+                    % (budgets[0][1], budgets[1][1], retry_after, window),
+                    extra_headers={"Retry-After": str(retry_after)},
+                )
+                return True
         return False
 
     def _reject(self, status, code, hint, extra_headers=None):
@@ -1029,7 +1078,7 @@ class Handler(BaseHTTPRequestHandler):
         - 只报版本 / 协议 / 能力 / 进程信息；**不含口令**，也不把口令写进日志；
         - 鉴权走 do_GET 里那条 _guard，和别的接口同一套：loopback 且无 CF 头免票，
           其余必须带 X-Cardback-Token（App 走隧道时就是这一支）。
-        - 不参与限流：_rate_limited() 只管写请求，这里 GET 天然不受影响。
+        - 不参与限流：_rate_budget_for() 只认写接口和 /sync/*，/health 不在里面。
         """
         self._send_json(
             {

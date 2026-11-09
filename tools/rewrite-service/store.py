@@ -73,6 +73,10 @@ def _public(entry):
         for key in ("seq", "word", "rev", "approach", "method", "prev", "updatedAt", "status", "clientId")
     }
     out["model"] = entry.get("model", "")
+    # 1.4.7.1：流水线自报「没复核」（unverified=true）时，结果照发但必须带标记。
+    # 旧结果没有这两个字段 → 默认 false / 空串，App 端按已复核处理，兼容。
+    out["unverified"] = bool(entry.get("unverified"))
+    out["reason"] = str(entry.get("reason") or "")
     return out
 
 
@@ -253,7 +257,9 @@ class Store:
                 "instruction": str(raw.get("instruction") or ""),
                 # 书目在手机上，这边只转存名字：记录页靠它筛选（1.4.4）
                 "book": str(raw.get("book") or "").strip()[:60],
-                "currentApproach": [str(x) for x in (raw.get("currentApproach") or [])][:3],
+                # 改稿/评委要看到完整上一版（推导 3–5 步）；App 端上报的是按行拆分的全文，
+                # 旧的 [:3] 会把第 4、5 步截掉，评委只看到前 3 步。（1.4.7.1）
+                "currentApproach": [str(x) for x in (raw.get("currentApproach") or [])][:5],
                 "model": model,
                 "markedAt": str(raw.get("markedAt") or "") or _now(),
                 "state": "pending",
@@ -310,6 +316,8 @@ class Store:
                 return None
             record = self.results.setdefault(live["word"], {"word": live["word"], "entries": []})
             prev = _current(record)
+            unverified = bool(meta.get("unverified"))
+            reason = str(meta.get("reason") or "")[:400]
             entry = {
                 "seq": self._next_seq(),
                 "word": live["word"],
@@ -323,10 +331,20 @@ class Store:
                 "clientId": live["clientId"],
                 "scores": meta.get("scores") or {},
                 "attempts": meta.get("attempts", 1),
+                "unverified": unverified,
+                "reason": reason,
             }
             record["entries"] = _trim(record["entries"] + [entry])
             self._save_word(live["word"])
-            live.update(state="done", stage="done", error="", updatedAt=entry["updatedAt"], resultSeq=entry["seq"])
+            live.update(
+                state="done",
+                stage="done",
+                error="",
+                updatedAt=entry["updatedAt"],
+                resultSeq=entry["seq"],
+                unverified=unverified,
+                reason=reason,
+            )
             self._prune()
             self._save_queue()
             self._cond.notify_all()
@@ -361,7 +379,8 @@ class Store:
             }
             record["entries"] = _trim(record["entries"] + [entry])
             self._save_word(live["word"])
-            live.update(state="failed", stage="failed", error=error[:400], updatedAt=entry["updatedAt"])
+            live.update(state="failed", stage="failed", error=error[:400], updatedAt=entry["updatedAt"],
+                        unverified=False, reason="")
             self._prune()
             self._save_queue()
             self._cond.notify_all()
@@ -389,6 +408,8 @@ class Store:
                 return False
             hit.update(state="pending", stage="queued", error="", updatedAt=_now())
             hit.pop("superseded", None)
+            hit.pop("unverified", None)
+            hit.pop("reason", None)
             self._save_queue()
             self._cond.notify_all()
             return True
@@ -409,6 +430,8 @@ class Store:
                     "stage": stage_of(item),
                     "error": item.get("error") or item.get("note") or "",
                     "updatedAt": item.get("updatedAt", ""),
+                    "unverified": bool(item.get("unverified")),
+                    "reason": str(item.get("reason") or ""),
                 }
                 (active if state in ("pending", "running") else finished).append(row)
             finished.sort(key=lambda r: r["updatedAt"], reverse=True)
@@ -474,6 +497,8 @@ class Store:
                         "method": (entry or {}).get("method") or "",
                         "approach": list(entry["approach"]) if ok else [],
                         "prev": list((entry or {}).get("prev") or item.get("currentApproach") or []),
+                        "unverified": bool((entry or item).get("unverified")),
+                        "reason": str((entry or item).get("reason") or ""),
                     }
                 )
             # 书目聚合按「全部记录」算，不看当前筛哪本 —— 否则选完一本，下拉里就只剩它自己

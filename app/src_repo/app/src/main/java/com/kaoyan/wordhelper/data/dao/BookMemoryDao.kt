@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.kaoyan.wordhelper.data.entity.BookMemory
+import com.kaoyan.wordhelper.data.model.ApproachReview
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -22,6 +23,16 @@ interface BookMemoryDao {
     /** 这本书当前思路的版本号；反馈要绑在用户真正看到的那一版上。 */
     @Query("SELECT rev FROM tb_book_memory WHERE word_id = :wordId AND book_id = :bookId LIMIT 1")
     fun observeRevForBook(wordId: Long, bookId: Long): Flow<Int?>
+
+    /**
+     * 1.4.7.1：按书那份的「正文 + 未复核 + 原因」投影，语义同 [WordMemoryDao.observeApproachReview]。
+     * 没这一行时返回 null —— 调用方回落到全局那份，别把空当「已复核」。
+     */
+    @Query(
+        """SELECT approach, unverified, unverified_reason AS reason
+           FROM tb_book_memory WHERE word_id = :wordId AND book_id = :bookId LIMIT 1"""
+    )
+    fun observeApproachReviewForBook(wordId: Long, bookId: Long): Flow<ApproachReview?>
 
     @Query("SELECT method FROM tb_book_memory WHERE word_id = :wordId AND book_id = :bookId LIMIT 1")
     suspend fun methodForBook(wordId: Long, bookId: Long): String?

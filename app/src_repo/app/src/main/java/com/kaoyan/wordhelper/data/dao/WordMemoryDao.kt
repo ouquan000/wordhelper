@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.kaoyan.wordhelper.data.entity.WordMemory
+import com.kaoyan.wordhelper.data.model.ApproachReview
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -30,6 +31,16 @@ interface WordMemoryDao {
     /** 全局那份思路的版本号；这本书没有自己的版本时，反馈绑它。 */
     @Query("SELECT rev FROM tb_word_memory WHERE word_id = :wordId LIMIT 1")
     fun observeRev(wordId: Long): Flow<Int?>
+
+    /**
+     * 1.4.7.1：卡背「未复核」角标一次拿到正文 + 标记 + 原因（投影成 [ApproachReview]），
+     * 省得为一个角标挂三条 Flow 再手动对齐。没有这一行时返回 null。
+     */
+    @Query(
+        """SELECT approach, unverified, unverified_reason AS reason
+           FROM tb_word_memory WHERE word_id = :wordId LIMIT 1"""
+    )
+    fun observeApproachReview(wordId: Long): Flow<ApproachReview?>
 
     /** 被用户重写过的词，种子重新导入时必须跳过，否则会把重写冲掉。 */
     @Query("SELECT word_id FROM tb_word_memory WHERE source = 'user'")

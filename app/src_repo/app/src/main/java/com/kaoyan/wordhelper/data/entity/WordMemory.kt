@@ -50,7 +50,21 @@ data class WordMemory(
      * 只够撤销一次；null = 没有可回滚的方法（老数据、从没重写过）。
      */
     @ColumnInfo(name = "prev_method")
-    val prevMethod: String? = null
+    val prevMethod: String? = null,
+    /**
+     * 1.4.7.1（DB 21）：这一版思路是不是「没复核」的产出。
+     *
+     * 电脑端重写链路里有时会因为超时/兜底而交出一版没走完自检的思路，服务端会在结果条目上
+     * 带 `unverified: true` + `reason`。这里把那个标记跟着思路一起落库，卡背上挂一个中性角标，
+     * 让人知道「这版还没复核过」，而不是靠颜色吓人。
+     *
+     * 老服务端/老记录没有这个字段 → 一律 false（`dto.unverified == true` 兜底），不会误报。
+     */
+    @ColumnInfo(name = "unverified", defaultValue = "0")
+    val unverified: Boolean = false,
+    /** 未复核的原因（服务端 reason），空 = 没有更多说明。和 [unverified] 同生同灭。 */
+    @ColumnInfo(name = "unverified_reason")
+    val unverifiedReason: String? = null
 ) {
     companion object {
         const val SOURCE_SEED = "seed"

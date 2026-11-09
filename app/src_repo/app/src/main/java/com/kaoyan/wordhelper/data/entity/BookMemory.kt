@@ -47,5 +47,14 @@ data class BookMemory(
      * 真正生效的是这份按书存的；[WordMemory.prevMethod] 只在 bookId=0 的老路径上用。
      */
     @ColumnInfo(name = "prev_method")
-    val prevMethod: String? = null
+    val prevMethod: String? = null,
+    /**
+     * 1.4.7.1（DB 21）：这一版思路是不是「没复核」的产出，语义同 [WordMemory.unverified]。
+     * 真正生效的是这份按书存的；[WordMemory.unverified] 只在 bookId=0 的老路径上用。
+     */
+    @ColumnInfo(name = "unverified", defaultValue = "0")
+    val unverified: Boolean = false,
+    /** 未复核的原因（服务端 reason），空 = 没有更多说明。和 [unverified] 同生同灭。 */
+    @ColumnInfo(name = "unverified_reason")
+    val unverifiedReason: String? = null
 )

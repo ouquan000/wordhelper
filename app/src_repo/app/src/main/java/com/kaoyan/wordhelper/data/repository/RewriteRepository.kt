@@ -16,6 +16,7 @@ import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
 import com.kaoyan.wordhelper.data.entity.RewriteSkippedResult
 import com.kaoyan.wordhelper.data.entity.RewriteStatus
 import com.kaoyan.wordhelper.data.entity.WordMemory
+import com.kaoyan.wordhelper.data.model.ApproachReview
 import com.kaoyan.wordhelper.data.model.ApproachRevision
 import com.kaoyan.wordhelper.data.model.RewriteModel
 import com.kaoyan.wordhelper.data.model.RewriteModels
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -277,6 +279,26 @@ class RewriteRepository(
             .combine(global) { own, fallback -> own?.takeIf { it.isNotBlank() } ?: fallback }
     }
 
+    /**
+     * 1.4.7.1：卡背「未复核」角标读的流。
+     *
+     * 回退规则和 [observeApproach] 完全一致：这本书有非空正文就用它，否则用全局那份。
+     * 角标必须跟着正文走，否则会错位成「正文是全局的、标记却是这本书上一版的」。
+     * 没有正文 / 老数据 / 老服务端不带字段 → unverified=false，界面就不显示角标。
+     */
+    fun observeApproachReview(wordId: Long, bookId: Long = 0L): Flow<ApproachReview> {
+        val global = wordMemoryDao.observeApproachReview(wordId)
+        if (bookId <= 0L) {
+            return global.map { ApproachReview.resolve(null, it) }
+        }
+        return combine(
+            bookMemoryDao.observeApproachReviewForBook(wordId, bookId),
+            global
+        ) { own, fallback ->
+            ApproachReview.resolve(own, fallback)
+        }
+    }
+
     /** 这本书当前生效的方法标签（用于重写完后原地换胶囊）。 */
     suspend fun methodOf(wordId: Long, bookId: Long = 0L): String {
         if (bookId > 0L) {
@@ -346,6 +368,10 @@ class RewriteRepository(
                     prevMethod = null,
                     rev = nextRev,
                     source = if (nextRev == 0) WordMemory.SOURCE_SEED else WordMemory.SOURCE_USER,
+                    // 1.4.7.1：撤销回去的是**更早那一版**，它没复核与否无从得知。
+                    // 角标只描述「当前这版」，退回去还挂着新版的「未复核」就是假消息，所以清掉。
+                    unverified = false,
+                    unverifiedReason = null,
                     updatedAt = System.currentTimeMillis()
                 )
             )
@@ -365,6 +391,9 @@ class RewriteRepository(
                 rev = nextRev,
                 // 退回到种子原文时把归属交还给种子，后续种子升级仍能覆盖它
                 source = if (nextRev == 0) WordMemory.SOURCE_SEED else WordMemory.SOURCE_USER,
+                // 1.4.7.1：同按书那份 —— 退回去的那版没复核与否不知道，角标不能跟着留。
+                unverified = false,
+                unverifiedReason = null,
                 updatedAt = System.currentTimeMillis()
             )
         )
@@ -743,6 +772,15 @@ class RewriteRepository(
             .takeIf { it.isNotEmpty() }
             ?: existing?.method.orEmpty()
 
+        // 1.4.7.1：这版思路是不是没复核。老服务端不带字段 → dto.unverified == null → false，
+        // 行为与升级前一模一样，不会凭空冒出角标。原因只在「确实未复核」时才有意义。
+        val unverified = dto.unverified == true
+        val unverifiedReason = if (unverified) {
+            dto.reason?.trim()?.takeIf { it.isNotEmpty() }
+        } else {
+            null
+        }
+
         // 1.4.5：这条标记是在哪本书里点的，就只改哪本书的卡背。
         // bookId=0 是老队列/换机恢复，沿用旧行为写全局那份。
         val bookId = mark?.bookId ?: 0L
@@ -750,7 +788,15 @@ class RewriteRepository(
             val own = bookMemoryDao.getForBook(wordId, bookId)
             // 1.4.6 幂等：同一行结果被重拉一遍（游标没推进 / 服务端重发）时，
             // 不能把「上一版」覆盖成刚写进去的这版 —— 那样撤销只会退到一模一样的文字。
+            // 1.4.7.1：文字没变也要把未复核标记刷新一下，否则先到的旧结果会让角标一直不出现。
             if (own?.approach == approach) {
+                if (own != null && (own.unverified != unverified ||
+                        own.unverifiedReason != unverifiedReason)
+                ) {
+                    bookMemoryDao.upsert(
+                        own.copy(unverified = unverified, unverifiedReason = unverifiedReason)
+                    )
+                }
                 queueDao.updateStatus(wordId, RewriteStatus.DONE, null, now)
                 return wordId
             }
@@ -770,7 +816,9 @@ class RewriteRepository(
                     rev = dto.rev ?: ((own?.rev ?: 0) + 1),
                     prevApproach = (own?.approach?.takeIf { it.isNotBlank() } ?: prev)
                         .takeIf { it.isNotBlank() },
-                    prevMethod = previousMethod
+                    prevMethod = previousMethod,
+                    unverified = unverified,
+                    unverifiedReason = unverifiedReason
                 )
             )
             queueDao.updateStatus(wordId, RewriteStatus.DONE, null, now)
@@ -778,6 +826,13 @@ class RewriteRepository(
         }
 
         if (existing?.approach == approach) {
+            if (existing != null && (existing.unverified != unverified ||
+                    existing.unverifiedReason != unverifiedReason)
+            ) {
+                wordMemoryDao.upsert(
+                    existing.copy(unverified = unverified, unverifiedReason = unverifiedReason)
+                )
+            }
             queueDao.updateStatus(wordId, RewriteStatus.DONE, null, now)
             return wordId
         }
@@ -792,7 +847,9 @@ class RewriteRepository(
                 prevApproach = prev.takeIf { it.isNotBlank() },
                 // 重写出来的是「哪一招」也一起换掉；电脑端没给就保留原标签，别把卡背标签弄空。
                 method = method,
-                prevMethod = existing?.method?.takeIf { it.isNotBlank() }
+                prevMethod = existing?.method?.takeIf { it.isNotBlank() },
+                unverified = unverified,
+                unverifiedReason = unverifiedReason
             )
         )
         queueDao.updateStatus(wordId, RewriteStatus.DONE, null, now)
@@ -1245,7 +1302,14 @@ class RewriteRepository(
         val prev: List<String>?,
         val method: String?,
         val status: String?,
-        val error: String?
+        val error: String?,
+        /**
+         * 1.4.7.1：这版思路「没复核」（自检没跑完 / 兜底产出）。老服务端不带这个字段，
+         * Gson 反序列化出来是 null —— 判定一律写 `== true`，绝不当成「未复核」误报。
+         */
+        val unverified: Boolean? = null,
+        /** 未复核的原因（服务端 reason），可能没有；空白按没有处理。 */
+        val reason: String? = null
     )
 
     private data class StatusPage(val items: List<StatusItem>?)

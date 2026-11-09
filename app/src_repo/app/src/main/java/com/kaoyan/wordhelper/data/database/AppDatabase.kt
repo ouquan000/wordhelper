@@ -77,7 +77,7 @@ import kotlinx.coroutines.launch
         RewriteFeedback::class,
         RewriteSkippedResult::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -137,7 +137,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_16_17,
                     MIGRATION_17_18,
                     MIGRATION_18_19,
-                    MIGRATION_19_20
+                    MIGRATION_19_20,
+                    MIGRATION_20_21
                 )
                 .build()
         }
@@ -889,6 +890,23 @@ abstract class AppDatabase : RoomDatabase() {
                     "needs_reinsert",
                     "INTEGER NOT NULL DEFAULT 0"
                 )
+            }
+        }
+
+        /**
+         * 1.4.7.1（DB 21）：记下「这版思路没复核」。
+         *
+         * 服务端重写结果可能带 `unverified: true` + `reason`（自检没跑完/兜底产出）。标记要跟着
+         * 思路一起落库，否则关掉重开 App 就不知道这版是没复核的了。两张思路表都加，撤销时清掉。
+         * 默认 0 = 已复核，老数据不受影响；ALTER 走 ensureColumnExists，重复迁移/已有列都安全。
+         */
+        @VisibleForTesting
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureColumnExists(db, "tb_word_memory", "unverified", "INTEGER NOT NULL DEFAULT 0")
+                ensureColumnExists(db, "tb_word_memory", "unverified_reason", "TEXT")
+                ensureColumnExists(db, "tb_book_memory", "unverified", "INTEGER NOT NULL DEFAULT 0")
+                ensureColumnExists(db, "tb_book_memory", "unverified_reason", "TEXT")
             }
         }
 

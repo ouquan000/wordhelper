@@ -75,6 +75,16 @@ class SyncRepository(
     private var lastAutoSyncAt = 0L
 
     /**
+     * 1.4.7.1：最近一次 [syncOnce] 跑完的时间戳（成功失败都算）。
+     *
+     * 后台定时同步（[com.kaoyan.wordhelper.sync.BackgroundSync]）读它做节流：
+     * 用户刚切回前台顺手同步过一轮，后台任务就没必要隔几分钟再拉一遍同样的数据。
+     */
+    @Volatile
+    var lastSyncAtMs: Long = 0L
+        private set
+
+    /**
      * 1.4.7：被 429 限流到什么时候（epoch ms）。
      *
      * 服务端的窗口是「单 IP 每分钟 20 次 / 每天 200 次」，超了要等窗口过去。
@@ -433,14 +443,41 @@ class SyncRepository(
         return PullApply(applied, skipped)
     }
 
+    /**
+     * 有没有配置电脑地址（手填的或上次成功过的都算）。
+     *
+     * 给后台定时同步判断「该不该挂这个任务」用：没地址时后台跑也只是立刻失败，白耗电。
+     * 纯读，不走 [config]：那边为了轮试地址会重置换地址后的游标，不该被一句询问触发。
+     */
+    suspend fun hasAddress(): Boolean {
+        val settings = settingsRepository?.settingsFlow?.first() ?: return false
+        return CardBackAddress.candidates(
+            active = activeOrigin,
+            current = settings.cardBackUrl,
+            lastGood = settings.cardBackLastGoodUrl
+        ).isNotEmpty()
+    }
+
     // ---- 一轮完整同步 ----
+
+    /**
+     * 跑一轮同步（对外唯一入口）。
+     *
+     * 1.4.7.1：只在这里记「最近同步时间」，给后台定时任务做节流用；
+     * 真正的 pull→push→pull 在 [syncOnceLocked] 里，加锁也在那儿，行为与之前完全一样。
+     */
+    suspend fun syncOnce(): Result<String> = try {
+        syncOnceLocked()
+    } finally {
+        lastSyncAtMs = System.currentTimeMillis()
+    }
 
     /**
      * pull → push → pull。
      * 先拉：对面可能有比本地新的结果；再推：把本地刚学的发出去；最后再拉一次，
      * 把「自己刚推上去的」在别的设备上的结果是同一份，顺手把服务端补的字段收回来。
      */
-    suspend fun syncOnce(): Result<String> = syncMutex.withLock {
+    private suspend fun syncOnceLocked(): Result<String> = syncMutex.withLock {
         // 1.4.7：同步前先问一句 /health（60 秒节流一次），状态页才有电脑端版本与能力可显示。
         // 探不到不阻塞：老服务端没有这个接口，真正的同步请求会拿到 404，由 call() 归档成 SERVER_TOO_OLD。
         config()?.let { probeHealth(it) }
