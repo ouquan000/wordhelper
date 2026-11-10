@@ -7,6 +7,15 @@
 - 上游 LICENSE 原样保留在 `app/src_repo/LICENSE`，本仓库的改动汇总见文末「本仓库改了什么」
 
 
+## 当前状态（2026-11-10）
+
+- **已交付**：tag `v1.4.7.1`（HEAD `2759518`），包 `dist/english-app-1.4.7.1.apk`，33,379,406 B，md5 `e1993c417d2f88fd01cbc1c6f981692b`，vc14 / 1.4.7.1 / DB21。
+- **两道闸**：功能闸 T1–T9 全 PASS；独立验收 89/100「可交付」。141 项单测全过。
+- **真机**：`10.103.216.69:5555` 已装 1.4.7.1；同步状态页「已连接」，实际连 `https://buying-rear-shaved-submitting.trycloudflare.com`，待发送 0。
+- **电脑端**：8765 在跑（PID 51580，2026-11-10 01:01:23 启动）；Quick Tunnel 同时在跑（临时地址，重启就变）。
+- **还没做**：named tunnel（固定域名，等用户本人登录 Cloudflare + 改 NS）、4G⇄WiFi 来回 / 电脑重启 / 24h soak 三项矩阵未验。
+- 交接见 [`HANDOFF-2026-11-10.md`](HANDOFF-2026-11-10.md)；更新公告见 [`docs/公告-1.4.7.1-大白话.md`](docs/公告-1.4.7.1-大白话.md)。
+
 ## 协作纪律
 
 1. **只说不做**：未确认不动产品代码、不装包、不发版。读代码、查资料、只读探测不用问。
@@ -327,15 +336,10 @@ export MSYS2_ARG_CONV_EXCL='*'
 - **1.4.7**：`/health` 版本/能力自报；同步状态页（连接、最后成功、待发送、下次重试、电脑端版本、立即重试、诊断复制）；429/`Retry-After` 指数退避；换地址游标归零（保存即清）；401/404 人话提示；电脑端口令轮换；真实 4G 经 Quick Tunnel 单程同步 PASS。
 - **1.4.7.1**：版本号 1.4.7.1 / vc14 / DB21；反馈闭环（评委看用户诉求、两段式通过、同方法硬闸、两轮不过按 unverified 交付并在卡片标「未复核 原因」）；后台同步 JobScheduler；服务端 401→403→429 顺序、`/sync/*` 独立限流、`sync_store` 原子写/坏文件重建/冲突返回；`_key` 真 NUL 修复。
 
-## 1.4.7 系列（远程同步 + 反馈闭环）
-
-- **1.4.7 远程同步专版**（按用户要求不 bump，显示仍 1.4.6.2 / vc13）：公网入口（Quick Tunnel 已实测 4G 单程同步）、一次配置连接串、`/health` 版本与能力握手、同步状态页（含「实际连接」）、429/Retry-After 指数退避、换地址即清游标、口令轮换。
-- **1.4.7.1 反馈闭环**：评测看得见用户原话（第 7 维「诉求落实」）、两段式通过（六维全 ≥8，或诉求 ≥8 且六维 ≥6 且无 0）、重试把用户原话当硬约束、两轮不过交付历史最佳并标「未复核」（App 里显示角标+原因）；后台 JobScheduler 同步（15 分钟）；DB 20→21。
-
-当前包：`dist/english-app-1.4.7.1.apk`，33,379,406 B，md5 `e1993c417d2f88fd01cbc1c6f981692b`，vc14 / 1.4.7.1 / DB21。
-> 回滚注意：DB 已升到 21，旧包（1.4.6.x）**不能覆盖安装回去**，Room 会拒绝降级；要回退只能先卸载或清 App 数据再装旧包（本机进度会丢）。
+当前包：`dist/english-app-1.4.7.1.apk`，33,379,406 B，md5 `e1993c41…`，vc14 / 1.4.7.1 / DB21。
+> 回滚注意：DB 已升到 21，旧包（1.4.6.x）**不能覆盖安装回去**；要回退只能先卸载或清 App 数据再装旧包（本机进度会丢）。
 1.4.6 与 1.4.6.1 没有单独 tag，`v1.4.6.2` 覆盖三版；141 项单测全过。
-完整交接与 1.4.7.1 计划见 [`HANDOFF.md`](HANDOFF.md) §15。
+交接见 [`HANDOFF-2026-11-10.md`](HANDOFF-2026-11-10.md)。
 
 ## 1.4.6 系列已交付（1.4.6 / 1.4.6.1 / 1.4.6.2）
 
@@ -347,9 +351,11 @@ export MSYS2_ARG_CONV_EXCL='*'
 
 ## 远程同步（1.4.7 已交付，公网 named tunnel 待接）
 
-> 现状：**1.4.7 起手机可以用公网地址同步**。Quick Tunnel 已实测 4G 单程同步通过；
-> 固定域名（named tunnel）还需要用户本人登录 Cloudflare、改 NS，步骤见
-> [`docs/runbook-remote-1.4.7.md`](docs/runbook-remote-1.4.7.md) 与
+> 现状：**手机现在就能用公网地址同步**。Quick Tunnel 已实测 4G 单程同步通过，
+> 当前地址 `https://buying-rear-shaved-submitting.trycloudflare.com`（临时的，电脑/隧道重启就变）；
+> 手机已切过去，状态页显示「已连接、实际连接该域名、待发送 0」。
+> 固定域名（named tunnel，`anki.ouquansdiary.cn`）还没接：需要用户本人登录 Cloudflare、授权、改 NS，
+> 步骤见 [`docs/runbook-remote-1.4.7.md`](docs/runbook-remote-1.4.7.md) 与
 > [`docs/cloudflare-onboarding-1.4.7.md`](docs/cloudflare-onboarding-1.4.7.md)。
 
 ### 目标
@@ -365,7 +371,7 @@ export MSYS2_ARG_CONV_EXCL='*'
 3. 手机「卡背结构地址」整行粘贴：`https://anki.ouquansdiary.cn#<token>`。
 4. 之后由 PC 守护负责 cloudflared 与 8765 的存活；App 记住「上次成功」地址。
 
-域名 `ouquansdiary.cn` 已买，但解析要等注册局恢复（1–2 个工作日）；Cloudflare 尚未登录、NS 未改。
+域名 `ouquansdiary.cn` 已买、实名已过、ServerHold 已解除、DNSPod 0 条解析记录；NS 仍指 DNSPod，Cloudflare 尚未登录。
 **到登录 / 2FA / 授权 / 改 NS 就停，等用户本人操作。**
 
 ### token 是什么
@@ -395,8 +401,9 @@ export MSYS2_ARG_CONV_EXCL='*'
 
 ## 版本号约定
 
-- 当前 `versionCode 13 / versionName 1.4.6.2`（DB 20：跨书 SRS 解耦 + 反馈绑思路版本 + 冷启动回插）
-- 上一版 `versionCode 12 / versionName 1.4.6.1`（同 tag；DB 19/20）
+- 当前 `versionCode 14 / versionName 1.4.7.1`（DB 21：未复核角标 + 后台同步）
+- 上一版 `versionCode 13 / versionName 1.4.6.2`（DB 20：1.4.7 按用户要求没 bump，显示仍 1.4.6.2）
+- 再上一版 `versionCode 12 / versionName 1.4.6.1`（同 tag；DB 19/20）
 - 再上一版 `versionCode 11 / versionName 1.4.6`（DB 18：词包 v2 + 跨书 SRS 解耦）
 - 再上一版 `versionCode 10 / versionName 1.4.5`（DB 17：翻面手感 + 整行口令 + 按书记忆 + 按书曲线 + 自动备份）
 - 再上一版 `versionCode 9 / versionName 1.4.4`（DB 16：方法标签 + 统计双视图 + 局域网同步 + 口令收口 + 提示词放宽）
@@ -404,5 +411,5 @@ export MSYS2_ARG_CONV_EXCL='*'
 - 再上一版 `versionCode 7 / versionName 1.4.3.1`（重写条进卡背 + 进度条 + 原地换文）
 - 再上一版 `versionCode 6 / versionName 1.4.3`（重写记忆思路）
 - 再上一版 `versionCode 5 / versionName 1.4.2`（卡背 JSON 清单 + 电脑端编辑器）
-- **下一次发版 `versionCode` +1（→14）**；内部验证包不要升号，同号覆盖安装即可
-- 数据库版本 20；17→18 加 `prev_method` / `tb_rewrite_skipped` / `tb_feedback`，18→19 反馈绑思路版本（`approach_rev`），19→20 冷启动回插（`needs_reinsert`）
+- **下一次发版 `versionCode` +1（→15）**；内部验证包不要升号，同号覆盖安装即可
+- 数据库版本 21；17→18 加 `prev_method` / `tb_rewrite_skipped` / `tb_feedback`，18→19 反馈绑思路版本（`approach_rev`），19→20 冷启动回插（`needs_reinsert`），20→21 未复核标记（`unverified` / `unverified_reason`）
