@@ -185,25 +185,6 @@ internal fun RewriteBar(
             )
         }
 
-        // 1.4.6.1：跳过从状态行的小字改成整行大按钮，和「重写思路」同宽同高、同样好点。
-        if (showSkip && mark != null && mark.status != RewriteStatus.DONE) {
-            OutlinedButton(
-                onClick = onSkip,
-                enabled = enabled,
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("rewrite_skip"),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = "跳过，先背下一个",
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1
-                )
-            }
-        }
-
         // 有标记才画进度；跑完/失败后保留最后一格（100% 或红条），换词时才清掉
         if (keepProgress && mark != null && (progress != null ||
                 mark.status == RewriteStatus.PENDING || mark.status == RewriteStatus.QUEUED)
