@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,7 +8,7 @@ plugins {
 }
 
 // 签名口令放本地 keystore.properties（已 gitignore，不入库）；缺失时用占位符。
-val keystoreProps = java.util.Properties().apply {
+val keystoreProps = Properties().apply {
     val f = file("keystore.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
