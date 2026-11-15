@@ -20,6 +20,7 @@ import com.kaoyan.wordhelper.data.model.DailyStatsAggregate
 import com.kaoyan.wordhelper.data.model.PronunciationSource
 import com.kaoyan.wordhelper.data.model.SpellingOutcome
 import com.kaoyan.wordhelper.data.model.StudyRating
+import com.kaoyan.wordhelper.data.model.WaitingReinsertPlacement
 import com.kaoyan.wordhelper.data.model.WaitingRewriteRestore
 import com.kaoyan.wordhelper.data.model.feedbackRatingForRevision
 import com.kaoyan.wordhelper.data.repository.AddToNewWordsSource
@@ -50,6 +51,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -102,7 +104,9 @@ private data class TooEasyUndoPayload(
     val wordId: Long,
     /** 1.4.6：进度按书独立，撤销只能回滚当时那本书。 */
     val bookId: Long,
-    val snapshots: List<Progress>
+    val snapshots: List<Progress>,
+    /** 1.4.7.2 W2：这张卡是不是「重写插回、还没背完」的欠卡；撤销要把它放回欠卡集合。 */
+    val wasPendingRewrite: Boolean = false
 )
 
 private data class QueueLoadParams(
@@ -137,6 +141,15 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     // 1.4.6.1 P0：进程重启后从 DB 补回来的等待词。只用于补注册监听和结果到达时插回，
     // 不能混进 waitingRewriteWords —— updateQueue 会把它算进剩余进度，造成重复计数。
     private val restoredWaitingRewriteWords = LinkedHashMap<Long, Word>()
+    // 1.4.7.2 W2：已合格、已排进队列、但用户还没作答的重写卡。
+    // 记忆里保存稳定槽位（当前卡之后第 2/3 张普通卡之后）：每次重建队列都按同一位置重排，
+    // 作答（清 needs_reinsert）时才移除，所以不会「插一次、下一次作答又被冲回原位」。
+    private val pendingReinsertWords = LinkedHashMap<Long, Word>()
+
+    private val pendingReinsertSlots = LinkedHashMap<Long, Int>()
+    // 这次 loadQueueForBook 是否由“当前卡刚被作答”触发：是则重写稿要前移一格，
+    // 不是（普通刷新/回前台）则保持原位。
+    private var currentConsumed = false
     private val waitingRewriteJobs = mutableMapOf<Long, Job>()
     // 同一 word 的 observer 回调与冷启动补插可能同时到达；只允许一条路径真正插回/清标记。
     private val reinsertingWordIds = mutableSetOf<Long>()
@@ -198,23 +211,44 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /**
-     * 1.4.6.1：当前书里还没回来的重写数，直接读 tb_rewrite_queue（pending/queued）。
-     * 「今日背词完成」与等待卡都以它为准，不再只数用户点过跳过的词。
+     * 1.4.7.2 W2：今天发起、但用户还没实际作答的重写卡有几张。
+     *
+     * 只看 `needs_reinsert=1` 并按「发起重写的学习日」过滤（4 点换日）：
+     * - 生成中、生成完成、合格、插回队列、退出学习页都不算作答，只有三键/太简单/拼写成功才清零；
+     * - 昨天没背完的不挡今天（跨天照原 SM-2 派发），那行只是留在库里；
+     * - 标记重写后照常背完的（没有 needs_reinsert）本来就不是欠卡。
      */
-    private val openRewriteCount: StateFlow<Int> = activeBook
-        .flatMapLatest { book ->
-            if (book == null) flowOf(0) else rewriteRepository.observeOpenCountForBook(book.id)
+    /**
+     * 4 点换日时 DB 不会发新行，必须自己给「今天」的判定一个重算脉冲；
+     * 否则 App 跨过 4 点仍用昨天的日期过滤，完成页/欠卡数会一直停在旧状态。
+     */
+    private val learningDateTicker = flow {
+        while (true) {
+            emit(Unit)
+            delay(60_000L)
         }
+    }
+
+    private val todayPendingRewriteCount: StateFlow<Int> = activeBook
+        .flatMapLatest { book ->
+            if (book == null) {
+                flowOf(emptyList<RewriteQueueItem>())
+            } else {
+                rewriteRepository.observeNeedsReinsertForBook(book.id)
+            }
+        }
+        .combine(learningDateTicker) { rows, _ -> rows }
+        .map { rows -> countPendingRewritesForLearningDate(rows, DateUtils.currentLearningDate()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     /**
-     * 等待卡上的条数：本地已跳过 + 数据库里已标记未回，取两者最大值，避免重复计数。
+     * 等待卡上的条数：本地已跳过 + 数据库里今天还欠作答，取两者最大值，避免重复计数。
      * 只跳过没标记（不该发生）/ 只标记没跳过时也都能数到。
      */
     val waitingRewriteCount: StateFlow<Int> = combine(
         _waitingRewriteCount,
-        openRewriteCount
-    ) { local, openInDb -> combinedWaitingRewriteCount(local, openInDb) }
+        todayPendingRewriteCount
+    ) { local, pendingToday -> combinedWaitingRewriteCount(local, pendingToday) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val _currentWord = MutableStateFlow<Word?>(null)
@@ -230,11 +264,19 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     val rewriteModelId: StateFlow<String> = _rewriteModelId.asStateFlow()
 
     /** 当前这张卡的重写标记；null = 还没标记过。 */
-    val currentRewriteMark: StateFlow<RewriteQueueItem?> = _currentWord
-        .flatMapLatest { word ->
-            if (word == null) flowOf(null) else rewriteRepository.observeMark(word.id)
-        }
+    val currentRewriteMark: StateFlow<RewriteQueueItem?> = combine(_currentWord, activeBook) { word, book ->
+        word?.let { it.id to (book?.id ?: 0L) }
+    }.flatMapLatest { key ->
+        if (key == null) flowOf(null) else rewriteRepository.observeMark(key.first, key.second)
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * 1.4.7.2 W3：「跳过」这次停留的锁存。点过重写就记住这个词，生成完成也不收起；
+     * 换到别的词才清掉。不能只按 mark.status 推导，否则 status 变 DONE 时按钮会消失。
+     */
+    private val _skipRewriteLatchedWordId = MutableStateFlow<Long?>(null)
+    val skipRewriteLatchedWordId: StateFlow<Long?> = _skipRewriteLatchedWordId.asStateFlow()
 
     /**
      * 当前词的记忆思路，直接来自数据库。
@@ -387,14 +429,14 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         learningHeatmapStatsFlow,
         _currentWord,
         _totalCount,
-        openRewriteCount
-    ) { weekAggregates, heatmapAggregates, currentWord, totalCount, openCount ->
+        todayPendingRewriteCount
+    ) { weekAggregates, heatmapAggregates, currentWord, totalCount, pendingRewriteCount ->
         buildLearningCheckInUiState(
             weekAggregates = weekAggregates,
             heatmapAggregates = heatmapAggregates,
             currentWord = currentWord,
             totalCount = totalCount,
-            openRewriteCount = openCount
+            pendingRewriteCount = pendingRewriteCount
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LearningCheckInUiState())
 
@@ -495,6 +537,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     /** 点「重写思路」：落本地队列后立刻试发一次，发不出去就等下次同步补发。 */
     fun markRewrite(instruction: String) {
         val word = _currentWord.value ?: return
+        val bookId = activeBook.value?.id ?: 0L
         val modelId = _rewriteModelId.value.ifBlank { RewriteModels.DEFAULT_ID }
         // 新一次标记：到终态时还要再拉一次结果
         pendingTerminalSync = true
@@ -504,27 +547,32 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 _message.value = RewriteRepository.NO_ADDRESS
                 return@launch
             }
+            // W3：只有真的落了队列才锁存「这次停留可以跳过」；没配地址时不能留下
+            // 一个没有 mark 的幽灵按钮。生成完成（DONE）也保持位置，换词由 updateQueue 清。
+            if (_currentWord.value?.id != word.id || (activeBook.value?.id ?: 0L) != bookId) return@launch
+            _skipRewriteLatchedWordId.value = word.id
             val sent = rewriteRepository.enqueueAndSync(
                 word.id,
                 word.word,
                 modelId,
                 instruction,
-                bookId = activeBook.value?.id ?: 0L
+                bookId = bookId
             )
             if (!sent) {
-                // 口令错和电脑没开是两件事：都说成「等电脑连上」，用户会一直干等。
-                _message.value = if (rewriteRepository.consumeAuthFailure()) {
-                    CardbackAuth.HINT
-                } else {
-                    "已记下，等电脑连上再发（电脑换过网络的话，地址会变，得重新粘那一行）"
-                }
+                _message.value = if (rewriteRepository.consumeAuthFailure()) CardbackAuth.HINT
+                else "已记下，等电脑端可以处理时自动发送"
             }
         }
     }
 
     fun cancelRewrite() {
         val word = _currentWord.value ?: return
-        viewModelScope.launch { rewriteRepository.cancel(word.id) }
+        val bookId = activeBook.value?.id ?: 0L
+        viewModelScope.launch {
+            if (rewriteRepository.cancel(word.id, bookId) &&
+                activeBook.value?.id == bookId && _currentWord.value?.id == word.id
+            ) _skipRewriteLatchedWordId.value = null
+        }
     }
 
     fun undoRewrite() {
@@ -533,6 +581,8 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             val bookId = activeBook.value?.id ?: 0L
             val restored = rewriteRepository.undo(word.id, bookId)
             if (restored != null) {
+                // W3 P2：只有撤销真的成功才收起「跳过」；没有上一版时保持原状。
+                _skipRewriteLatchedWordId.value = null
                 val restoredMethod = rewriteRepository.methodOf(word.id, bookId)
                 _currentWord.value = _currentWord.value?.copy(
                     approach = restored,
@@ -550,7 +600,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
      * 只记「这条思路有没有帮上」，👎 不会自动重写；同一条评价重复点不会重复入库。
      * 写入永远成功（离线也存本地），联网补发交给 RewriteRepository.sync。
      */
-    fun submitRewriteFeedback(rating: String) {
+    fun submitRewriteFeedback(rating: String, instruction: String = "") {
         val word = _currentWord.value ?: return
         val bookId = activeBook.value?.id ?: 0L
         viewModelScope.launch {
@@ -564,7 +614,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     approach = liveApproach.value ?: word.approach,
                     method = liveMethod.value.orEmpty().ifBlank { word.method },
                     model = _rewriteModelId.value,
-                    instruction = "",
+                    instruction = instruction.trim().take(200),
                     bookId = bookId,
                     approachRev = approachRev
                 )
@@ -580,25 +630,60 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
+     * 1.4.7.2 W2：清零所有待插回标记的「停止重写」**只留给后端/运维和测试**。
+     *
+     * 学习页已经移除了这个入口：停掉生成会让欠卡永远背不掉，用户也就永远看不到真实的
+     * 「今日完成」。保留它是为了运维排查和契约测试，UI 不再调用。
+     * 电脑确认停止后才结清本地队列；连不上就明确告诉调用方没停成。
+     */
+    fun stopAllRewrites() {
+        val book = activeBook.value ?: return
+        viewModelScope.launch {
+            val stopped = rewriteRepository.stopAllRewrites()
+            if (!stopped) {
+                _message.value = "电脑没连上，停止没生效"
+                return@launch
+            }
+            // W3 P2：停止全部后当前词的「跳过」入口也要收起，避免点了又入队。
+            _skipRewriteLatchedWordId.value = null
+            clearWaitingRewrites()
+            sessionSkippedWordIds.clear()
+            _message.value = "已停止重写，今天先背这些"
+            loadQueueForBook(
+                book,
+                newWordsLimit.value,
+                shuffleNewWordsEnabled.value,
+                plannedNewWordsEnabled.value
+            )
+        }
+    }
+
+    /**
      * 1.4.6 H：跳过当前词，先背下一个。
-     * 只在「已点重写、结果还没回来」时可用；词不删、今天仍要背，生成好后由
-     * onWaitingRewriteReady 随机插回当前词后 1–3 位。失败继续自动重试。
+     *
+     * 只在「已点重写、结果还没回来」时可用；词不删、今天仍要背。1.4.7.2 W2 起，
+     * 生成好后按稳定槽位插回当前卡之后第 2/3 张普通卡之后（见 onWaitingRewriteReady），
+     * 且**只有用户真的作答**才清 needs_reinsert —— 跳过不等于背完。
      */
     fun skipCurrentWordForRewrite() {
         val word = _currentWord.value ?: return
-        val mark = currentRewriteMark.value ?: return
-        if (mark.status == RewriteStatus.DONE) return
-        if (!waitingRewriteWords.containsKey(word.id)) {
-            waitingRewriteWords[word.id] = word
-            sessionSkippedWordIds.add(word.id)
-            observeWaitingRewrite(word)
-        }
-        refreshWaitingCount()
         val book = activeBook.value ?: return
+        val mark = currentRewriteMark.value ?: return
+        if (mark.wordId != word.id || (mark.bookId != book.id && mark.bookId != 0L) ||
+            mark.status == RewriteStatus.DONE
+        ) return
         viewModelScope.launch {
-            // DB20：先把「跳过、待插回」落库，再重载队列。这样即使进程马上被杀，
-            // 或者在恢复之前自动同步把结果写成了 done，下次加载仍然能补插回来。
-            runCatching { rewriteRepository.markNeedsReinsert(word.id, book.id) }
+            // 先确认欠卡已经落库；若刚换词书，也不能改另一书的内存队列。
+            val saved = runCatching { rewriteRepository.markNeedsReinsert(word.id, book.id) }
+                .getOrDefault(false)
+            if (!saved || activeBook.value?.id != book.id || _currentWord.value?.id != word.id) {
+                return@launch
+            }
+            if (waitingRewriteWords.putIfAbsent(word.id, word) == null) {
+                sessionSkippedWordIds.add(word.id)
+                observeWaitingRewrite(word, book.id)
+            }
+            refreshWaitingCount()
             loadQueueForBook(
                 book,
                 newWordsLimit.value,
@@ -675,9 +760,11 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
 
     private suspend fun pollRewriteProgressOnce() {
         val word = _currentWord.value ?: return
-        val markCreatedAt = currentRewriteMark.value?.createdAt ?: 0L
-        val snapshot = rewriteRepository.statusOf(word.word, sinceMillis = markCreatedAt)
-        if (_currentWord.value?.id != word.id) return
+        val bookId = activeBook.value?.id ?: 0L
+        val mark = currentRewriteMark.value ?: return
+        if (mark.wordId != word.id || (mark.bookId != bookId && mark.bookId != 0L)) return
+        val snapshot = rewriteRepository.statusOf(mark)
+        if (_currentWord.value?.id != word.id || (activeBook.value?.id ?: 0L) != bookId) return
         if (snapshot == null) {
             // 连不上电脑：保留上一次的百分比，只把「等电脑上线」点亮
             _rewriteProgress.value = RewriteProgressUi(
@@ -712,7 +799,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             // pendingTerminalSync 只在「换了词」时重置，同一个词连续重写第二遍时它是 false，
             // 所以还得看当前标记是否仍未完成——否则第二遍会停在 100% 却不换文。
             syncRewriteNow()
-            val after = rewriteRepository.observeMark(word.id).first()?.status
+            val after = rewriteRepository.markOf(word.id, bookId)?.status
             pendingTerminalSync = after != RewriteStatus.DONE && after != RewriteStatus.FAILED
         }
     }
@@ -802,9 +889,11 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     sessionTotal = currentSessionTotal,
                     responseTimeMs = responseTimeMs
                 )
-                // 已经答完这个词：不需要再把它插回队列，清掉 DB20 的待插回标记。
-                rewriteRepository.clearNeedsReinsert(word.id)
+                // 1.4.7.2 W2：用户真的答完这张重写卡，才清待插回标记（生成/合格/插回都不算）。
+                // 只结清当前这本书：同一个词可能同时属于别的书，不能把别的书的欠卡一起清掉。
+                rewriteRepository.clearNeedsReinsert(word.id, book.id)
             }
+            forgetPendingReinsert(word.id)
             if (effectiveRating == StudyRating.AGAIN) {
                 enqueueImmediateRetry(word)
                 _memoryAidSuggestionWordId.value = word.id
@@ -860,9 +949,10 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     sessionTotal = currentSessionTotal,
                     responseTimeMs = responseTimeMs
                 )
-                // 已经答完这个词：不需要再把它插回队列，清掉 DB20 的待插回标记。
-                rewriteRepository.clearNeedsReinsert(word.id)
+                // 1.4.7.2 W2：用户真的答完这张重写卡，才清待插回标记（生成/合格/插回都不算）。
+                rewriteRepository.clearNeedsReinsert(word.id, book.id)
             }
+            forgetPendingReinsert(word.id)
             markAnswered()
             loadQueueForBook(book, newWordsLimit.value, shuffleNewWordsEnabled.value, plannedNewWordsEnabled.value)
             emitRecognitionAutoPronounceEventIfNeeded(previousWordId)
@@ -919,10 +1009,16 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     sessionPosition = currentSessionPosition,
                     sessionTotal = currentSessionTotal
                 )
+                // 1.4.7.2 W2：拼写成功才算这张卡真的答完。
+                // 失败还会原地重背（continueAfterSpellingFailure → 即时重背），欠卡先留着。
+                if (outcome != SpellingOutcome.FAILED) {
+                    rewriteRepository.clearNeedsReinsert(word.id, book.id)
+                }
             }
             if (outcome == SpellingOutcome.FAILED) {
                 return@launchSubmit
             }
+            forgetPendingReinsert(word.id)
             pendingFailedWordId = null
             markAnswered()
             loadQueueForBook(book, newWordsLimit.value, shuffleNewWordsEnabled.value, plannedNewWordsEnabled.value)
@@ -961,7 +1057,14 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 return@launchSubmit
             }
             markAnswered()
-            val undoToken = registerTooEasyUndo(word.id, book.id, snapshots)
+            // 1.4.7.2 W2：用户主动判定「太简单」= 实际作答（SRS 已推进 30 天），可以结清欠卡；
+            // 撤销时要把它放回欠卡集合，避免撤销后完成页误判。
+            val wasPendingRewrite = pendingReinsertSlots.containsKey(word.id)
+            withContext(Dispatchers.IO) {
+                rewriteRepository.clearNeedsReinsert(word.id, book.id)
+            }
+            forgetPendingReinsert(word.id)
+            val undoToken = registerTooEasyUndo(word.id, book.id, snapshots, wasPendingRewrite)
             emitSwipeSnackbar(
                 message = "已标记为太简单，30天后复习",
                 actionLabel = "撤销",
@@ -982,12 +1085,23 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             val inserted = withContext(Dispatchers.IO) {
                 repository.addToNewWords(word.id, AddToNewWordsSource.GESTURE)
             }
-            skipWordInSession(word.id)
-            markAnswered()
+            // 1.4.7.2 W2：重写欠卡不能靠「滑进生词本」绕过——词已进生词本，但卡还留在
+            // 当前位（不计一次作答、不跳过、不换卡），必须真的作答才结清。
+            val isPendingRewrite = pendingReinsertSlots.containsKey(word.id)
+            if (!isPendingRewrite) {
+                skipWordInSession(word.id)
+                markAnswered()
+            }
             emitSwipeSnackbar(
-                message = if (inserted) "已加入生词本" else "已在生词本中"
+                message = when {
+                    isPendingRewrite -> "已加入生词本；这张重写卡背完今天才算完成"
+                    inserted -> "已加入生词本"
+                    else -> "已在生词本中"
+                }
             )
-            loadQueueForBook(book, newWordsLimit.value, shuffleNewWordsEnabled.value, plannedNewWordsEnabled.value)
+            if (!isPendingRewrite) {
+                loadQueueForBook(book, newWordsLimit.value, shuffleNewWordsEnabled.value, plannedNewWordsEnabled.value)
+            }
         }
     }
 
@@ -1001,6 +1115,10 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     snapshots = payload.snapshots,
                     rollbackGestureEasy = true
                 )
+                // 撤销「太简单」= 这次作答作废，把重写欠卡放回集合，否则今天会被误判成完成。
+                if (payload.wasPendingRewrite) {
+                    rewriteRepository.markNeedsReinsert(payload.wordId, payload.bookId)
+                }
             }
             pendingTooEasyUndo.remove(undoToken)
             answeredInSession = (answeredInSession - 1).coerceAtLeast(0)
@@ -1206,6 +1324,13 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
 
     fun completeTodayCheckIn() {
         launchSubmit {
+            // 打卡入口只有完成页这一张卡，但仓库层 checkInToday() 只认学习活动数，
+            // 不认重写欠卡。这里补最小保护：今天还有没背完的重写卡就不许打卡。
+            // （直接调仓库的测试/未来入口仍可绕过，见 W2 报告的收口建议。）
+            if (todayPendingRewriteCount.value > 0) {
+                _message.value = "还有重写卡没背完，背完再打卡"
+                return@launchSubmit
+            }
             when (withContext(Dispatchers.IO) { repository.checkInToday() }) {
                 CheckInResult.SUCCESS -> _message.value = "打卡成功，明天继续保持"
                 CheckInResult.ALREADY_CHECKED_IN -> _message.value = "今天已经打过卡了"
@@ -1232,7 +1357,9 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             updateQueue(emptyList())
             return
         }
-        if (queueBookId != book.id) {
+        val bookChanged = queueBookId != book.id
+        if (bookChanged) {
+            _skipRewriteLatchedWordId.value = null
             immediateRetryQueue.clear()
             sessionSkippedWordIds.clear()
             clearWaitingRewrites()
@@ -1251,26 +1378,66 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             )
         }
         _dueReviewCount.value = queueSnapshot.dueCount
+        // W2：先把 DB 里「已合格、还没作答」的重写卡登记成稳定插回位（含冷启动补插），
+        // 再一次性排进队列。这样每次作答后重建队列，插回位置都一样，不会被重新随机。
+        if (!restoreWaitingRewrites(book.id)) {
+            // 读库失败时不能按“没有欠卡”重建队列：还没合格的旧稿会漏回普通队列。
+            // 同书重载保留当前卡（避免作答后总数归零被误判成完成），换书则清空旧书队列。
+            _message.value = "重写记录暂时读不出来，先不换卡；请稍后重试"
+            if (bookChanged) updateQueue(emptyList())
+            return
+        }
+        val consumed = currentConsumed
+        currentConsumed = false
+        val previousPendingIndex = activeQueue.withIndex()
+            .associate { (index, word) -> word.id to index }
         val mergedQueue = mergeWithImmediateRetryQueue(queueSnapshot.queue)
+            .distinctBy { it.id }
             .filterNot { it.id in sessionSkippedWordIds }
-        updateQueue(mergedQueue)
-        // P0：进程重启后内存等待集合是空的，必须按 DB 补注册，否则结果 DONE 时词不回队列。
-        restoreWaitingRewrites(book.id)
+            // W2：还没合格的欠卡不能从普通队列漏回来——否则重开 App 后
+            // 用户会看到旧稿并被当成正常卡作答，等于绕过「合格才插回」。
+            .filterNot {
+                it.id in waitingRewriteWords ||
+                    it.id in restoredWaitingRewriteWords
+            }
+        // W2：已合格的重写稿不能按 DB 快照的到期顺序重建。跳过重写不改进度，
+        // DB 快照会把它排在最前，一重建就变成当前卡。这里按会话里“上一轮它前面还有几张卡”
+        // 保留位置；当前卡刚被作答时前移一格，刷新则原样。
+        val withoutPending = mergedQueue.filterNot { it.id in pendingReinsertWords }
+        var placed = withoutPending
+        pendingReinsertWords.forEach { (wordId, word) ->
+            val oldIndex = previousPendingIndex[wordId] ?: return@forEach
+            val target = if (consumed) (oldIndex - 1).coerceAtLeast(0) else oldIndex
+            val insertAt = target.coerceIn(0, placed.size)
+            placed = placed.toMutableList().apply { add(insertAt, word) }
+        }
+        updateQueue(applyPendingReinsertPlacements(placed))
     }
 
     /**
-     * 1.4.6.1 P0（DB20）：按 needs_reinsert 恢复「跳过后还没插回」的词。
+     * 1.4.7.2 W2：按 needs_reinsert 恢复「跳过后还没作答」的重写卡。
      *
-     * 关键点是不看 status：
+     * 关键点是以 `needs_reinsert` 为唯一“还没作答”的依据，不看 lastReviewTime：
      * - pending/queued：补注册 observer，结果回来时走 onWaitingRewriteReady；
-     * - done：冷启动自动同步可能已经先落库，这里直接补插（否则查询永远为空）；
-     * - failed：不插，留给下一次重写。
-     * 重复 load 由 plan(rows, tracked) 去重；这些词不进 waitingRewriteWords，
-     * 避免 updateQueue 重复计入剩余进度，等待条数由 DB 的 observeOpenCountForBook 兜底。
+     * - done：已经合格，登记成稳定插回位，由 loadQueueForBook 一次性排进队列；
+     * - failed：仍然欠作答；等同步冷却后重新投递，不以旧稿替代。
+     *
+     * 恢复书内所有欠作答的行（包括昨天没背完的）：跨天照原 SM-2/正常派发。
+     * 昨天的稿今天合格就正常插回；今天还没合格前它只在后台等待，不放进普通队列
+     * （否则用户会拿旧稿作答，等于绕过“合格才插回”），也不挡今天的完成页——
+     * 因为“今日完成”只按发起学习日过滤，昨天的欠卡不计入今天。重复 load 由
+     * plan(rows, tracked) 去重。
+     *
+     * 读库失败（欠卡列表或其中任一词）返回 false：把「不知道有没有
+     * 欠卡」当成「没有欠卡」，会让普通队列把还没合格的旧稿放回来，用户一作答就
+     * 清掉 needs_reinsert。读词失败时只跳过该词也不行：它没进恢复集，就不会被
+     * 普通队列过滤，旧稿同样会漏出来。
      */
-    private suspend fun restoreWaitingRewrites(bookId: Long) {
-        val rows = runCatching { rewriteRepository.needsReinsertForBook(bookId) }
-            .getOrDefault(emptyList())
+    private suspend fun restoreWaitingRewrites(bookId: Long): Boolean {
+        // 失败时交给调用方保留现有队列并提示重试；不能静默按空列表继续重建。
+        val rows = runCatching { rewriteRepository.needsReinsertForBook(bookId) }.getOrNull()
+            ?: return false
+        val createdAtByWordId = rows.associate { it.wordId to it.createdAt }
         val tracked = HashSet<Long>(
             waitingRewriteWords.size + restoredWaitingRewriteWords.size + waitingRewriteJobs.size
         )
@@ -1280,27 +1447,36 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         val plan = WaitingRewriteRestore.plan(rows, tracked)
 
         plan.watchWordIds.forEach { wordId ->
-            val word = runCatching { repository.getWordById(wordId) }.getOrNull()
-                ?: return@forEach
+            val wordResult = runCatching { repository.getWordById(wordId) }
+            // 读词失败 ≠ 词已删除：整次恢复中止、保留标记。不能只跳过这个词——
+            // 它没进 restoredWaitingRewriteWords，就不会被普通队列过滤，旧稿仍会漏出来。
+            if (wordResult.isFailure) return false
+            val word = wordResult.getOrNull() ?: return@forEach
             restoredWaitingRewriteWords[wordId] = word
-            observeWaitingRewrite(word)
+            observeWaitingRewrite(word, bookId)
         }
 
         plan.reinsertWordIds.forEach { wordId ->
             if (wordId in reinsertingWordIds) return@forEach
-            val word = runCatching { repository.getWordById(wordId) }.getOrNull()
+            val wordResult = runCatching { repository.getWordById(wordId) }
+            if (wordResult.isFailure) return false
+            val word = wordResult.getOrNull()
             if (word == null) {
                 // 词表里已经没有这个词：别再让这行每次加载都重试。
-                runCatching { rewriteRepository.clearNeedsReinsert(wordId) }
+                runCatching { rewriteRepository.clearNeedsReinsert(wordId, bookId) }
+                forgetPendingReinsert(wordId)
                 return@forEach
             }
-            restoredWaitingRewriteWords.putIfAbsent(wordId, word)
-            onWaitingRewriteReady(wordId)
+            // 只要行还带 needs_reinsert=1，就说明用户没有真正作答过（作答路径会清标记）。
+            // 不能再用 lastReviewTime 判断：拼写失败也会刷新它，会把未作答误判成已作答。
+            rememberPendingReinsert(wordId, word, createdAtByWordId[wordId] ?: 0L)
+            restoredWaitingRewriteWords.remove(wordId)
         }
 
         if (waitingRewriteWords.isNotEmpty() || restoredWaitingRewriteWords.isNotEmpty()) {
             ensureWaitingRewritePoll()
         }
+        return true
     }
 
     private fun resolvePlannedNewWordIds(book: Book, plannedModeEnabled: Boolean): List<Long> {
@@ -1327,6 +1503,10 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         }
         val nextWord = list.firstOrNull()
         _currentWord.value = nextWord
+        // W3：换词即收起「跳过」；同一个词停留期间（哪怕生成完）保持。
+        if (_skipRewriteLatchedWordId.value != null && _skipRewriteLatchedWordId.value != nextWord?.id) {
+            _skipRewriteLatchedWordId.value = null
+        }
         currentWordPresentedAtMs = if (nextWord != null) System.currentTimeMillis() else 0L
         if (oldWordId != nextWord?.id) {
             _cachedExampleContent.value = ""
@@ -1342,6 +1522,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
 
     private fun markAnswered() {
         answeredInSession += 1
+        currentConsumed = true
     }
 
     private fun emitRecognitionAutoPronounceEventIfNeeded(previousWordId: Long) {
@@ -1371,25 +1552,33 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     }
 
     /** 盯住一个等待词的标记；DONE 就插回队列，FAILED 只提示（sync 里会自动重试）。 */
-    private fun observeWaitingRewrite(word: Word) {
+    private fun observeWaitingRewrite(word: Word, bookId: Long) {
         waitingRewriteJobs.remove(word.id)?.cancel()
         waitingRewriteJobs[word.id] = viewModelScope.launch {
-            rewriteRepository.observeMark(word.id)
+            rewriteRepository.observeMark(word.id, bookId)
                 .map { it?.status }
                 .distinctUntilChanged()
                 .collect { status ->
+                    if (activeBook.value?.id != bookId) return@collect
                     when (status) {
-                        RewriteStatus.DONE -> onWaitingRewriteReady(word.id)
-                        RewriteStatus.FAILED -> _message.value = "「${word.word}」生成失败，正在自动重试"
-                        null -> if (restoredWaitingRewriteWords.remove(word.id) != null) {
-                            // 队列行被撤销/删除：别让补注册的词永远挂在等待集合里。
+                        RewriteStatus.DONE -> onWaitingRewriteReady(word.id, bookId)
+                        RewriteStatus.FAILED -> Unit // 留在等待队列；同步会在冷却后重投旧终态任务。
+                        null -> {
+                            // 队列行被撤销/删除/取消：三个等待集合都要收口，
+                            // 否则「预览后取消」会让等待计数在本会话里永远消不掉。
+                            waitingRewriteWords.remove(word.id)
+                            restoredWaitingRewriteWords.remove(word.id)
+                            pendingReinsertWords.remove(word.id)
+                            pendingReinsertSlots.remove(word.id)
                             waitingRewriteJobs.remove(word.id)?.cancel()
-                            if (waitingRewriteWords.isEmpty() && restoredWaitingRewriteWords.isEmpty()) {
+                            if (waitingRewriteWords.isEmpty() &&
+                                restoredWaitingRewriteWords.isEmpty() &&
+                                pendingReinsertWords.isEmpty()
+                            ) {
                                 waitingRewritePollJob?.cancel()
                                 waitingRewritePollJob = null
                             }
                         }
-                        else -> Unit
                     }
                 }
         }
@@ -1409,15 +1598,18 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * 生成好了：从等待集合拿掉，随机插到当前词后 1–3 位（词少就贴到队尾）。
+     * 1.4.7.2 W2：生成好了 = 可以插回，**不等于用户背完**。
      *
-     * observer 回调与冷启动 done 行补插可能同时到达；reinsertingWordIds 保证同一
-     * 个词只走一条路径。无论插没插，最后都清 needs_reinsert，避免明天重复插。
+     * 登记成稳定插回位后立刻重排一次队列（合格稿马上出现，落在当前卡之后第 2/3 张
+     * 普通卡之后），但不清 needs_reinsert —— 只有用户对这张卡真的作答才结清。
+     * observer 回调与冷启动 done 行补插可能同时到达；reinsertingWordIds 保证只走一条路径。
      */
-    private suspend fun onWaitingRewriteReady(wordId: Long) {
+    private suspend fun onWaitingRewriteReady(wordId: Long, bookId: Long) {
         if (!reinsertingWordIds.add(wordId)) return
         val fromSessionWait = waitingRewriteWords.remove(wordId)
-        val word = fromSessionWait ?: restoredWaitingRewriteWords.remove(wordId)
+        val word = fromSessionWait
+            ?: restoredWaitingRewriteWords.remove(wordId)
+            ?: pendingReinsertWords[wordId]
         if (word == null) {
             reinsertingWordIds.remove(wordId)
             return
@@ -1429,37 +1621,34 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         refreshWaitingCount()
 
         try {
-            val bookId = activeBook.value?.id ?: 0L
-            val progress = if (bookId > 0L) {
-                runCatching { repository.getProgress(wordId, bookId) }.getOrNull()
-            } else {
-                null
+            // 作答路径会清 needs_reinsert；它还是 true 才说明这张重写卡没被真正作答。
+            // 不能用 lastReviewTime：拼写失败也会刷新它，会把未作答误判成已作答。
+            val markResult = runCatching { rewriteRepository.markOf(wordId, bookId) }
+            if (activeBook.value?.id != bookId) return
+            val mark = markResult.getOrNull()
+            if (markResult.isFailure || (mark?.needsReinsert == true && mark.status != RewriteStatus.DONE)) {
+                // 读不到当前书的结果、或新的重写已替代合格稿，都要继续等。
+                restoredWaitingRewriteWords[wordId] = word
+                refreshWaitingCount()
+                viewModelScope.launch {
+                    delay(REWRITE_PROGRESS_POLL_INTERVAL_MS)
+                    if (activeBook.value?.id == bookId && wordId in restoredWaitingRewriteWords) {
+                        observeWaitingRewrite(word, bookId)
+                    }
+                }
+                return
             }
-            val answeredToday = progress?.lastReviewTime?.let { lastReview ->
-                lastReview > 0L &&
-                    DateUtils.currentLearningDate(lastReview) == DateUtils.currentLearningDate()
-            } == true
-            val shouldInsert = WaitingRewriteRestore.shouldInsertOnReady(
-                wordId = wordId,
-                currentWordId = _currentWord.value?.id,
-                queuedWordIds = activeQueue.mapTo(HashSet()) { it.id },
-                answeredToday = answeredToday
-            )
-
-            if (shouldInsert) {
-                val base = activeQueue.filterNot { it.id == wordId }
-                val insertIndex = ImmediateRetryQueuePlanner.resolveWaitingInsertIndex(
-                    queueSize = base.size,
-                    randomSource = retryQueueRandomSource
-                )
-                val queue = base.toMutableList().apply { add(insertIndex, word) }
-                updateQueue(queue)
-            } else if (fromSessionWait != null) {
-                // 词已经在队列里/今天已经答过：只需把它的等待名额从进度里扣掉。
-                updateQueue(activeQueue)
+            if (mark == null || !mark.needsReinsert) {
+                // 行已不存在（取消/删除）或用户真的作答过：这张卡不再欠，结清后退出等待。
+                if (mark != null) {
+                    runCatching { rewriteRepository.clearNeedsReinsert(wordId, mark.bookId) }
+                }
+                forgetPendingReinsert(wordId)
+                return
             }
+            rememberPendingReinsert(wordId, word, mark.createdAt)
+            updateQueue(applyPendingReinsertPlacements(activeQueue))
         } finally {
-            runCatching { rewriteRepository.clearNeedsReinsert(wordId) }
             reinsertingWordIds.remove(wordId)
             collectorJob?.cancel()
             if (waitingRewriteWords.isEmpty() && restoredWaitingRewriteWords.isEmpty()) {
@@ -1467,6 +1656,59 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 waitingRewritePollJob = null
             }
         }
+    }
+
+    /**
+     * 登记一张「已合格、还没作答」的重写卡：槽位只算一次（wordId + 发起时间），
+     * 之后每次重建队列都按同一槽位重排，不会重新随机。
+     */
+    private fun rememberPendingReinsert(wordId: Long, word: Word, createdAt: Long) {
+        pendingReinsertWords[wordId] = word
+        if (!pendingReinsertSlots.containsKey(wordId)) {
+            pendingReinsertSlots[wordId] = ImmediateRetryQueuePlanner.waitingInsertSlot(
+                ImmediateRetryQueuePlanner.waitingRewriteSeed(wordId, createdAt)
+            )
+        }
+    }
+
+    /** 用户真的作答（或标记已结清）后，这张卡不再参与插回。 */
+    private fun forgetPendingReinsert(wordId: Long) {
+        pendingReinsertWords.remove(wordId)
+        pendingReinsertSlots.remove(wordId)
+    }
+
+    private fun clearPendingReinsert() {
+        pendingReinsertWords.clear()
+        pendingReinsertSlots.clear()
+    }
+
+    /**
+     * 把已合格的重写卡按稳定槽位排进队列：
+     * 当前卡（下标 0）不动，稿子落在之后第 2/3 张普通卡之后；普通卡不够就接队尾；
+     * 队列里已有的同名卡先摘掉再插，绝不重复。重排只要输入相同就结果相同。
+     *
+     * 本次会话里被「滑进生词本」跳过的卡继续留在 DB 欠卡里，但今天不再硬塞回队列
+     * （和普通卡的 session skip 一致）；重开 App 后仍会恢复出来，欠卡不会被绕过。
+     */
+    private fun applyPendingReinsertPlacements(queue: List<Word>): List<Word> {
+        if (pendingReinsertWords.isEmpty() || pendingReinsertSlots.isEmpty()) return queue
+        val pending = pendingReinsertSlots.entries.mapIndexedNotNull { index, (wordId, slot) ->
+            if (wordId in sessionSkippedWordIds) {
+                null
+            } else {
+                WaitingReinsertPlacement.Pending(
+                    wordId = wordId,
+                    slot = slot,
+                    order = index.toLong()
+                )
+            }
+        }
+        if (pending.isEmpty()) return queue
+        val byId = LinkedHashMap<Long, Word>(queue.size + pendingReinsertWords.size)
+        queue.forEach { byId[it.id] = it }
+        pendingReinsertWords.forEach { (wordId, word) -> byId.putIfAbsent(wordId, word) }
+        return WaitingReinsertPlacement.apply(queue.map { it.id }, pending)
+            .mapNotNull { byId[it] }
     }
 
     private fun refreshWaitingCount() {
@@ -1478,6 +1720,8 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         waitingRewriteJobs.clear()
         waitingRewriteWords.clear()
         restoredWaitingRewriteWords.clear()
+        // 换书/停止后不再按旧书的槽位插回；DB 里的 needs_reinsert 留着，下次进这本书记得再恢复。
+        clearPendingReinsert()
         waitingRewritePollJob?.cancel()
         waitingRewritePollJob = null
         refreshWaitingCount()
@@ -1505,13 +1749,19 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
-    private fun registerTooEasyUndo(wordId: Long, bookId: Long, snapshots: List<Progress>): Long {
+    private fun registerTooEasyUndo(
+        wordId: Long,
+        bookId: Long,
+        snapshots: List<Progress>,
+        wasPendingRewrite: Boolean
+    ): Long {
         undoTokenCounter += 1
         val token = undoTokenCounter
         pendingTooEasyUndo[token] = TooEasyUndoPayload(
             wordId = wordId,
             bookId = bookId,
-            snapshots = snapshots
+            snapshots = snapshots,
+            wasPendingRewrite = wasPendingRewrite
         )
         return token
     }
@@ -1583,25 +1833,47 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     }
 }
 
+/**
+ * 1.4.7.2 W2 完成判定。
+ *
+ * [pendingRewriteCount] = **今天发起、且用户还没实际作答**的重写卡数（needs_reinsert=1 且
+ * 创建学习日 == 今天）。发送成功 / 生成完成 / 合格 / 已插回 / 退出学习页都不清这个标记，
+ * 只有用户真的点了三键之一（或判定太简单、拼写作答）才清 —— 所以它空着才算今天背完。
+ * 昨天没背完的重写卡不阻塞今天，仍留在库里等待正常派发。
+ */
 internal fun shouldShowCompletionCheckInPanel(
     currentWord: Word?,
     totalCount: Int,
-    openRewriteCount: Int = 0
+    pendingRewriteCount: Int = 0
 ): Boolean {
-    // 词背完了还不够：当前书还有重写在排队/等结果时，先别宣布「今日背词完成」。
-    return currentWord == null && totalCount > 0 && openRewriteCount <= 0
+    return currentWord == null && totalCount > 0 && pendingRewriteCount <= 0
 }
 
-/** 等待卡条数：本地等待集合与库里未完成重写取最大值，既不漏「只标记没跳过」也不重复计数。 */
-internal fun combinedWaitingRewriteCount(localWaitingCount: Int, openRewriteCount: Int): Int =
-    maxOf(localWaitingCount.coerceAtLeast(0), openRewriteCount.coerceAtLeast(0))
+/** 等待卡条数：本地等待集合与「今天仍未作答的重写卡」取最大值，既不漏也不重复计数。 */
+internal fun combinedWaitingRewriteCount(localWaitingCount: Int, pendingTodayCount: Int): Int =
+    maxOf(localWaitingCount.coerceAtLeast(0), pendingTodayCount.coerceAtLeast(0))
+
+/**
+ * 今天发起、且还没被用户实际作答的重写卡数。
+ *
+ * 「发起学习日」= [RewriteQueueItem.createdAt] 落在哪个学习日（4 点换日，见 DateUtils），
+ * 不用 status —— pending/queued 只代表电脑端还在生成，failed 只代表这次没生成成功，
+ * 三者都跟用户有没有背过无关；只有作答路径会清 needs_reinsert。
+ */
+internal fun countPendingRewritesForLearningDate(
+    rows: List<RewriteQueueItem>,
+    today: LocalDate = DateUtils.currentLearningDate()
+): Int = rows.count { row ->
+    row.needsReinsert &&
+        DateUtils.currentLearningDate(row.createdAt) == today
+}
 
 internal fun buildLearningCheckInUiState(
     weekAggregates: List<DailyStatsAggregate>,
     heatmapAggregates: List<DailyStatsAggregate>,
     currentWord: Word?,
     totalCount: Int,
-    openRewriteCount: Int = 0,
+    pendingRewriteCount: Int = 0,
     today: LocalDate = DateUtils.currentLearningDate()
 ): LearningCheckInUiState {
     val todayAggregate = weekAggregates.firstOrNull { parseLearningAggregateDate(it.date) == today }
@@ -1623,7 +1895,7 @@ internal fun buildLearningCheckInUiState(
         showCompletionPanel = shouldShowCompletionCheckInPanel(
             currentWord = currentWord,
             totalCount = totalCount,
-            openRewriteCount = openRewriteCount
+            pendingRewriteCount = pendingRewriteCount
         ),
         checkedInToday = todayCheckedIn,
         streakDays = streakDays,

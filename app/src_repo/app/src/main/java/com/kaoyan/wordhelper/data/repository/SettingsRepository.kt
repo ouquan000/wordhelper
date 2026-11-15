@@ -11,6 +11,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.kaoyan.wordhelper.data.model.PronunciationSource
 import com.kaoyan.wordhelper.data.network.CardBackAddress
 import com.kaoyan.wordhelper.data.network.NetworkAvailability
+import com.kaoyan.wordhelper.data.network.TlsPinned
 import com.kaoyan.wordhelper.util.DateUtils
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -31,6 +32,13 @@ private const val DEFAULT_PLANNED_NEW_WORDS_ENABLED = false
 private const val DEFAULT_CARD_BACK_URL = ""
 private const val DEFAULT_CARD_BACK_TOKEN = ""
 private const val DEFAULT_CARD_BACK_LAST_GOOD_URL = ""
+private const val DEFAULT_CARD_BACK_INSTANCE_ID = ""
+// 1.4.7.2 W4：局域网 HTTPS 的 SPKI pin（64 位 hex，空 = 还没有可信锚点）。
+// 只应由 HTTPS 配置地址的 /identity（tls_spki_sha256）或用户手填写入。
+private const val DEFAULT_CARD_BACK_TLS_PIN = ""
+private const val DEFAULT_CARD_BACK_TLS_PORT = 8443
+// 同 WiFi 自动直连默认关闭：即使走 HTTPS + SPKI pin，也应由用户在设置页显式开启。
+private const val DEFAULT_CARD_BACK_LAN_AUTO = false
 private val Context.dataStore by preferencesDataStore(name = "user_settings")
 
 data class UserSettings(
@@ -56,7 +64,26 @@ data class UserSettings(
      * 换 Wi-Fi / 路由器重新分配 IP / 用户改错手填地址时，请求会先退回这里，
      * 不用再让用户去电脑上查一遍 IP。空 = 还没成功连过。
      */
-    val cardBackLastGoodUrl: String = DEFAULT_CARD_BACK_LAST_GOOD_URL
+    val cardBackLastGoodUrl: String = DEFAULT_CARD_BACK_LAST_GOOD_URL,
+    /**
+     * 1.4.7.2 W4：这台手机上次连的电脑服务身份（服务端 `/health` 的 instance_id）。
+     * 同一台电脑换 LAN/域名只换 origin，不换这个值，所以游标可以共享；
+     * 值变了说明换了电脑/重装了服务，旧 rev 会静默漏行，必须把游标归零。
+     */
+    val cardBackInstanceId: String = DEFAULT_CARD_BACK_INSTANCE_ID,
+    /**
+     * 1.4.7.2 W4：是否允许同 WiFi 自动发现并优先走局域网 HTTPS。
+     * 默认关闭，必须由用户显式开启；没有 pin 时发现会直接拒绝，不会退回明文 HTTP。
+     */
+    val cardBackLanAuto: Boolean = DEFAULT_CARD_BACK_LAN_AUTO,
+    /**
+     * 1.4.7.2 W4：局域网 HTTPS 证书公钥 pin（SPKI SHA-256，64 位 hex）。
+     * 只有它和 [cardBackInstanceId] 同时存在，才允许自动走 LAN HTTPS；
+     * 空值 = 不能证明对端身份，绝不能退回明文 HTTP。
+     */
+    val cardBackTlsPin: String = DEFAULT_CARD_BACK_TLS_PIN,
+    /** 局域网 HTTPS 端口；默认 8443，实际值由 HTTPS /identity 的 tls_port 更新。 */
+    val cardBackTlsPort: Int = DEFAULT_CARD_BACK_TLS_PORT
 )
 
 data class TodayNewWordsPlan(
@@ -78,6 +105,10 @@ enum class DarkMode(val value: Int) {
 }
 
 class SettingsRepository(private val context: Context) {
+
+    /** 局域网发现需要 Context；只暴露 applicationContext，避免把 Activity 漏进长生命周期对象。 */
+    internal val appContext: Context
+        get() = context.applicationContext
 
     /**
      * 1.4.7：用户改「地址/口令」时 +1。
@@ -132,7 +163,12 @@ class SettingsRepository(private val context: Context) {
                 prefs[KEY_PLANNED_NEW_WORDS_ENABLED] ?: DEFAULT_PLANNED_NEW_WORDS_ENABLED,
             cardBackUrl = prefs[KEY_CARD_BACK_URL] ?: DEFAULT_CARD_BACK_URL,
             cardBackToken = prefs[KEY_CARD_BACK_TOKEN] ?: DEFAULT_CARD_BACK_TOKEN,
-            cardBackLastGoodUrl = prefs[KEY_CARD_BACK_LAST_GOOD_URL] ?: DEFAULT_CARD_BACK_LAST_GOOD_URL
+            cardBackLastGoodUrl = prefs[KEY_CARD_BACK_LAST_GOOD_URL] ?: DEFAULT_CARD_BACK_LAST_GOOD_URL,
+            cardBackInstanceId = prefs[KEY_CARD_BACK_INSTANCE_ID] ?: DEFAULT_CARD_BACK_INSTANCE_ID,
+            cardBackLanAuto = prefs[KEY_CARD_BACK_LAN_AUTO] ?: DEFAULT_CARD_BACK_LAN_AUTO,
+            cardBackTlsPin = prefs[KEY_CARD_BACK_TLS_PIN] ?: DEFAULT_CARD_BACK_TLS_PIN,
+            cardBackTlsPort = (prefs[KEY_CARD_BACK_TLS_PORT] ?: DEFAULT_CARD_BACK_TLS_PORT)
+                .takeIf { it in 1..65535 } ?: DEFAULT_CARD_BACK_TLS_PORT
         )
     }
 
@@ -201,16 +237,103 @@ class SettingsRepository(private val context: Context) {
      * 只在这里解析一次，三处读取路径（CardBack / Rewrite / Sync）保持原样。
      */
     suspend fun updateCardBackUrl(url: String) {
-        val (parsedUrl, parsedToken) = CardbackAuth.parsePair(url)
+        val info = CardbackAuth.parsePairInfo(url)
+        val parsedUrl = info.url
+        val parsedToken = info.token
         dataStore.edit { prefs ->
+            val oldUrl = prefs[KEY_CARD_BACK_URL].orEmpty()
+            val oldToken = prefs[KEY_CARD_BACK_TOKEN] ?: DEFAULT_CARD_BACK_TOKEN
+            val endpointChanged = endpointKey(oldUrl) != endpointKey(parsedUrl)
             prefs[KEY_CARD_BACK_URL] = parsedUrl
             if (parsedToken != null) prefs[KEY_CARD_BACK_TOKEN] = parsedToken
+            // 清空地址 = 解除配对：last-good、旧口令和 TLS pin 都要一起清，否则 hasAddress()
+            // 仍会为 true、后台 Job 继续跑，旧 token/pin 也可能被发给下一条地址。
+            if (parsedUrl.isBlank()) {
+                prefs.remove(KEY_CARD_BACK_LAST_GOOD_URL)
+                prefs.remove(KEY_CARD_BACK_TOKEN)
+                prefs.remove(KEY_CARD_BACK_TLS_PIN)
+                prefs.remove(KEY_CARD_BACK_TLS_PORT)
+            } else if (info.tlsPin != null) {
+                // 电脑端那一行自带 pin：这是可信一次性配对输入，优先于旧 pin。
+                prefs[KEY_CARD_BACK_TLS_PIN] = info.tlsPin
+                prefs[KEY_CARD_BACK_TLS_PORT] = info.tlsPort ?: DEFAULT_CARD_BACK_TLS_PORT
+            } else if (parsedToken != null && parsedToken != oldToken) {
+                // 改口令 = 重新配对，旧 pin 不再可信；只改地址则保留 pin（同一实例可换 origin）。
+                prefs.remove(KEY_CARD_BACK_TLS_PIN)
+            }
+            // 只有真正换主机或换口令才清身份：单纯重贴同一台电脑的配对行（例如补 pin）
+            // 不能把「已配对」降级成「首配信任」，否则 /health 成功前 last-good 候选
+            // 可能拿到 token。清空地址时上面已按解除配对处理。
+            if (parsedUrl.isBlank() || endpointChanged || (parsedToken != null && parsedToken != oldToken)) {
+                prefs[KEY_CARD_BACK_INSTANCE_ID] = ""
+                // 换主机/换口令就是换电脑：last-good 也是旧电脑，不能留在候选里，
+                // 否则新 token 可能先被发给旧地址（W4 P1-2）。
+                if (parsedUrl.isNotBlank()) prefs.remove(KEY_CARD_BACK_LAST_GOOD_URL)
+            }
         }
         endpointRevision++
     }
 
+    /** 只比 scheme://host:port；路径（/cardback.json）变化不代表换电脑。 */
+    private fun endpointKey(raw: String): String {
+        val text = raw.trim().trimEnd('/')
+        if (text.isBlank()) return ""
+        return runCatching {
+            val uri = java.net.URI(text)
+            val host = uri.host ?: return@runCatching text
+            val port = if (uri.port >= 0) uri.port else if (uri.scheme == "https") 443 else 80
+            "${uri.scheme}://${host.lowercase()}:$port"
+        }.getOrDefault(text)
+    }
+
     suspend fun updateCardBackToken(token: String) {
-        dataStore.edit { prefs -> prefs[KEY_CARD_BACK_TOKEN] = token.trim() }
+        dataStore.edit { prefs ->
+            prefs[KEY_CARD_BACK_TOKEN] = token.trim()
+            // 1.4.7.2 W4：口令换了，旧 pin 对应的配对关系作废；等 HTTPS /identity 重新取锚点。
+            prefs.remove(KEY_CARD_BACK_TLS_PIN)
+            prefs[KEY_CARD_BACK_INSTANCE_ID] = ""
+            // 新口令不能再发给旧电脑的 last-good 地址。
+            prefs.remove(KEY_CARD_BACK_LAST_GOOD_URL)
+        }
+        endpointRevision++
+    }
+
+    /**
+     * 1.4.7.2 W4：写入局域网 TLS 锚点。
+     *
+     * pin 非法时清空（绝不保留一个无法校验的值）；端口越界回退 8443。
+     * 只应由 [LanDiscovery.fetchAnchor] 的 HTTPS 结果或用户手填写入，不能来自 UDP/明文 HTTP。
+     */
+    suspend fun updateCardBackTlsAnchor(pin: String, port: Int) {
+        val normalized = TlsPinned.normalizePin(pin)
+        val safePort = port.takeIf { it in 1..65535 } ?: DEFAULT_CARD_BACK_TLS_PORT
+        dataStore.edit { prefs ->
+            if (normalized == null) {
+                prefs.remove(KEY_CARD_BACK_TLS_PIN)
+                prefs.remove(KEY_CARD_BACK_TLS_PORT)
+            } else {
+                prefs[KEY_CARD_BACK_TLS_PIN] = normalized
+                prefs[KEY_CARD_BACK_TLS_PORT] = safePort
+            }
+        }
+    }
+
+    /** 记住当前电脑的服务身份；instance 变了说明换了电脑/重装，旧 pin 必须作废。 */
+    suspend fun updateCardBackInstanceId(instanceId: String) {
+        dataStore.edit { prefs ->
+            val old = prefs[KEY_CARD_BACK_INSTANCE_ID]?.trim().orEmpty()
+            val next = instanceId.trim()
+            prefs[KEY_CARD_BACK_INSTANCE_ID] = next
+            if (old.isNotBlank() && old != next) prefs.remove(KEY_CARD_BACK_TLS_PIN)
+        }
+    }
+
+    /**
+     * 1.4.7.2 W4-B：同 WiFi 自动直连开关。
+     * 默认关闭；开启后设置页会显示「仅可信家庭 WiFi」的风险提示。
+     */
+    suspend fun updateCardBackLanAuto(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_CARD_BACK_LAN_AUTO] = enabled }
         endpointRevision++
     }
 
@@ -233,13 +356,28 @@ class SettingsRepository(private val context: Context) {
         dataStore.edit { prefs -> prefs[KEY_CARD_SEED_VERSION] = version }
     }
 
-    /** 已经拉到第几条重写结果；重写结果按 seq 增量拉取。 */
-    suspend fun rewriteLastSeq(): Long {
-        return dataStore.data.map { prefs -> prefs[KEY_REWRITE_LAST_SEQ] ?: 0L }.first()
+    /** 同一结果流内 seq 才可比较。两项一起读写，避免重启后混配。 */
+    internal suspend fun rewriteResultCursor(): RewriteResultCursor {
+        val prefs = dataStore.data.first()
+        return RewriteResultCursor(prefs[KEY_REWRITE_LAST_SEQ] ?: 0L, prefs[KEY_REWRITE_STREAM_ID])
     }
 
-    suspend fun updateRewriteLastSeq(seq: Long) {
-        dataStore.edit { prefs -> prefs[KEY_REWRITE_LAST_SEQ] = seq }
+    internal suspend fun updateRewriteResultCursor(cursor: RewriteResultCursor) {
+        dataStore.edit { prefs ->
+            prefs[KEY_REWRITE_LAST_SEQ] = cursor.seq
+            val streamId = cursor.streamId
+            if (streamId == null) prefs.remove(KEY_REWRITE_STREAM_ID)
+            else prefs[KEY_REWRITE_STREAM_ID] = streamId
+        }
+    }
+
+    /** 老服务端（无 streamId）游标归零的「从哪个 seq 归零过」标记，防止同一位置反复重放。 */
+    internal suspend fun rewriteLegacyRewoundSeq(): Long {
+        return dataStore.data.first()[KEY_REWRITE_LEGACY_REWOUND_SEQ] ?: 0L
+    }
+
+    internal suspend fun updateRewriteLegacyRewoundSeq(seq: Long) {
+        dataStore.edit { prefs -> prefs[KEY_REWRITE_LEGACY_REWOUND_SEQ] = seq }
     }
 
     /** 上次选的模型 id，空 = 还没选过。 */
@@ -329,8 +467,14 @@ class SettingsRepository(private val context: Context) {
         private val KEY_CARD_BACK_URL = stringPreferencesKey("card_back_url")
         private val KEY_CARD_BACK_TOKEN = stringPreferencesKey("card_back_token")
         private val KEY_CARD_BACK_LAST_GOOD_URL = stringPreferencesKey("card_back_last_good_url")
+        private val KEY_CARD_BACK_INSTANCE_ID = stringPreferencesKey("card_back_instance_id")
+        private val KEY_CARD_BACK_LAN_AUTO = booleanPreferencesKey("card_back_lan_auto")
+        private val KEY_CARD_BACK_TLS_PIN = stringPreferencesKey("card_back_tls_pin")
+        private val KEY_CARD_BACK_TLS_PORT = intPreferencesKey("card_back_tls_port")
         private val KEY_CARD_SEED_VERSION = intPreferencesKey("card_seed_version")
         private val KEY_REWRITE_LAST_SEQ = longPreferencesKey("rewrite_last_seq")
+        private val KEY_REWRITE_STREAM_ID = stringPreferencesKey("rewrite_stream_id")
+        private val KEY_REWRITE_LEGACY_REWOUND_SEQ = longPreferencesKey("rewrite_legacy_rewound_seq")
         private val KEY_REWRITE_MODEL = stringPreferencesKey("rewrite_model")
         private val KEY_CLEANUP_132_DONE = booleanPreferencesKey("cleanup_132_done")
         private val KEY_TEST_DECK_VERSION = intPreferencesKey("test_deck_version")

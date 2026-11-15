@@ -17,7 +17,8 @@ data class CardSeedPayload(
     val version: Int = 0,
     val book: String = "",
     val count: Int = 0,
-    val words: List<CardSeedWord> = emptyList()
+    val words: List<CardSeedWord> = emptyList(),
+    @Transient val externalOverride: Boolean = false
 )
 
 data class CardSeedWord(
@@ -41,7 +42,9 @@ object CardSeedLoader {
     /** 读种子文件；没有或解析失败返回 null。 */
     fun load(context: Context): CardSeedPayload? {
         externalCandidates(context).firstOrNull { it.isFile && it.length() > 0L }?.let { file ->
-            parse { file.readText() }?.takeIf { it.words.isNotEmpty() }?.let { return it }
+            parse { file.readText() }?.takeIf { it.words.isNotEmpty() }?.let {
+                return it.copy(externalOverride = true)
+            }
         }
         return parse {
             context.assets.open(ASSET_NAME).bufferedReader().use { it.readText() }

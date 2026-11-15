@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>B · 弹跳 Bouncy Play — 不爱背单词原型</title>
+<style>
+:root{
+  --bg:#FFF7EC; --card:#fff; --grape:#6C4CF5; --grapeD:#4B2FD0; --mint:#22C58B; --mintD:#14996A;
+  --lemon:#FFC53D; --lemonD:#E0A21A; --tomato:#FF5A5F; --tomatoD:#D63A40; --ink:#22183D; --ink2:#7A6F95; --fire:#FF8A00;
+  --spring:cubic-bezier(.34,1.56,.64,1);
+  --round:"Nunito","Baloo 2","Varela Round","PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:#2a1f55;display:grid;place-items:center;overflow:hidden;font-family:var(--round);color:var(--ink);-webkit-font-smoothing:antialiased}
+.phone{width:390px;height:844px;background:var(--bg);position:relative;overflow:hidden;border-radius:44px;box-shadow:0 30px 80px -20px rgba(0,0,0,.6),0 0 0 10px #15102b;display:flex;flex-direction:column}
+body.bare .phone{border-radius:0;box-shadow:none}
+.status{height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 28px;font-weight:800;font-size:15px}
+.badge{position:absolute;left:50%;transform:translateX(-50%);top:12px;z-index:9;font-weight:900;font-size:11px;color:#fff;background:var(--grape);padding:5px 10px;border-radius:999px}
+main{flex:1;position:relative;overflow:hidden}
+.page{position:absolute;inset:0;display:flex;flex-direction:column;visibility:hidden}
+.page.on{visibility:visible}
+/* top hud */
+.hud{display:flex;align-items:center;gap:10px;padding:10px 20px 0}
+.prog{flex:1;height:14px;background:#EFE5D6;border-radius:999px;overflow:hidden;position:relative}
+.prog i{position:absolute;inset:0 auto 0 0;width:0;border-radius:999px;background:var(--mint) repeating-linear-gradient(-45deg,rgba(255,255,255,.25) 0 8px,transparent 8px 16px);background-size:22px 22px;animation:stripe 1s linear infinite;box-shadow:inset 0 -3px 0 rgba(0,0,0,.12)}
+@keyframes stripe{to{background-position:22px 0}}
+.combo{display:flex;align-items:center;gap:3px;font-weight:900;font-size:18px;color:var(--fire);min-width:52px}
+.combo.zero{color:#C9BFD6}
+.xp{font-weight:900;font-size:14px;color:var(--grape);background:#EFEBFF;padding:5px 10px;border-radius:999px;font-variant-numeric:tabular-nums}
+.deck{flex:1;padding:18px 20px 10px;perspective:1000px;position:relative;display:flex}
+.card3d{flex:1;position:relative;transform-style:preserve-3d}
+.face{position:absolute;inset:0;background:var(--card);border-radius:28px;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+  box-shadow:0 10px 0 #EDE3D3,0 18px 30px -12px rgba(108,76,245,.25);border:3px solid transparent;transition:border-color .2s}
+.front{display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer}
+.front .emoji{font-size:44px;margin-bottom:14px}
+.front .w{font-weight:900;font-size:48px;line-height:1.05;letter-spacing:-.5px}
+.pill{margin-top:14px;font-weight:700;font-size:16px;color:var(--grape);background:#EFEBFF;padding:6px 14px;border-radius:999px}
+.tap{position:absolute;bottom:26px;font-weight:800;font-size:14px;color:var(--ink2);display:flex;gap:6px;align-items:center}
+.tap span{display:inline-block;animation:bob 1.6s var(--spring) infinite}
+@keyframes bob{0%,60%,100%{transform:none}30%{transform:translateY(-6px)}}
+.back{transform:rotateY(180deg);padding:20px 20px 16px;overflow:auto;visibility:hidden}
+.back .w{font-weight:900;font-size:30px}
+.back .m{display:inline-block;margin-top:8px;font-weight:800;font-size:19px;background:#FFF1C7;padding:4px 12px;border-radius:12px}
+.chunk{margin-top:14px;background:#F8F5FF;border-radius:18px;padding:12px 14px}
+.chunk h4{font-weight:900;font-size:13px;color:var(--grape);margin-bottom:6px}
+.chunk p{font-weight:600;font-size:14px;line-height:1.6;margin-bottom:4px}
+.chunk.c2{background:#E9FBF3}.chunk.c2 h4{color:var(--mintD)}
+.chunk.c3{background:#FFF0F0}.chunk.c3 h4{color:var(--tomatoD)}
+.xpfly{position:absolute;right:30px;top:20px;font-weight:900;font-size:26px;color:var(--mint);pointer-events:none;z-index:5;opacity:0;text-shadow:0 2px 0 #fff}
+.btns{display:flex;gap:10px;padding:8px 20px 14px;height:92px;flex:none;align-items:flex-start}
+.btns button{flex:1;height:60px;border:0;border-radius:18px;font-family:inherit;font-weight:900;font-size:18px;color:#fff;cursor:pointer;
+  transition:transform .08s,box-shadow .08s;user-select:none}
+.btns button:active{transform:translateY(4px) scale(.96)!important;box-shadow:0 0 0 transparent!important}
+.btns .again{background:var(--tomato);box-shadow:0 4px 0 var(--tomatoD)}
+.btns .hard{background:var(--lemon);box-shadow:0 4px 0 var(--lemonD);color:#5a3d00}
+.btns .good{background:var(--mint);box-shadow:0 4px 0 var(--mintD)}
+.btns .flip{background:var(--grape);box-shadow:0 4px 0 var(--grapeD)}
+.btns[data-mode="front"] .r3,.btns[data-mode="back"] .flip{display:none}
+.confetti{position:absolute;inset:0;pointer-events:none;z-index:20;overflow:hidden}
+.confetti i{position:absolute;width:9px;height:13px;border-radius:3px}
+/* books */
+.ptitle{padding:14px 22px 4px;font-weight:900;font-size:30px}
+.psub{padding:0 22px 12px;color:var(--ink2);font-weight:700;font-size:14px}
+.list{padding:4px 20px 20px;overflow:auto;display:flex;flex-direction:column;gap:16px}
+.book{background:#fff;border-radius:24px;padding:16px;display:flex;gap:14px;align-items:center;box-shadow:0 6px 0 #EDE3D3}
+.cover{width:62px;height:78px;border-radius:14px;display:grid;place-items:center;font-size:30px;flex:none;box-shadow:inset 0 -5px 0 rgba(0,0,0,.12)}
+.book .t{font-weight:900;font-size:18px}
+.book .s{font-weight:700;font-size:13px;color:var(--ink2);margin-top:4px}
+.mini{height:10px;background:#F1EADF;border-radius:999px;margin-top:10px;overflow:hidden}
+.mini i{display:block;height:100%;border-radius:999px;background:var(--grape)}
+.go{margin-left:auto;align-self:center;background:var(--grape);color:#fff;font-weight:900;font-size:14px;padding:10px 14px;border-radius:14px;box-shadow:0 3px 0 var(--grapeD);white-space:nowrap}
+.go.alt{background:#EFEBFF;color:var(--grape);box-shadow:0 3px 0 #D6CCFF}
+/* me */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:6px 20px}
+.tile{background:#fff;border-radius:24px;padding:16px;box-shadow:0 6px 0 #EDE3D3}
+.tile .k{font-weight:800;font-size:13px;color:var(--ink2)}
+.tile .v{font-weight:900;font-size:34px;margin-top:4px;font-variant-numeric:tabular-nums}
+.tile.fire{background:var(--fire);color:#fff;box-shadow:0 6px 0 #D96F00}.tile.fire .k{color:#FFE2BF}
+.tile.wide{grid-column:1/-1}
+.ringwrap{display:flex;align-items:center;gap:16px}
+.ring{width:84px;height:84px;transform:rotate(-90deg)}.ring circle{fill:none;stroke-width:12;stroke-linecap:round}
+.chart{display:flex;align-items:flex-end;gap:10px;height:110px;margin-top:12px}
+.chart div{flex:1;border-radius:10px 10px 6px 6px;background:#D8CEFF;transform-origin:bottom;position:relative}
+.chart div:last-child{background:var(--grape)}
+.chart b{position:absolute;bottom:-20px;left:0;right:0;text-align:center;font-size:11px;color:var(--ink2)}
+/* nav */
+nav{height:84px;flex:none;display:flex;padding:10px 18px 22px;gap:6px;position:relative;background:#fff;border-radius:28px 28px 0 0;box-shadow:0 -6px 20px -10px rgba(108,76,245,.25)}
+.blob{position:absolute;top:10px;height:52px;border-radius:18px;background:#EFEBFF;z-index:0}
+nav button{flex:1;position:relative;z-index:1;background:none;border:0;font-family:inherit;font-weight:900;font-size:13px;color:var(--ink2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer}
+nav button .ic{font-size:22px;display:block}
+nav button.on{color:var(--grape)}
+</style>
+</head>
+<body>
+<div class="phone" id="phone">
+  <div class="status"><span>9:41</span><span>●●● 🔋</span></div>
+  <div class="badge">B · 弹跳</div>
+  <main>
+    <section class="page on" id="p-learn">
+      <div class="hud"><div class="combo zero" id="combo">🔥<span>0</span></div><div class="prog"><i id="bar"></i></div><div class="xp" id="xp">0 XP</div></div>
+      <div class="deck" id="deck"><div class="card3d" id="c3"></div><div class="xpfly" id="xpfly">+10 XP</div></div>
+      <div class="btns" id="btns" data-mode="front">
+        <button class="flip" data-r="flip">翻开看看 👀</button>
+        <button class="r3 again" data-r="again">不认识</button>
+        <button class="r3 hard" data-r="hard">模糊</button>
+        <button class="r3 good" data-r="good">认识!</button>
+      </div>
+    </section>
+    <section class="page" id="p-books">
+      <h1 class="ptitle">我的词库 📚</h1><p class="psub">2 本词书 · 5248 个词等你来</p>
+      <div class="list" id="list"></div>
+    </section>
+    <section class="page" id="p-me">
+      <h1 class="ptitle">今天也很棒 ✨</h1><p class="psub">再学 8 个就完成今日目标</p>
+      <div class="tiles" id="tiles"></div>
+    </section>
+  </main>
+  <nav id="nav"><div class="blob" id="blob"></div>
+    <button class="on" data-p="learn"><span class="ic">🃏</span>学习</button>
+    <button data-p="books"><span class="ic">📚</span>词库</button>
+    <button data-p="me"><span class="ic">🏆</span>我的</button></nav>
+  <div class="confetti" id="conf"></div>
+</div>
+<script>
+const WORDS = [{"word":"pesticide","phonetic":"/ˈpestɪsaɪd/","meaning":"n. 农药；杀虫剂","example":"Farmers are encouraged to use less pesticide to protect the soil and water.\n农民们少用点农药吧，土壤和水源都护着。","approach":["① 先看词头 pest：它是考纲内的老面孔，本义就是「害虫、瘟疫」，一读到它脑子里立刻浮出庄稼叶子上密密麻麻啃食的虫子，这就是这个词要对付的对象。","② 再看词尾 -cide：这是一个真实且高频的后缀，来自拉丁语「切、杀」。已经背过的 suicide＝sui(自己)+cide＝自杀，homicide＝homi(人)+cide＝杀人，所以只要看到 -cide 就锁定「杀」这个动作。","③ 中间那根细小的 i 只是把两头焊起来的拼写接缝，不用赋予额外含义。把两截合起来：杀 pests 的东西，也就是用来杀死害虫的药剂 ——> pesticide 农药、杀虫剂。","④ 顺带记一条同根家族链：pest(害虫) + cide(杀) 是「杀虫子」，那么 herbi(草)+cide 就是除草剂，insecti(昆虫)+cide 就是杀虫剂，一串词一起拿下。"],"collocations":["spray pesticide —— 喷药，往叶背洒","pesticide residue —— 农药残留，果子上的","a chemical pesticide —— 化学合成的那种药"]},{"word":"evaporate","phonetic":"/ɪˈvæpəreɪt/","meaning":"v. 蒸发；使蒸发；消失","example":"The puddle on the road evaporated quickly under the hot sun.\n路上的水洼，烈日一晒就蒸发了。","approach":["① 先看词头 e-，它是 ex- 的变形，含义是「往外、离开原处」，水离开水面就是往天上跑。","② 再看中间 vapor，它就是「蒸汽」本身，和名词 vapour 一模一样，正是水变成的那团白气。","③ 最后 -ate 是动词后缀，表示「使成为某种状态」，合起来就是「使变成蒸汽往外走」——> 蒸发。"],"collocations":["evaporate into —— 蒸发成…","water evaporates —— 水分蒸发","evaporate from —— 从…中蒸发"]},{"word":"equate","phonetic":"/ɪˈkweɪt/","meaning":"v. 等同；把…等同于","example":"Many people equate happiness with wealth, but the two are not the same.\n很多人把幸福和财富划上等号，可这两样东西真不是一回事。","approach":["① 先看词根 equ-：equal、equality、equivalent 里都藏着它，意思是「相等、一样」，这是你已经背过的老朋友。","② 再看后缀 -ate：它把形容词性的「相等」变成一个动作，表示「使…」，于是整词就是「使两样东西相等」。","③ 合起来：使 A 和 B 相等，就是在心里把二者画上等号、当成同一回事 ——> equate 等同；把…等同于。"],"collocations":["equate A with B —— 把 A 和 B 划等号","be equated to —— 被人拿来跟…划等号","equate success with money —— 拿钱当成功的尺子"]},{"word":"marble","phonetic":"/ˈmɑːrbl/","meaning":"n. 大理石","example":"The palace floor was laid with polished white marble.\n宫殿的地面，铺的就是打磨过的白色大理石。","approach":["① 先看读音：marble 读 /ˈmɑːrbl/，第一个音节 /mɑːr/ 与中文「妈」的声母韵母都接近，可以借「妈」来记。","② 再看第二个音节 /bl/，爆破音 /b/ 加上轻化的 /l/，听起来像「不了」，于是整个词在耳朵里变成「妈不了」——妈妈搬不动的那块东西。","③ 把声音和意思接上：妈妈使尽力气也「搬不了」的那块石头，一定又硬又白又沉，正是宫殿地面和雕塑用的那种石头 ——> 大理石。"],"collocations":["a marble floor —— 大理石地面，踩着都显贵","a marble statue —— 大理石雕像，站着不动也体面","carved from marble —— 从大理石里雕出来的，料子比手艺还硬"]},{"word":"squad","phonetic":"/skwɒd/","meaning":"n. 班，小组；（军队的）班","example":"A squad of soldiers marched across the yard in step.\n一队士兵踏着整齐的步子穿过院子。","approach":["① 先看读音：squad /skwɒd/，四个音一口气压成一个短促的方块音，重音落在后面，听着像一群人同时落脚的一声「跨·蹬」。","② 再看画面：一队士兵排成一块方阵，同一秒抬腿、同一秒踩下，鞋底同时砸地，扬起一团灰，旁边的人被震得缩脖子。","③ 合起来：一个人迈步是散的，一群人同时落脚才砸出这一声「跨·蹬」——> squad 就是被编在一起、步调统一的那一小队人，班、小组。"],"collocations":["a squad of soldiers —— 一个班的大兵，齐齐整整","rescue squad —— 救援小组，出事就往里冲的那种","squad leader —— 班长，管这伙人的头"]}];
+const EMO=['🐛','💨','⚖️','🏛️','🪖'];
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SPRING='cubic-bezier(.34,1.56,.64,1)';
+const $=s=>document.querySelector(s);
+const wait=ms=>new Promise(r=>setTimeout(r,RM?0:ms));
+function A(el,kf,o){ if(RM){kf=[{opacity:kf[0].opacity??1},{opacity:kf[kf.length-1].opacity??1}];o={...o,duration:120,delay:0}} return el.animate(kf,{fill:'both',...o}).finished }
+function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+let idx=0,done=0,combo=0,xp=0,flipped=false,busy=false;
+const c3=$('#c3'),btns=$('#btns');
+function render(){
+  c3.getAnimations().forEach(a=>a.cancel());
+  const w=WORDS[idx%WORDS.length]; flipped=false; btns.dataset.mode='front'; c3.style.transform='';
+  const [en,zh]=w.example.split('\n');
+  c3.innerHTML=`<div class="face front"><div class="emoji">${EMO[idx%5]}</div><div class="w">${esc(w.word)}</div><div class="pill">${esc(w.phonetic)}</div><div class="tap"><span>👆</span>点一下翻面</div></div>
+  <div class="face back"><div class="w">${esc(w.word)}</div><div class="m">${esc(w.meaning)}</div>
+  <div class="chunk"><h4>🧠 记忆思路</h4>${w.approach.map(p=>`<p>${esc(p)}</p>`).join('')}</div>
+  <div class="chunk c2"><h4>🔗 常用搭配</h4>${w.collocations.map(p=>`<p>${esc(p)}</p>`).join('')}</div>
+  <div class="chunk c3"><h4>💬 例句</h4><p>${esc(en)}</p><p>${esc(zh||'')}</p></div></div>`;
+  c3.querySelector('.front').onclick=flip;
+}
+async function flip(){
+  if(flipped||busy) return; busy=true; flipped=true; btns.dataset.mode='back';
+  [...btns.querySelectorAll('.r3')].forEach((b,i)=>A(b,[{transform:'translateY(30px) scale(.6)',opacity:0},{transform:'none',opacity:1}],{duration:450,delay:i*60,easing:SPRING}));
+  const fr=c3.querySelector('.front'),bk=c3.querySelector('.back'); setTimeout(()=>{fr.style.visibility='hidden';bk.style.visibility='visible'},RM?0:150);
+  await A(c3,[{transform:'rotateY(0) scale(1)'},{transform:'rotateY(90deg) scale(.96)',offset:.45},{transform:'rotateY(180deg) scale(1)'}],{duration:520,easing:SPRING});
+  c3.style.transform='rotateY(180deg)'; busy=false;
+}
+function faces(color){c3.querySelectorAll('.face').forEach(f=>f.style.borderColor=color)}
+function confetti(fromEl){
+  if(RM) return; const box=$('#phone').getBoundingClientRect(), b=fromEl.getBoundingClientRect(), k=box.width/390;
+  const x0=(b.left+b.width/2-box.left)/k, y0=(b.top-box.top)/k, cols=['#6C4CF5','#22C58B','#FFC53D','#FF5A5F','#FF8A00','#3DB7FF'];
+  for(let i=0;i<18;i++){const p=document.createElement('i');p.style.background=cols[i%6];p.style.left=x0+'px';p.style.top=y0+'px';$('#conf').appendChild(p);
+    const a=-Math.PI/2+(Math.random()-.5)*1.9, v=160+Math.random()*180, dx=Math.cos(a)*v, dy=Math.sin(a)*v;
+    p.animate([{transform:'translate(0,0) rotate(0)',opacity:1},{transform:`translate(${dx}px,${dy}px) rotate(${Math.random()*540}deg)`,opacity:1,offset:.6},{transform:`translate(${dx*1.15}px,${dy+220}px) rotate(${Math.random()*900}deg)`,opacity:0}],{duration:700+Math.random()*200,easing:'cubic-bezier(.2,.7,.4,1)'}).finished.then(()=>p.remove())}
+}
+function setCombo(n){combo=n;const c=$('#combo');c.classList.toggle('zero',!n);c.querySelector('span').textContent=n?('×'+n):'0';
+  if(n) A(c,[{transform:'scale(1) rotate(0)'},{transform:'scale(1.5) rotate(-12deg)',offset:.4},{transform:'scale(1) rotate(0)'}],{duration:420,easing:SPRING});
+  else A(c,[{transform:'translateY(0)'},{transform:'translateY(10px)',opacity:.3,offset:.5},{transform:'none',opacity:1}],{duration:420,easing:'ease-out'})}
+async function rate(r){
+  if(!flipped||busy) return; busy=true;
+  const btn=btns.querySelector('.'+r);
+  if(r==='good'){
+    faces('var(--mint)'); confetti(btn); setCombo(combo+1); xp+=10; $('#xp').textContent=xp+' XP';
+    A($('#xpfly'),[{opacity:0,transform:'translateY(10px) scale(.6)'},{opacity:1,transform:'translateY(-10px) scale(1.15)',offset:.3},{opacity:0,transform:'translateY(-50px) scale(1)'}],{duration:600,easing:'ease-out'});
+    await A(c3,[{transform:'rotateY(180deg) scale(1)'},{transform:'rotateY(180deg) scale(1.06)',offset:.35},{transform:'rotateY(180deg) scale(1)'}],{duration:380,easing:SPRING});
+    await A(c3,[{transform:'rotateY(180deg)',opacity:1},{transform:'rotateY(180deg) translate(-120px,-30px) rotate(8deg) scale(.8)',opacity:0}],{duration:260,easing:'ease-in'});
+  }else if(r==='again'){
+    faces('var(--tomato)'); setCombo(0);
+    await A(c3,[0,-10,10,-7,7,-3,0].map(x=>({transform:`rotateY(180deg) translateX(${x}px)`})),{duration:360,easing:'cubic-bezier(.36,.07,.19,.97)'});
+    await A(c3,[{transform:'rotateY(180deg)',opacity:1},{transform:'rotateY(180deg) translateY(60px) scale(.9)',opacity:0}],{duration:240,easing:'ease-in'});
+  }else{
+    faces('var(--lemon)');
+    await A(c3,[0,-4,4,-3,0].map(d=>({transform:`rotateY(180deg) rotate(${d}deg)`})),{duration:400,easing:'ease-in-out'});
+    await A(c3,[{transform:'rotateY(180deg)',opacity:1},{transform:'rotateY(180deg) translateY(-40px) scale(.9)',opacity:0}],{duration:240,easing:'ease-in'});
+  }
+  done=Math.min(20,done+1); idx++; bar(); render();
+  await A(c3,[{transform:'translateY(40px) scale(.9)',opacity:0},{transform:'none',opacity:1}],{duration:450,easing:SPRING});
+  busy=false;
+}
+function bar(){const p=done/20*100;const b=$('#bar');const from=parseFloat(b.style.width)||0;
+  A(b,[{width:from+'%'},{width:Math.min(100,p+4)+'%',offset:.6},{width:p+'%'}],{duration:600,easing:'ease-out'}); b.style.width=p+'%';
+  if(done===20) confetti(b)}
+btns.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;b.dataset.r==='flip'?flip():rate(b.dataset.r)});
+/* books / me */
+$('#list').innerHTML=[['📕','#FFE1E1','六级记忆卡','已学 2 / 5228 · 掌握 0%',0.4,'使用中 ✓',1],['📘','#E3EEFF','测试 · 20 词','已学 0 / 20 · 1 天学完',0,'切换',0],['⭐','#FFF1C7','生词本','7 个收藏 · 掌握 43%',43,'去复习',0],['📗','#E1F7EC','考研核心 5500','还没导入',0,'导入',0]]
+ .map(([e,bg,t,s,p,g,on])=>`<div class="book"><div class="cover" style="background:${bg}">${e}</div><div style="flex:1;min-width:0"><div class="t">${t}</div><div class="s">${s}</div><div class="mini"><i style="width:${Math.max(3,p)}%"></i></div></div><div class="go ${on?'':'alt'}">${g}</div></div>`).join('');
+$('#tiles').innerHTML=`<div class="tile fire"><div class="k">连续打卡</div><div class="v">🔥 7 天</div></div><div class="tile"><div class="k">今日已学</div><div class="v">12</div></div>
+ <div class="tile wide ringwrap"><svg class="ring" viewBox="0 0 84 84"><circle cx="42" cy="42" r="34" stroke="#EFEBFF"/><circle id="arc" cx="42" cy="42" r="34" stroke="var(--mint)" stroke-dasharray="213.6" stroke-dashoffset="213.6"/></svg><div><div class="k" style="font-weight:800;color:var(--ink2);font-size:13px">掌握率</div><div style="font-weight:900;font-size:34px">38%</div><div style="font-weight:700;font-size:13px;color:var(--ink2)">比上周 +6% 🎉</div></div></div>
+ <div class="tile wide"><div class="k">近 7 天新学</div><div class="chart">${[14,22,9,30,18,26,12].map((v,i)=>`<div style="height:${v/30*100}%"><b>${'五六日一二三四'[i]}</b></div>`).join('')}</div><div style="height:18px"></div></div>`;
+function enter(p){
+  const els=p==='books'?document.querySelectorAll('.book'):document.querySelectorAll('.tile');
+  els.forEach((el,i)=>A(el,[{transform:'translateY(40px) rotate(-2deg)',opacity:0},{transform:'none',opacity:1}],{duration:450,delay:i*70,easing:SPRING}));
+  if(p==='me'){A($('#arc'),[{strokeDashoffset:213.6},{strokeDashoffset:213.6*(1-.38)}],{duration:700,delay:200,easing:SPRING});
+    document.querySelectorAll('.chart div').forEach((el,i)=>A(el,[{transform:'scaleY(0)'},{transform:'scaleY(1)'}],{duration:500,delay:300+i*50,easing:SPRING}))}
+}
+const ORDER=['learn','books','me']; let cur='learn';
+function blob(animate){const b=$('#nav button.on'),n=$('#nav').getBoundingClientRect(),r=b.getBoundingClientRect(),k=n.width/390*0+ ($('#phone').getBoundingClientRect().width/390);
+  const left=(r.left-n.left)/k+6,w=r.width/k-12,bl=$('#blob');
+  if(!animate||RM){bl.style.left=left+'px';bl.style.width=w+'px';return}
+  const fl=parseFloat(bl.style.left),fw=parseFloat(bl.style.width),dir=left>fl;
+  A(bl,[{left:fl+'px',width:fw+'px'},{left:(dir?fl:left)+'px',width:(Math.abs(left-fl)+w)+'px',offset:.45},{left:left+'px',width:w+'px'}],{duration:420,easing:SPRING});
+  bl.style.left=left+'px';bl.style.width=w+'px'}
+async function go(p){
+  if(p===cur) return; const d=ORDER.indexOf(p)>ORDER.indexOf(cur)?1:-1; const from=$('#p-'+cur),to=$('#p-'+p); cur=p;
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.p===p)); blob(true);
+  A($('#nav button.on .ic'),[{transform:'scale(1)'},{transform:'scale(1.25) translateY(-4px)',offset:.4},{transform:'scale(1)'}],{duration:420,easing:SPRING});
+  A(from,[{transform:'none'},{transform:`translateX(${-d*100}%)`}],{duration:380,easing:'cubic-bezier(.5,0,.3,1)'}).then(()=>{if(cur!==from.id.slice(2))from.classList.remove('on')});
+  to.classList.add('on'); enter(p);
+  await A(to,[{transform:`translateX(${d*100}%)`},{transform:'none'}],{duration:380,easing:SPRING});
+}
+$('#nav').addEventListener('click',e=>{const b=e.target.closest('button');b&&go(b.dataset.p)});
+addEventListener('keydown',e=>{if(cur!=='learn')return;if(e.code==='Space'){e.preventDefault();flip()}if(e.key==='1')rate('again');if(e.key==='2')rate('hard');if(e.key==='3')rate('good')});
+function fit(){const ph=$('#phone');const bare=innerWidth<=400;document.body.classList.toggle('bare',bare);const pad=bare?0:60;const s=Math.min(1,(innerWidth-pad)/390,(innerHeight-pad)/844);ph.style.transform=`scale(${s})`;blob(false)}
+addEventListener('resize',fit);render();fit();
+</script>
+</body>
+</html>

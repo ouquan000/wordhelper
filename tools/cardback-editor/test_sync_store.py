@@ -6,7 +6,7 @@
   1. 正常 push/pull、原子写（不留 .tmp）；
   2. 冲突按 lrt 判、旧 op 仍 ack，但 conflicts 里要看得见，日志里也要有；
   3. 坏文件：备份成 .corrupt-<时间>（不覆盖旧备份）、rev 沿用备份里的最大值；
-  4. rows 上限：按 rev 清最旧，trimmed 计数，持久化后仍受上限约束。
+  4. rows 上限：只告警不删除，超线计数可见，持久化后数据仍在。
 
 用法：python test_sync_store.py
 """
@@ -166,7 +166,7 @@ def test_corrupt_recovery(tmp):
         json.dump({"rev": 5, "rows": []}, fh)
     third = sync_store.SyncStore(path)
     check("rows 不是对象也按坏文件处理", third.stats().get("corrupt_count") == 1, repr(third.stats()))
-    check("形状不对也沿用 rev=5", third.stats().get("rev") == 5, repr(third.stats().get("rev")))
+    check("形状不对也不能把 rev 拉回 5", third.stats().get("rev") == 100, repr(third.stats().get("rev")))
     check("第三次坏文件备份累计 3 份", len(glob.glob(path + ".corrupt-*")) == 3, "")
 
 
@@ -178,16 +178,18 @@ def test_row_limit(tmp):
         store = sync_store.SyncStore(path)
         ops = [mkop("w-%d" % i, 1000 + i, "op-%d" % i) for i in range(8)]
         result, out = quiet_push(store, "d1", ops)
-        check("超上限时返回 trimmed=5", result.get("trimmed") == 5, repr(result.get("trimmed")))
-        check("rows 被裁到 3", store.stats()["rows"] == 3, repr(store.stats()["rows"]))
-        check("清理日志有记录", "超过上限" in out and "清理最旧" in out, out.strip())
+        check("超上限不删数据：trimmed=0", result.get("trimmed") == 0, repr(result.get("trimmed")))
+        check("rows 保留全部 8 行", store.stats()["rows"] == 8, repr(store.stats()["rows"]))
+        check("告警日志有记录", "容量告警线" in out and "不自动删除" in out, out.strip())
         remaining = [row["w"] for row in store.pull(0)["rows"]]
-        check("留下的是最新的 3 行", remaining == ["w-5", "w-6", "w-7"], repr(remaining))
-        check("rows_trimmed 统计为 5", store.stats().get("rows_trimmed") == 5,
+        check("8 行全部还在", remaining == ["w-%d" % i for i in range(8)], repr(remaining))
+        check("rows_trimmed 仍为 0", store.stats().get("rows_trimmed") == 0,
               repr(store.stats().get("rows_trimmed")))
+        check("超线计数为 5", store.stats().get("rows_over_limit") == 5,
+              repr(store.stats().get("rows_over_limit")))
 
         again = sync_store.SyncStore(path)
-        check("重新载入后仍只有 3 行", again.stats()["rows"] == 3, repr(again.stats()["rows"]))
+        check("重新载入后仍是 8 行", again.stats()["rows"] == 8, repr(again.stats()["rows"]))
         check("重新载入 rev 不回退", again.stats()["rev"] == 8, repr(again.stats()["rev"]))
     finally:
         sync_store.MAX_ROWS = old_limit

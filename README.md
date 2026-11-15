@@ -7,14 +7,23 @@
 - 上游 LICENSE 原样保留在 `app/src_repo/LICENSE`，本仓库的改动汇总见文末「本仓库改了什么」
 
 
-## 当前状态（2026-11-10）
+## 当前状态（2026-11-12）
 
-- **已交付**：tag `v1.4.7.1`（HEAD `2759518`），包 `dist/english-app-1.4.7.1.apk`，33,379,406 B，md5 `e1993c417d2f88fd01cbc1c6f981692b`，vc14 / 1.4.7.1 / DB21。
-- **两道闸**：功能闸 T1–T9 全 PASS；独立验收 89/100「可交付」。141 项单测全过。
-- **真机**：`10.103.216.69:5555` 已装 1.4.7.1；同步状态页「已连接」，实际连 `https://buying-rear-shaved-submitting.trycloudflare.com`，待发送 0。
-- **电脑端**：8765 在跑（PID 51580，2026-11-10 01:01:23 启动）；Quick Tunnel 同时在跑（临时地址，重启就变）。
-- **还没做**：named tunnel（固定域名，等用户本人登录 Cloudflare + 改 NS）、4G⇄WiFi 来回 / 电脑重启 / 24h soak 三项矩阵未验。
-- 交接见 [`HANDOFF-2026-11-10.md`](HANDOFF-2026-11-10.md)；更新公告见 [`docs/公告-1.4.7.1-大白话.md`](docs/公告-1.4.7.1-大白话.md)。
+**一句话：1.4.7.2 没有完成，也没有正式发布。用户手上拿到的是一个可安装的 r2 测试包。**
+
+- **已发布的正式基线仍是 1.4.7.1**：tag `v1.4.7.1`（HEAD `4e1455c`），包 `dist/english-app-1.4.7.1.apk`，vc14 / 1.4.7.1 / DB21。
+- **1.4.7.2 目前只有一个测试包**（2026-11-12 09:00 已把文件交付给用户，没有装到他手机上）：
+  `_recon/1.4.7.2/package-20261112/build-r2/wordhelper-1.4.7.2-r2-debug.apk`，
+  33,477,910 B，SHA256 `bfcb0214a2c3a61006f85d7b6c52d12e9c3df2b1055b17e0c49561a07b05b981`，
+  vc15 / 1.4.7.2 / DB23 / minSdk 26 / target 34，签名与 1.4.7.1 同证书（可覆盖升级）。
+  安装说明见 [`_recon/1.4.7.2/package-20261112/INSTALL.md`](_recon/1.4.7.2/package-20261112/INSTALL.md)。
+- **这个包验过什么**：两条升级路径都保进度保自定义数据——**DB21 那条是真实 1.4.7.1 库的覆盖升级**（21→23）；**DB22 那条是人为构造的夹具场景**（22→23），不是第二条真实用户升级。另有冷启幂等、主链 UI 冒烟、本地重写队列与动作行第 4 键「跳过」、5 个 instrumentation 用例。全部在**自建离线隔离 AVD** 上做，**没上真机**。
+- **这轮唯一改动**：`KaoyanWordApp.kt` 启动块退役了 1.4.3.2 的历史自动清表（标记缺失时只补写标记，不再删七张学习记录表）。别的都没动。
+- **独立终审是 GO，但判定对象写死是「可安装测试包」，不是发布判定**（`_recon/1.4.7.2/package-20261112/review/r2/verdict.json`）。
+- **还没做**：真实改写/同步全链路（点重写 → 电脑生成 → 手机收 → 插回继续背 → 重启不丢）在成版上没跑通验完；真机、跨网四链路、生产 8765 的 TLS/8443、最终代码 24h（旧 soak 只跑了 15h35m17s 且是假 provider）、更老版本升级与拼写/生词本/备份导入回归；跨词偏好只有候选、没有持久化。
+- **不要**拿「出包完成」当「整版完成」；出问题也**不要用卸载（清数据）的方式回退**。
+
+交接见 [`HANDOFF-2026-11-12.md`](HANDOFF-2026-11-12.md)（当天最新，先读这个）；前一天的历史记录见 [`HANDOFF-2026-11-11.md`](HANDOFF-2026-11-11.md)；决策见 [`docs/decisions-1.4.7.2.md`](docs/decisions-1.4.7.2.md)；台账见 `_recon/1.4.7.2/coordination.md`。
 
 ## 协作纪律
 
@@ -91,7 +100,9 @@ export GRADLE_USER_HOME="D:/deepseek harness/work_anki_enligish/_toolchain/gradl
 
 产物：`app/src_repo/app/build/outputs/apk/debug/app-debug.apk`
 
-单测（当前 141 项）走同一个 Gradle：
+单测走同一个 Gradle。**下文的 141 项是 1.4.6 / 1.4.7.1 时期的计数，属历史快照，不是本轮新跑的**；
+1.4.7.2 时期记录的是 193 tests / 32 suites，来源 `_recon/1.4.7.2/coordination.md`（2026-11-11）——本轮只整理文档，没有为更新数字去重跑。
+1.4.7.2 r2 测试包本身只跑了 5 个 instrumentation 用例，见 `_recon/1.4.7.2/package-20261112/qa/r2/qa-report-r2.md`。
 
 ```bash
 cd app/src_repo
@@ -101,7 +112,7 @@ export GRADLE_USER_HOME="D:/deepseek harness/work_anki_enligish/_toolchain/gradl
 ```
 
 报告：`app/src_repo/app/build/reports/tests/testDebugUnitTest/index.html`；
-原始 XML 在 `app/src_repo/app/build/test-results/testDebugUnitTest/`（23 个文件，141 tests）。
+原始 XML 在 `app/src_repo/app/build/test-results/testDebugUnitTest/`（1.4.7.1 时期：23 个文件，141 tests——历史计数，以实际跑出来的报告为准）。
 
 依赖走阿里云镜像（`_toolchain/gradle-home/init.d/mirrors.gradle`），
 Gradle 发行版走腾讯云镜像，两者都不改项目源码。
@@ -114,15 +125,17 @@ Gradle 发行版走腾讯云镜像，两者都不改项目源码。
 |---|---|
 | 签名 | `_toolchain/signing/wordhelper.jks`（别名 `wordhelper`），**这把 key 不能换、不能丢** |
 | 包名 | `com.kaoyan.wordhelper`，与官方版相同 |
-| 版本号 | `versionCode` 与 `versionName` 同步维护（当前 `versionCode 14 / versionName 1.4.7.1`，DB 21） |
+| 版本号 | `versionCode` 与 `versionName` 同步维护（**已发布**的 `versionCode 14 / versionName 1.4.7.1`，DB 21；1.4.7.2 的 r2 测试包是 `vc15 / DB23`，**未发布**） |
 
-数据库版本只升不降，每次升级都带迁移。当前 **21**：
+数据库版本只升不降，每次升级都带迁移。**已发布版当前 21**（1.4.7.2 测试包已到 **23**）：
 17 → 18 加 `prev_method`、`tb_rewrite_skipped`、`tb_feedback`；
 18 → 19 反馈绑到思路版本（`tb_feedback.approach_rev`）；
 19 → 20 冷启动回插（`tb_rewrite_queue.needs_reinsert`）；
-20 → 21 未复核卡（`tb_word_memory` / `tb_book_memory` 加 `unverified`、`unverified_reason`）。
+20 → 21 未复核卡（`tb_word_memory` / `tb_book_memory` 加 `unverified`、`unverified_reason`）；
+21 → 22 / 22 → 23 属 1.4.7.2（重写队列 `request_id` + `UNIQUE(word_id,book_id)` 等，见 [`docs/decisions-1.4.7.2.md`](docs/decisions-1.4.7.2.md)）。
 17 → 18 与 19 → 20 分别在测试库里跑过（`_recon/1.4.6-test-report.md`、`_recon/1.4.6.1-fix2-report.md`）；
-20 → 21 已在模拟器与真机覆盖安装验证；**17 → 21 的整链本轮没有单独复测**，交付前建议在真机备份副本上再跑一次。
+20 → 21 已在模拟器与真机覆盖安装验证；**17 → 21 的整链本轮没有单独复测**。
+关于 1.4.7.2：真实 1.4.7.1 自然库（实测 DB21）已在隔离 AVD 上覆盖安装到 23、进度逐列保持（`_recon/1.4.7.2/package-20261112/qa/r2/qa-report-r2.md` T3）；更老版本（≤1.4.2）的升级矩阵仍未验。
 
 > 唯一的例外：官方版用的是作者的签名，与本项目不同，所以**从官方版切过来必须卸载一次**，
 > 学习进度会清空。切过来之后，后续版本都能互相覆盖。
@@ -335,10 +348,13 @@ export MSYS2_ARG_CONV_EXCL='*'
 
 - **1.4.7**：`/health` 版本/能力自报；同步状态页（连接、最后成功、待发送、下次重试、电脑端版本、立即重试、诊断复制）；429/`Retry-After` 指数退避；换地址游标归零（保存即清）；401/404 人话提示；电脑端口令轮换；真实 4G 经 Quick Tunnel 单程同步 PASS。
 - **1.4.7.1**：版本号 1.4.7.1 / vc14 / DB21；反馈闭环（评委看用户诉求、两段式通过、同方法硬闸、两轮不过按 unverified 交付并在卡片标「未复核 原因」）；后台同步 JobScheduler；服务端 401→403→429 顺序、`/sync/*` 独立限流、`sync_store` 原子写/坏文件重建/冲突返回；`_key` 真 NUL 修复。
+- **1.4.7.2（未发布，只有测试包）**：DB 升到 23（重写队列去重）；「同词历史 / 历史重复进生成与评委」这类**已经有代码**，而**跨词偏好尚未正式接入、没有持久化**；另有 2026-11-12 修的启动自动清表问题（`cleanup_132_done` 缺失时只补标记，不再删七张学习记录表）。**整版未完成**：全链路（点重写→电脑生成→手机收→插回→重启不丢）、真机、跨网、TLS、24h 都还没验。
 
-当前包：`dist/english-app-1.4.7.1.apk`，33,379,406 B，md5 `e1993c41…`，vc14 / 1.4.7.1 / DB21。
-> 回滚注意：DB 已升到 21，旧包（1.4.6.x）**不能覆盖安装回去**；要回退只能先卸载或清 App 数据再装旧包（本机进度会丢）。
-1.4.6 与 1.4.6.1 没有单独 tag，`v1.4.6.2` 覆盖三版；141 项单测全过。
+已发布包：`dist/english-app-1.4.7.1.apk`，33,379,406 B，md5 `e1993c41…`，vc14 / 1.4.7.1 / DB21。
+1.4.7.2 测试包（不是发布版）：`_recon/1.4.7.2/package-20261112/build-r2/wordhelper-1.4.7.2-r2-debug.apk`，33,477,910 B，vc15 / DB23，详见 [`HANDOFF-2026-11-12.md`](HANDOFF-2026-11-12.md)。
+> 回滚注意（**这是本项目当前这一版覆盖升级场景的处理方式，不是所有版本永久规则**）：出问题的回退走**向前修**——把改动改回去、重出一个更高 versionCode 的包覆盖安装；**不要用卸载 / 清 App 数据来"回退"**，那会把本机进度一起清掉。
+> 只有装比已升过的 DB 更低的版本（如 DB23 之后装 1.4.6.x）在技术上才不允许覆盖，这属于最后手段，不主动建议。
+1.4.6 与 1.4.6.1 没有单独 tag，`v1.4.6.2` 覆盖三版；141 项单测全过（当时计数，后续又加过测试）。
 交接见 [`HANDOFF-2026-11-10.md`](HANDOFF-2026-11-10.md)。
 
 ## 1.4.6 系列已交付（1.4.6 / 1.4.6.1 / 1.4.6.2）
@@ -347,7 +363,7 @@ export MSYS2_ARG_CONV_EXCL='*'
 - **1.4.6.1**：冷启动后跳过的词能插回（`needs_reinsert`，DB20）；DB19 反馈绑思路版本；地址兜底 / 网络恢复补发；普通卡也能反馈；最终验收 50 项 100/100。
 - **1.4.6.2**：顶部「认词 / 拼写」可折叠；点赞行移进卡背滚动区最底部，普通卡可见；纯 UI，不改 DB。
 
-1.4.6 与 1.4.6.1 没有单独 tag，`v1.4.6.2` 覆盖三版；141 项单测全过。
+1.4.6 与 1.4.6.1 没有单独 tag，`v1.4.6.2` 覆盖三版；141 项单测全过（当时计数，后续又加过测试）。
 
 ## 远程同步（1.4.7 已交付，公网 named tunnel 待接）
 
@@ -401,7 +417,8 @@ export MSYS2_ARG_CONV_EXCL='*'
 
 ## 版本号约定
 
-- 当前 `versionCode 14 / versionName 1.4.7.1`（DB 21：未复核角标 + 后台同步）
+- **已发布**：`versionCode 14 / versionName 1.4.7.1`（DB 21：未复核角标 + 后台同步）
+- 1.4.7.2 只在测试包里存在：`versionCode 15 / versionName 1.4.7.2 / DB 23`，**不是发布版**
 - 上一版 `versionCode 13 / versionName 1.4.6.2`（DB 20：1.4.7 按用户要求没 bump，显示仍 1.4.6.2）
 - 再上一版 `versionCode 12 / versionName 1.4.6.1`（同 tag；DB 19/20）
 - 再上一版 `versionCode 11 / versionName 1.4.6`（DB 18：词包 v2 + 跨书 SRS 解耦）

@@ -5,6 +5,12 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// 签名口令放本地 keystore.properties（已 gitignore，不入库）；缺失时用占位符。
+val keystoreProps = java.util.Properties().apply {
+    val f = file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.kaoyan.wordhelper"
     compileSdk = 34
@@ -13,8 +19,8 @@ android {
         applicationId = "com.kaoyan.wordhelper"
         minSdk = 26
         targetSdk = 34
-        versionCode = 14
-        versionName = "1.4.7.1"
+        versionCode = 16
+        versionName = "1.4.7.3preview"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -23,9 +29,9 @@ android {
     signingConfigs {
         getByName("debug") {
             storeFile = rootProject.file("../../_toolchain/signing/wordhelper.jks")
-            storePassword = "wordhelper123"
+            storePassword = keystoreProps.getProperty("storePassword") ?: "YOUR_KEY_PASSWORD"
             keyAlias = "wordhelper"
-            keyPassword = "wordhelper123"
+            keyPassword = keystoreProps.getProperty("keyPassword") ?: "YOUR_KEY_PASSWORD"
         }
     }
 

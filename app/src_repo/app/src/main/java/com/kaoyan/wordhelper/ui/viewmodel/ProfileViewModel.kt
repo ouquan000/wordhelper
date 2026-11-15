@@ -13,6 +13,7 @@ import com.kaoyan.wordhelper.data.model.MethodCount
 import com.kaoyan.wordhelper.data.repository.DarkMode
 import com.kaoyan.wordhelper.data.repository.SyncStatusStore
 import com.kaoyan.wordhelper.data.repository.UserSettings
+import com.kaoyan.wordhelper.sync.BackgroundSync
 import com.kaoyan.wordhelper.util.DatabaseBackupManager
 import com.kaoyan.wordhelper.util.DateUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -319,6 +320,8 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             SyncStatusStore.reset()
             // 1.4.7 验收 B2：立刻清游标，别等下一次同步（进程随后被杀也不会漏）。
             runCatching { syncRepository.resetCursorForEndpointChange() }
+            // 1.4.7.2 W4：保存地址后立刻注册/撤销后台任务，不用等下次冷启动。
+            runCatching { BackgroundSync.ensure(getApplication()) }
         }
     }
 
@@ -327,6 +330,15 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             settingsRepository.updateCardBackToken(token)
             SyncStatusStore.reset()
+            runCatching { syncRepository.resetCursorForEndpointChange() }
+            runCatching { BackgroundSync.ensure(getApplication()) }
+        }
+    }
+
+    /** 1.4.7.2 W4-B：同 WiFi 自动直连开关；开启后下一轮同步才会重新发现。 */
+    fun updateCardBackLanAuto(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateCardBackLanAuto(enabled)
             runCatching { syncRepository.resetCursorForEndpointChange() }
         }
     }

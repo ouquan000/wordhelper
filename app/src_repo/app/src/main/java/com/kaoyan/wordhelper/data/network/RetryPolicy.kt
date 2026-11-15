@@ -308,7 +308,9 @@ object ServerHealth {
         val startedAt: String? = null,
         val capabilities: Set<String> = emptySet(),
         /** 握手协议号（服务端 `protocol`）。只用来看/记，不做「小于多少就报错」的判断。 */
-        val protocol: Int? = null
+        val protocol: Int? = null,
+        /** 1.4.7.2：这台电脑的服务身份；老服务端没有这个字段时为 null。 */
+        val instanceId: String? = null
     )
 
     /**
@@ -345,11 +347,19 @@ object ServerHealth {
                     }
                 }
             }
+            val service = str(obj, "service")
+            val version = str(obj, "version") ?: str(obj, "server")
+            val instanceId = str(obj, "instance_id")
+            // 1.4.7.2 W4-B：`{}`、`{"msg":"hello"}` 这类任意 2xx JSON 不能当电脑端。
+            // 认两种老/新口径：新版带 service=cardback-editor 或 instance_id；老版只有 version。
+            if (service != null && !service.equals("cardback-editor", ignoreCase = true)) return null
+            if (service == null && instanceId == null && version == null) return null
             Info(
-                version = str(obj, "version") ?: str(obj, "server"),
+                version = version,
                 startedAt = str(obj, "started_at") ?: str(obj, "startedAt"),
                 capabilities = capabilitiesOf(obj),
-                protocol = int(obj, "protocol") ?: int(obj, "health_protocol")
+                protocol = int(obj, "protocol") ?: int(obj, "health_protocol"),
+                instanceId = instanceId
             )
         } catch (_: Exception) {
             null

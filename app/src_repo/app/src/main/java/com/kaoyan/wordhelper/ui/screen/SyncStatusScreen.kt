@@ -238,6 +238,13 @@ private fun SyncInfoCard(
                     value = snapshot.capabilities.sorted().joinToString(" / ")
                 )
             }
+            InfoRow(label = "同步代次", value = "${snapshot.syncEpoch}")
+            if (snapshot.lastConflictCount > 0 || snapshot.lastTrimmedCount > 0 || snapshot.lastReplayCount > 0) {
+                InfoRow(
+                    label = "上次同步数据",
+                    value = "冲突 ${snapshot.lastConflictCount} / 清理 ${snapshot.lastTrimmedCount} / 重放 ${snapshot.lastReplayCount}"
+                )
+            }
             InfoRow(label = "待重写", value = "$rewritePending 条")
         }
     }
@@ -433,4 +440,6 @@ private fun buildDiagnosticText(
         snapshot.capabilities.sorted().joinToString(" / ")
     }
     appendLine("电脑端能力：$capabilitiesText")
+    appendLine("同步代次：${snapshot.syncEpoch}")
+    appendLine("上次冲突/清理/重放：${snapshot.lastConflictCount} / ${snapshot.lastTrimmedCount} / ${snapshot.lastReplayCount}")
 }

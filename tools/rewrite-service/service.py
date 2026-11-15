@@ -21,14 +21,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+import history  # noqa: E402
 import pipeline  # noqa: E402
 import providers  # noqa: E402
 import store as store_mod  # noqa: E402
+import wb_gate  # noqa: E402
 
 DATA_DIR = os.environ.get("REWRITE_DATA_DIR") or os.path.join(HERE, "data")
 LOG_PATH = os.path.join(DATA_DIR, "logs", "service.log")
 CONCURRENCY = 2  # 两个工人：够用，也不至于把网关打满（spec §4.2）
 MAX_LOG_BYTES = 2 * 1024 * 1024
+CAPABILITIES = ("rewrite_scoped",)
 
 _state = {"store": None, "threads": [], "startedAt": "", "ready": False}
 _lock = threading.Lock()
@@ -76,33 +79,53 @@ def _work(item):
         store.set_stage(item["clientId"], stage)
 
     try:
+        # 同词历史在 claim 之后、生成之前才组装：上一轮结果刚落盘时也能读到。
+        item = dict(item)
+        item["history"] = history.build(
+            store.data_dir, item.get("word") or "", item.get("instruction") or "", scope=item,
+        )
+        providers.set_task_priority(item.get("priority", 100))
         out = pipeline.run(item, log=log, on_stage=on_stage)
-        # 1.4.7.1 契约（与 F1 约定）：流水线可能带 unverified/reason 回来——
-        # 表示「结果照发，但检查没过/没复核」。这里照常 finish_ok（不能当失败丢掉），
-        # 只把标记显式落到队列与结果记录，并在日志里留痕，方便面板和手机端提示。
-        unverified = bool(out.get("unverified"))
-        reason = str(out.get("reason") or "")
+        # 1.4.7.2：质量没过不再「照发 unverified」——那会让用户永远卡在两轮都不过
+        # 的稿子上。这里只留最佳候选，按指数退避排下一次；合格的那次才 finish_ok。
+        if out.get("quality_rejected"):
+            rejected = store.finish_quality_rejected(
+                item,
+                out.get("approach") or [],
+                {
+                    "method": out.get("method") or "",
+                    "scores": out.get("scores") or {},
+                    "attempts": out.get("attempts", 1),
+                    "reason": out.get("reason") or "",
+                },
+            )
+            if rejected:
+                log("[%s] 质量未过，第 %d 次，%s 后重试：%s" % (
+                    item["word"], rejected["failures"], rejected["nextRunAt"],
+                    (out.get("reason") or "")[:200]))
+            return
         meta = {
             "method": out.get("method") or "",
             "scores": out.get("scores") or {},
             "attempts": out.get("attempts", 1),
-            "unverified": unverified,
-            "reason": reason,
+            "unverified": False,
+            "reason": str(out.get("reason") or ""),
         }
         entry = store.finish_ok(item, out["approach"], meta)
         if entry:
             log("[%s] 完成 seq=%s rev=%s %s" % (item["word"], entry["seq"], entry["rev"], out["timings"]))
-            if unverified:
-                log("[%s] 未复核（unverified）：%s" % (item["word"], reason or "流水线未给原因"))
     except providers.ProviderError as exc:
-        store.finish_fail(item, str(exc))
-        log("[%s] 失败（模型调用）：%s" % (item["word"], exc))
+        retry = store.finish_retry(item, str(exc))
+        log("[%s] 模型调用失败，%s 后重试：%s" % (
+            item["word"], (retry or {}).get("nextRunAt", "稍后"), exc))
     except pipeline.PipelineError as exc:
-        store.finish_fail(item, str(exc))
-        log("[%s] 失败（验收没过）：%s" % (item["word"], exc))
+        retry = store.finish_retry(item, str(exc))
+        log("[%s] 流水线失败，%s 后重试：%s" % (
+            item["word"], (retry or {}).get("nextRunAt", "稍后"), exc))
     except Exception as exc:  # noqa: BLE001 - 工人不能死，一条词的意外不该拖垮整队
-        store.finish_fail(item, "未预期错误：%r" % exc)
-        log("[%s] 失败（未预期）：%r" % (item["word"], exc))
+        retry = store.finish_retry(item, "未预期错误：%r" % exc)
+        log("[%s] 未预期错误，%s 后重试：%r" % (
+            item["word"], (retry or {}).get("nextRunAt", "稍后"), exc))
     finally:
         log("[%s] 本条用时 %.1fs" % (item["word"], time.time() - started))
 
@@ -219,7 +242,35 @@ def _status():
     out["concurrency"] = CONCURRENCY
     out["startedAt"] = _state["startedAt"]
     out["judge"] = providers.label(providers.judge_target("ds-v41-flash"))
+    out["wbGate"] = wb_gate.status()
     return out
+
+
+def _stop(body):
+    """停止重写：给了 word/clientId 停那一条，什么都不给就停全部。
+
+    运行中的任务不能真杀线程，但 generation+1 后晚到的结果会被 finish_* 丢掉。
+    """
+    data = _read_body(body)
+    payload = data if isinstance(data, dict) else {}
+    word = str(payload.get("word") or "").strip()
+    client_id = str(payload.get("clientId") or "").strip()
+    hit = _state["store"].stop(word=word, client_id=client_id)
+    log("停止 %s：%d 条" % (client_id or word or "全部", hit))
+    return {"stopped": hit, "word": word, "clientId": client_id}
+
+
+def _gate(body):
+    """手动切换 WB 阶段：foreground / batch / auto / paused。"""
+    data = _read_body(body)
+    payload = data if isinstance(data, dict) else {}
+    value = str(payload.get("phase") or "").strip().lower()
+    try:
+        phase = wb_gate.set_phase(value)
+    except ValueError as exc:
+        raise ApiError(str(exc))
+    log("WB 阶段切到 %s" % phase)
+    return {"phase": phase, "gate": wb_gate.status()}
 
 
 def _dispatch(method, raw_path, body):
@@ -252,6 +303,10 @@ def _dispatch(method, raw_path, body):
         return _json(_marks(body))
     if method == "POST" and path == "/rewrite/feedback":
         return _json(_feedback(body))
+    if method == "POST" and path == "/rewrite/stop":
+        return _json(_stop(body))
+    if method == "POST" and path == "/rewrite/gate":
+        return _json(_gate(body))
     if method == "POST" and path == "/rewrite/retry":
         data = _read_body(body)
         payload = data if isinstance(data, dict) else {}

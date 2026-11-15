@@ -207,12 +207,12 @@ class WaitingRewriteRestoreTest {
     }
 
     @Test
-    fun failedRowWithNeedsReinsertIsNotReinserted() {
+    fun failedDebtRemainsWaitingForQualifiedRewrite() {
         val plan = WaitingRewriteRestore.plan(
             rows = listOf(row(7L, RewriteStatus.FAILED)),
             alreadyTracked = emptySet()
         )
-        assertTrue(plan.watchWordIds.isEmpty())
+        assertEquals(listOf(7L), plan.watchWordIds)
         assertTrue(plan.reinsertWordIds.isEmpty())
     }
 

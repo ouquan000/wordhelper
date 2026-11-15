@@ -69,6 +69,8 @@ def use_temp_data_dir(tmp):
     server.CONFIG_PATH = os.path.join(server.PUBLISHED_DIR, "cardback.json")
     server.STATE_PATH = os.path.join(server.PUBLISHED_DIR, "state.json")
     server.TOKEN_PATH = os.path.join(tmp, ".cardback_token")
+    server.INSTANCE_PATH = os.path.join(tmp, ".cardback_instance")
+    server.INSTANCE_ID = ""
     server.SYNC_PATH = os.path.join(tmp, "sync.json")
     server.PORT = PORT
     server.LAN_URL = "http://%s:%d/cardback.json" % (HOST, PORT)

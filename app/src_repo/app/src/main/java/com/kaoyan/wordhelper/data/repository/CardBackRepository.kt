@@ -5,6 +5,7 @@ import com.kaoyan.wordhelper.data.model.CardBackCodec
 import com.kaoyan.wordhelper.data.model.CardBackConfig
 import com.kaoyan.wordhelper.data.model.CardBackDecodeResult
 import com.kaoyan.wordhelper.data.model.CardBackDefaults
+import com.kaoyan.wordhelper.data.network.TlsPinned
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +16,7 @@ import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.net.URI
 import java.util.concurrent.TimeUnit
 
 /** 一次刷新的结果，用来给用户一句人话。 */
@@ -103,7 +105,24 @@ class CardBackRepository(
             val url = normalizeUrl(rawUrl)
                 ?: return CardBackRefreshResult.Failure("还没填卡背结构地址（我的 → 设置 → 卡背结构地址）")
 
-            val body = withContext(Dispatchers.IO) { fetch(url, settings.cardBackToken) }
+            // 1.4.7.2 W4：配对行带 pin 时，卡背刷新也必须走 pin 绑定的 HTTPS，
+            // 不能把 X-Cardback-Token 明文发给 http://IP:8765。
+            val rawPin = settings.cardBackTlsPin.trim()
+            val normalizedPin = TlsPinned.normalizePin(rawPin)
+            if (rawPin.isNotEmpty() && normalizedPin == null) {
+                return CardBackRefreshResult.Failure(
+                    "配对行里的 pin 格式不对（应为 64 位十六进制）；请重新粘贴电脑上的整行"
+                )
+            }
+            val pin = normalizedPin.orEmpty()
+            val port = settings.cardBackTlsPort.takeIf { it in 1..65535 } ?: 8443
+            val requestUrl = pinnedHttpsUrl(url, pin, port)
+            if (requestUrl == null) {
+                return CardBackRefreshResult.Failure(
+                    "这台电脑要求安全连接，但当前地址没有可用的 pin；请重新粘贴电脑上的配对行"
+                )
+            }
+            val body = withContext(Dispatchers.IO) { fetch(requestUrl, settings.cardBackToken, pin) }
                 ?: return CardBackRefreshResult.Failure(
                     if (authFailed) {
                         CardbackAuth.HINT
@@ -187,24 +206,29 @@ class CardBackRepository(
             ?.let { if (it is CardBackDecodeResult.Ok) it.config else null }
     }
 
-    private fun fetch(url: String, token: String): String? {
+    private fun fetch(url: String, token: String, pin: String): String? {
         // 偶发连接失效（实测约 7%，重试即好）—— 手动刷新这么低频，重试一次完全划算。
         repeat(2) { attempt ->
-            val body = runCatching { fetchOnce(url, token) }.getOrNull()
+            val body = runCatching { fetchOnce(url, token, pin) }.getOrNull()
             if (body != null) return body
             if (attempt == 0) runCatching { Thread.sleep(150) }
         }
         return null
     }
 
-    private fun fetchOnce(url: String, token: String): String? {
+    private fun fetchOnce(url: String, token: String, pin: String): String? {
+        val requestClient = if (pin.isNotBlank() && url.startsWith("https://", ignoreCase = true)) {
+            TlsPinned.clientFor(pin) ?: return null
+        } else {
+            client
+        }
         val builder = Request.Builder()
             .url(url)
             .header("Cache-Control", "no-cache")
             .header("Connection", "close")
         // 电脑端不在本机时，每个请求都要带口令；没填就照发（本机 127.0.0.1 免票）。
         CardbackAuth.headerValue(token)?.let { builder.header(CardbackAuth.HEADER, it) }
-        return client.newCall(builder.build()).execute().use { response ->
+        return requestClient.newCall(builder.build()).execute().use { response ->
             if (response.code == 401) {
                 authFailed = true
                 return@use null
@@ -212,6 +236,23 @@ class CardBackRepository(
             if (!response.isSuccessful) return@use null
             response.body?.string()
         }
+    }
+
+    /**
+     * 有 pin 时，把明文 HTTP+IP 的卡背地址升级成同主机的 HTTPS:pin 端口。
+     * 域名/公网 HTTPS 原样返回；有 pin 但地址不是 IP 也不强行改。
+     */
+    private fun pinnedHttpsUrl(url: String, pin: String, port: Int): String? {
+        if (pin.isBlank()) return url
+        val uri = runCatching { URI(url) }.getOrNull() ?: return null
+        val host = uri.host?.trim().orEmpty()
+        // 有 pin 且已是 HTTPS：保留原地址（域名由系统信任，IP 由 pin 客户端）。
+        if (uri.scheme.equals("https", ignoreCase = true)) return url
+        // 有 pin 但地址不是 IP：无法安全升级，也不能退回明文发 token。
+        if (host.isEmpty() || !TlsPinned.isIpLiteral(host)) return null
+        val path = uri.rawPath.orEmpty().ifBlank { "/${CardBackCodec.FILENAME}" }
+        val query = uri.rawQuery?.let { "?$it" }.orEmpty()
+        return "https://$host:$port$path$query"
     }
 
     /** 两份清单「画出来是不是一样」——只看影响渲染的字段，revision/updatedAt 不算。 */

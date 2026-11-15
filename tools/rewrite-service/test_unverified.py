@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""未复核交付（unverified）契约自测（1.4.7.1 / S1）。
+"""未复核交付（unverified）契约自测（1.4.7.1 / S1，1.4.7.2 起改为持续重写）
 
-约定（与 F1 的流水线对接）：
-    pipeline.run() 成功时若返回 {"unverified": True, "reason": "..."}，
-    service._work 仍走 finish_ok（结果不能丢），只是把标记写进：
-      - results/<word>.json 的 entry
-      - queue.json 的 item
-      - /rewrite/results、/rewrite/status、/rewrite/records 的对外 JSON
-    旧记录没有这两个字段 → 一律按 false / "" 输出，保持兼容。
+约定：
+    pipeline.run() 两轮都不过时返回 {"quality_rejected": True, "unverified": True, ...}，
+    service._work 不再走 finish_ok（结果不能当合格稿发给用户），而是
+    finish_quality_rejected：保留最佳候选、按退避进 retry_wait，等下一次重写。
+    results/<word>.json 不写这条未过稿；队列 JSON 保留 bestApproach/lastReason/nextRunAt。
+    旧记录没有这些字段 → 一律按 false / "" 输出，保持兼容。
 
 用法：python test_unverified.py
 （不联网、不调模型：直接调 store 与 monkeypatch service.pipeline.run）
@@ -146,6 +145,7 @@ def test_service_work_plumbing(tmp):
             "attempts": 1,
             "timings": {"total": 0.01},
             "unverified": True,
+            "quality_rejected": True,
             "reason": "抽查未过",
         }
 
@@ -158,20 +158,18 @@ def test_service_work_plumbing(tmp):
 
     entry = st._entry_for("c-work")
     check("_work 调用了 pipeline.run", calls == ["c-work"], repr(calls))
-    check("unverified 仍算完成（entry 存在且 ok）",
-          entry is not None and entry.get("status") == "ok", repr(entry))
-    check("_work 把 unverified 落到 entry", entry and entry.get("unverified") is True,
-          repr(entry and entry.get("unverified")))
-    check("_work 把 reason 落到 entry", entry and entry.get("reason") == "抽查未过",
-          repr(entry and entry.get("reason")))
+    check("质量未过不写 results", entry is None, repr(entry))
     live = st._find("c-work")
-    check("队列记录 state=done", live.get("state") == "done", repr(live.get("state")))
-    check("队列记录带 unverified", live.get("unverified") is True, repr(live.get("unverified")))
-    check("队列记录带 reason", live.get("reason") == "抽查未过", repr(live.get("reason")))
+    check("队列记录 state=retry_wait", live.get("state") == "retry_wait", repr(live.get("state")))
+    check("队列记录 failures=1", live.get("failures") == 1, repr(live.get("failures")))
+    check("队列记录保留最佳候选", live.get("bestApproach") == ["联想 A", "词根 B"],
+          repr(live.get("bestApproach")))
+    check("队列记录带 nextRunAt", bool(live.get("nextRunAt")), repr(live.get("nextRunAt")))
+    check("队列记录带 lastReason", live.get("lastReason") == "抽查未过", repr(live.get("lastReason")))
 
     with open(service.LOG_PATH, "r", encoding="utf-8") as fh:
         log_text = fh.read()
-    check("日志写明未复核", "未复核" in log_text and "抽查未过" in log_text, log_text[-300:])
+    check("日志写明质量未过", "质量未过" in log_text and "抽查未过" in log_text, log_text[-300:])
 
     # 正常（已复核）路径：unverified 缺省为 false
     item2 = enqueue_and_claim(st, "c-normal", "cherry")

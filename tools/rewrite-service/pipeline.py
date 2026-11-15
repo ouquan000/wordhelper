@@ -90,6 +90,7 @@ BAN_TRIGGER = re.compile(
 BAN_STOPWORDS = frozenset((
     "方法", "这个", "那个", "这种", "那种", "这套", "那套", "拆法", "记法", "背法",
     "记忆法", "别的", "其他", "一个", "一次", "一句话", "提一嘴", "再说", "再用",
+    "之类",
     "最后", "然后", "接着", "其实", "所以", "但是", "而且", "如果", "可以", "就行",
     "一句", "一嘴", "换个", "换一个", "换种", "让我", "说法",
     "了", "的", "再", "用", "我", "你", "他", "它", "就", "也", "都", "还", "又",
@@ -101,6 +102,24 @@ def _ban_noise(token):
     if token in BAN_STOPWORDS:
         return True
     return any(len(word) > len(token) and word.startswith(token) for word in BAN_STOPWORDS)
+
+
+# 反问请求使用（不是禁用）：「能不能用 X」「就 / 难道不能用 X 吗」。
+# 「能不能」里的「能」是独立疑问助词（句首 / 标点 / 人称代词之后），
+# 不把「功能 / 可能 + 不能用 X」这种名词尾巴的「能」误当反问。
+_USAGE_REQ_BEFORE = frozenset("你您我咱他她它们，、；。！？：: \t\n")
+
+
+def _is_usage_request(text, match_start, clause):
+    """「不能用」触发时，判断这是请求使用 X 还是禁用 X。"""
+    prefix = text[:match_start]
+    if prefix.endswith("能"):
+        before = text[match_start - 2] if match_start >= 2 else ""
+        if not before or before in _USAGE_REQ_BEFORE:
+            return True
+    if not clause.endswith(("吗", "呢")):
+        return False
+    return prefix.endswith("就") or prefix.endswith("难道")
 
 
 # 用户口中的招 → 六招键；长的词先匹配（「词根词缀」先于「词缀」）
@@ -200,6 +219,11 @@ def _brief(item):
             rows.append("%s：%s" % (label, item[key]))
     if item.get("currentApproach"):
         rows.append("旧版思路（别再抄一遍，换个更顺的）：\n" + "\n".join(item["currentApproach"]))
+    history = str(item.get("history") or "").strip()
+    if history:
+        rows.append(
+            "【这个词的历史（用户原话与失败路线是硬约束；被点赞的版本要保住）】\n" + history
+        )
     return "\n".join(rows)
 
 
@@ -218,6 +242,15 @@ def _judge_brief(item):
     prev = [str(x).strip() for x in (item.get("currentApproach") or []) if str(x).strip()]
     if prev:
         rows.append("【上一版成品（被用户否掉的那一版 3–5 步）】\n" + "\n".join(prev[:5]))
+    history = str(item.get("history") or "").strip()
+    if history:
+        # 后台自动重写没有新的用户原话时，评委只看上一版会漏掉「这个词已经被
+        # 同一条路线坑过好几次」。历史必须进评委上下文，否则它会继续给同一招打高分。
+        rows.append(
+            "【这个词的历史（用户原话/被点踩路线/被点赞版本）】\n"
+            "这是判 same_method 与诉求落实的硬证据；历史里同一方法被用户明确否掉过一次，"
+            "新版仍以该方法为主线就算没解决（只有更晚的明确允许可解除）。\n" + history
+        )
     return "\n".join(rows)
 
 
@@ -247,6 +280,9 @@ def banned_terms(instruction):
 
     for match in BAN_TRIGGER.finditer(text):
         clause = match.group(1).strip()
+        if match.group(0).startswith("不能用") and _is_usage_request(text, match.start(), clause):
+            # 「就 / 难道 + 不能用 X 吗」是反问请求使用 X，不是禁用 X。
+            continue
         clause = re.sub(r"^(?:再|用|使用|这种|这个|那种|那套|了|的)+", "", clause)
         rest = clause
         for method, words in sorted(METHOD_WORDS.items()):
@@ -449,31 +485,197 @@ def polish(item, draft):
     return polished or draft_lines
 
 
-def _intent(value):
-    """评委的意图判定；模型偶尔写中文或漏项，收敛到四个键上。"""
+# 否定必须修饰当前动作：「不要用词根了换个方法」仍然要换，「特别」也不是「别」。
+_ZH_DIRECT_NEGATION = re.compile(
+    r"(?:不(?:用|要|必|需要|(?:太|很)?想(?:要)?|希望|打算|准备|觉得需要|是)?"
+    r"|没(?:有)?(?:必要|打算|想|准备)|无(?:需|须)|(?<![分特个区性类差级告鉴])别)"
+    r"(?:\s*(?:再|重新|去|给我|现在|马上|每次都|总是))*\s*$"
+)
+_EN_DIRECT_NEGATION = re.compile(
+    r"\b(?:do\s+not|don['’]t|should\s+not|shouldn['’]t|cannot|can['’]t|never|not|no)\s+"
+    r"(?:really\s+|necessarily\s+)*"
+    r"(?:(?:want|need|have|plan|intend)(?:\s+you)?\s+to\s+"
+    r"|think(?:\s+that)?\s+it(?:['’]s|\s+is)\s+necessary\s+to\s+)?$"
+)
+# 反问式建议和双重否定不等于要求保留方法。
+_ZH_CHANGE_PROPOSAL = re.compile(
+    r"(?:要不要|是不是该|是不是|该不该|能不能|可不可以|为什么不|怎么不|何不|(?<![要不])要不"
+    r"|(?<!能)不能不|不得不)(?:\s*(?:再|重新))?\s*$"
+)
+_INTENT_CLAUSE_END = re.compile(r"[，,。；;！!？?\n\r]")
+_ZH_PAST_INTENT = re.compile(
+    r"^\s*(?:我\s*)?(?:本来|原本|原先|原来|之前|先前)\s*(?:我\s*)?"
+    r"(?:不(?:太|很)?\s*)?(?:想|希望|打算|准备)"
+)
+_ZH_CURRENT_INTENT = re.compile(r"\s*(?:(?:但(?:是)?|不过)\s*)?(?:现在|这次)")
+_REPORTED_CHANGE_PREFIX = re.compile(
+    r"(?:别人|有人|模型|评委|上次|之前)(?:曾经|刚才)?(?:说(?:了|过)?|提到|建议)"
+    r"""\s*[:：]?\s*[「『“‘"']?\s*$"""
+)
+
+
+# 在分句前匹配成对引号，避免把引语内的逗号误当成用户改口。
+# ASCII 单引号和弯引号不能把 don't / don’t 的撇号当成引语边界。
+_INTENT_QUOTE = re.compile(
+    r"""「[^」]*」|『[^』]*』|“[^”]*”|"[^"]*" """
+    r"""|‘(?:[^’]|’(?=[a-z0-9]))*?’(?![a-z0-9])"""
+    r"""|(?<![a-z0-9])'(?:[^']|'(?=[a-z0-9]))*?'(?![a-z0-9])""",
+    re.IGNORECASE | re.VERBOSE,
+)
+_QUOTE_AS_DIRECT_REQUEST = re.compile(
+    r"(?:^|[，,。.；;！!？?\n\r])\s*(?:(?:但|不过|现在|这次)\s*)*"
+    r"(?:请(?:你)?|我(?:现在)?(?:要求你|要你|希望你)|please)\s*[:：]?\s*$",
+    re.IGNORECASE,
+)
+_QUOTE_REQUEST_END = re.compile(r"^\s*(?:吧|就行|即可)?\s*(?:[，,。.；;！!？?\n\r]|$)")
+# 连词后必须有另一个动作。只匹配「并/and」会把「并列的说法 / and similar phrases」当成指令。
+_QUOTE_FOLLOWUP_REQUEST = re.compile(
+    r"^\s*(?:(?:并且?|同时|然后)\s*(?:请(?:你)?\s*)?(?:先)?(?:讲|说|解释|说明|补充|保留|改写)"
+    r"|and\s+(?:then\s+)?(?:please\s+)?(?:explain|clarify|fix|keep|rewrite)\b)",
+    re.IGNORECASE,
+)
+
+
+def _intent_prose(text):
+    """引语默认是被提及的内容；只有明确的命令式外框才采用其中的要求。"""
+    def project(match):
+        following = text[match.end():]
+        if _QUOTE_AS_DIRECT_REQUEST.search(text[:match.start()]) and (
+            _QUOTE_REQUEST_END.match(following) or _QUOTE_FOLLOWUP_REQUEST.match(following)
+        ):
+            return match.group()[1:-1]
+        # 保留占位，避免把原本隔着引语的两个词误连成一条指令。
+        return "\ufffc"
+
+    return _INTENT_QUOTE.sub(project, text)
+
+
+def _prefix_negates(prefix):
+    return not _ZH_CHANGE_PROPOSAL.search(prefix) and bool(
+        _ZH_DIRECT_NEGATION.search(prefix) or _EN_DIRECT_NEGATION.search(prefix)
+    )
+
+
+def _negated_near(text, word):
+    """True only if each occurrence is directly negated in its own clause."""
+    seen = False
+    for clause in _INTENT_CLAUSE_END.split(text):
+        for match in re.finditer(re.escape(word), clause):
+            seen = True
+            prefix = clause[:match.start()]
+            if not _prefix_negates(prefix):
+                return False
+    return seen
+
+
+def _intent_words(text, words):
+    return [word for word in words if word in text and not _negated_near(text, word)]
+
+
+_CHANGE_WORDS = (
+    "换方法", "换个方法", "换一个方法", "换一种方法", "换个其他方法", "换个别的办法",
+    "换招", "换思路", "换一种思路", "换个思路", "换种思路", "换种方法", "换套方法", "换背法", "换个背法",
+    "改方法", "改一下方法", "改思路", "非换不可", "必须换",
+    "change method", "change the method", "switch method", "try another method",
+)
+_CHANGE_PATTERN = re.compile("|".join(re.escape(word) for word in _CHANGE_WORDS))
+_INTENT_WORDS = (
+    ("explain", ("解释", "看不懂", "说明", "说清楚", "讲清楚", "explain")),
+    ("fix_detail", ("具体", "某一步", "细节", "fix")),
+)
+
+
+def _change_directive(text):
+    """换法、保留、未明确三态；提及和转述不计，用户改口以最后一句明确要求为准。"""
+    directive = None
+    clauses = _INTENT_CLAUSE_END.split(_intent_prose(str(text or "").lower()))
+    for index, clause in enumerate(clauses):
+        if _ZH_PAST_INTENT.match(clause) and (past_change := _CHANGE_PATTERN.search(clause)):
+            # 「本来……现在……」中，过去的想法不覆盖评委对当前诉求的判断。
+            current = _ZH_CURRENT_INTENT.search(clause, past_change.end())
+            if current:
+                clause = clause[current.start():]
+            elif index + 1 < len(clauses) and _ZH_CURRENT_INTENT.match(clauses[index + 1]):
+                continue
+        for match in _CHANGE_PATTERN.finditer(clause):
+            prefix = clause[:match.start()]
+            if not _REPORTED_CHANGE_PREFIX.search(prefix):
+                directive = not _prefix_negates(prefix)
+    return directive
+
+
+def _explicit_change_request(text):
+    return _change_directive(text) is True
+
+
+def _negated_change_request(text):
+    return _change_directive(text) is False
+
+
+def _intent_field(value):
+    """Strict parsing for judge output; unknown values trigger bounded rejudging."""
     text = str(value or "").strip().lower()
     if text in INTENTS:
         return text
-    for key, words in (
-        ("change_method", ("换方法", "换个方法", "换招", "换思路", "change")),
-        ("explain", ("解释", "看不懂", "说明", "explain")),
-        ("fix_detail", ("具体", "某一步", "细节", "fix")),
-    ):
-        if any(word in text for word in words):
+    directive = _change_directive(text)
+    if text == "change" or directive is True:
+        return "change_method"
+    prose = _intent_prose(text)
+    for key, words in _INTENT_WORDS:
+        if _intent_words(prose, words):
             return key
-    return "other"
+    return "other" if directive is False else None
 
 
-def _truthy(value):
+def _intent(value):
+    return _intent_field(value) or "other"
+
+
+def _requires_change_method(item, intent):
+    directive = _change_directive(item.get("instruction"))
+    return intent == "change_method" if directive is None else directive
+
+
+def _bool_field(data, key):
+    """严格布尔：只认 true/false（及 0/1）；缺失或含糊返回 None。"""
+    value = data.get(key)
     if isinstance(value, bool):
         return value
-    return str(value).strip().lower() in ("true", "1", "yes", "是", "同一条思路")
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text == "true":
+            return True
+        if text == "false":
+            return False
+    return None
+
+
+def _judge_flags(item, approach):
+    """补判 intent / same_method / history_repeat；只问这三个字段，不重新打分。"""
+    target = providers.judge_target(item["model"])
+    user = "\n\n".join([
+        _judge_brief(item),
+        "【新版成品 3–5 步】\n" + "\n".join(approach),
+        "只输出 JSON：{\"intent\":\"change_method|explain|fix_detail|other\","
+        "\"same_method\":true|false,\"history_repeat\":true|false}",
+    ])
+    text = providers.complete(
+        target,
+        _prompt("judge"),
+        user,
+        max_tokens=512,
+        temperature=0.0,
+        timeout=120,
+    )
+    return extract_json(text) or {}
 
 
 def judge(item, draft, approach):
     """第三步：另一个脑子打分。只给它成品，不给前面「怎么想出来的」过程。
 
-    返回 (scores, issues, intent, same_method)。scores 在用户提了意见时含
+    返回 (scores, issues, intent, same_method, history_repeat)。scores 在用户提了意见时含
     「诉求落实」；用户没提意见时这一维不出现，免得把「没抱怨」误判成 0 分。
     """
     target = providers.judge_target(item["model"])
@@ -505,6 +707,40 @@ def judge(item, draft, approach):
         data = extract_json(text)
     if not data:
         raise PipelineError("评分结果不是 JSON：%s" % text[:200])
+    history_present = bool(str(item.get("history") or "").strip())
+    need_intent = _has_instruction(item)
+
+    def _flags(source):
+        return {
+            "intent": _intent_field(source.get("intent")),
+            "same_method": _bool_field(source, "same_method"),
+            "history_repeat": _bool_field(source, "history_repeat"),
+        }
+
+    parsed = _flags(data)
+    missing = []
+    if need_intent and parsed["intent"] is None:
+        missing.append("intent")
+    if need_intent and parsed["same_method"] is None:
+        missing.append("same_method")
+    if history_present and parsed["history_repeat"] is None:
+        missing.append("history_repeat")
+    if missing:
+        # 缺字段不当 false：有界补判一次；仍缺就延后（抛错→service 重试），绝不应用。
+        patch = _flags(_judge_flags(item, approach))
+        for key in missing:
+            if parsed[key] is None and patch[key] is not None:
+                data[key] = patch[key]
+        parsed = _flags(data)
+        still_missing = []
+        if need_intent and parsed["intent"] is None:
+            still_missing.append("intent")
+        if need_intent and parsed["same_method"] is None:
+            still_missing.append("same_method")
+        if history_present and parsed["history_repeat"] is None:
+            still_missing.append("history_repeat")
+        if still_missing:
+            raise PipelineError("评委缺字段，已补判一次仍缺失：%s" % ",".join(still_missing))
     scores = {}
     for key, value in (data.get("scores") or {}).items():
         try:
@@ -525,7 +761,8 @@ def judge(item, draft, approach):
         scores,
         [str(x) for x in (data.get("issues") or [])][:6],
         _intent(data.get("intent")),
-        _truthy(data.get("same_method")),
+        bool(_bool_field(data, "same_method")),
+        bool(_bool_field(data, "history_repeat")),
     )
 
 
@@ -533,7 +770,7 @@ def _min_six(scores):
     return min(scores.get(dim, 0) for dim in JUDGE_DIMENSIONS)
 
 
-def _passed(item, scores, intent=None, same_method=False):
+def _passed(item, scores, intent=None, same_method=False, history_repeat=False):
     """两段式验收（判据见 prompts/judge.txt）。
 
     用户提了意见时，第一段除了六维全 ≥8，还要「诉求落实」≥8：只判六维的话，
@@ -541,7 +778,13 @@ def _passed(item, scores, intent=None, same_method=False):
     同方法硬闸：用户要「换方法」而评委也判了同一条思路，分数再高也不放行 ——
     这正是「把用户否掉的走法换身措辞再来一遍」，只靠提示词挡不住人情分。
     """
-    if _has_instruction(item) and intent == "change_method" and same_method:
+    if history_repeat:
+        # 历史里用户明确否掉同一方法，新版还走这条线：换措辞不算解决。
+        return False
+    # 同方法硬闸必须看用户原话，不能只看评委 intent：
+    # - 评委可能把「换个方法」回成 other，导致明确的换法请求被放行；
+    # - 评委也可能把「不用换方法」回成 change_method，误伤合规的同方法稿。
+    if _has_instruction(item) and same_method and _requires_change_method(item, intent):
         return False
     low_six = _min_six(scores)
     if not _has_instruction(item):
@@ -607,7 +850,7 @@ def run(item, log=None, on_stage=None):
 
             stage("judge")
             stamp = time.time()
-            scores, issues, intent, same_method = judge(item, draft, approach)
+            scores, issues, intent, same_method, history_repeat = judge(item, draft, approach)
             timings["judge_%d" % attempt] = round(time.time() - stamp, 1)
         except (PipelineError, providers.ProviderError) as exc:
             # 一轮坏了不该让整条词蒸发：记下来换下一轮，历史里还有稿子就继续兜底
@@ -638,7 +881,7 @@ def run(item, log=None, on_stage=None):
                 )
             )
         # 质量过了但稿子还踩着用户明令禁止的招：不许当「已复核」交付。
-        if _passed(item, scores, intent, same_method) and not draft.get("violations"):
+        if _passed(item, scores, intent, same_method, history_repeat) and not draft.get("violations"):
             stage("done")
             timings["total"] = round(time.time() - started, 1)
             return {
@@ -657,10 +900,8 @@ def run(item, log=None, on_stage=None):
                 0,
                 "用户明令禁止的「%s」仍在稿子里（用户原话优先）" % "、".join(draft["violations"]),
             )
-        if _has_instruction(item) and same_method and (
-            intent == "change_method" or scores.get(COMPLIANCE_DIM, 0) < PASS_LINE
-        ):
-            problems.insert(0, "这版和用户否掉的那版是同一条思路（同方法），用户要的是换方法或补解释")
+        if _has_instruction(item) and same_method and _requires_change_method(item, intent):
+            problems.insert(0, "这版和上一版是同一条思路，没有解决换方法的诉求")
         if not problems:
             problems = ["最低分 %d（%s）" % (low, json.dumps(scores, ensure_ascii=False))]
         feedback = "\n".join("- " + p for p in problems)
@@ -683,7 +924,8 @@ def run(item, log=None, on_stage=None):
     if errors:
         reason += "；作废轮次：%s" % "；".join(errors)[:200]
     if log:
-        log("[%s] 兜底交付（unverified）：%s" % (item["word"], reason[:240]))
+        log("[%s] 质量未过（%d 次失败），保留最佳候选待重试：%s" % (
+            item["word"], len(history) + len(errors), reason[:200]))
     return {
         "approach": best["approach"],
         "method": best["method"],
@@ -691,5 +933,6 @@ def run(item, log=None, on_stage=None):
         "attempts": len(history) + len(errors),
         "timings": timings,
         "unverified": True,
+        "quality_rejected": True,
         "reason": reason[:400],
     }

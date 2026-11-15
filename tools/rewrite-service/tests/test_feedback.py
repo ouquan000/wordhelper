@@ -196,17 +196,213 @@ class FeedbackTest(unittest.TestCase):
         self.assertEqual(out["attempts"], 1)
         self.assertEqual(out["scores"]["诉求落实"], 9)
 
+    def test_negated_change_still_passes_if_judge_mislabels_intent(self):
+        self.prepare(
+            instruction="我不太想换方法，把第二步说清楚",
+            current_approach=DRAFT_LINES,
+            generate=[draft()],
+            polish=[polished()],
+            judge=[judge_json({**SIX_9, "诉求落实": 9}, intent="change_method", same_method=True)],
+        )
+        self.assertFalse(pipeline.run(self.item)["unverified"])
+
+    def test_reported_change_does_not_override_user_request_to_keep_method(self):
+        cases = (
+            ("别人说‘换个方法’，但我不想换方法", "other"),
+            ("别人说换个方法，但我不想换方法", "change_method"),
+            ("评委说：换个方法，但我不想换方法", "other"),
+        )
+        self.prepare(
+            current_approach=DRAFT_LINES,
+            generate=[draft() for _ in cases],
+            polish=[polished() for _ in cases],
+            judge=[
+                judge_json({**SIX_9, "诉求落实": 9}, intent=intent, same_method=True)
+                for _, intent in cases
+            ],
+        )
+        for instruction, _ in cases:
+            with self.subTest(instruction=instruction):
+                out = pipeline.run({**self.item, "instruction": instruction})
+                self.assertFalse(out["unverified"])
+
+    def test_positive_change_in_later_clause_blocks_mislabeled_same_method(self):
+        full = {**SIX_9, "诉求落实": 9}
+        self.prepare(
+            instruction="不要用词根了换个方法",
+            current_approach=DRAFT_LINES,
+            generate=[draft(), draft()],
+            polish=[polished(), polished()],
+            judge=[judge_json(full, intent="other", same_method=True)] * 2,
+        )
+        out = pipeline.run(self.item)
+        self.assertTrue(out["quality_rejected"])
+        self.assertEqual(len(self.llm.users("judge")), 2)
+
+    def test_quoted_negation_does_not_override_request_to_change(self):
+        full = {**SIX_9, "诉求落实": 9}
+        self.prepare(
+            instruction="请换个方法，别再出现「不用换方法」这句话",
+            current_approach=DRAFT_LINES,
+            generate=[draft(), draft()],
+            polish=[polished(), polished()],
+            judge=[judge_json(full, intent="change_method", same_method=True)] * 2,
+        )
+        self.assertTrue(pipeline.run(self.item)["quality_rejected"])
+
+    def test_quoted_affirmation_does_not_override_request_to_keep_method(self):
+        self.prepare(
+            instruction="不用换方法，把「换个方法」这句话删掉",
+            current_approach=DRAFT_LINES,
+            generate=[draft()],
+            polish=[polished()],
+            judge=[judge_json({**SIX_9, "诉求落实": 9}, intent="other", same_method=True)],
+        )
+        self.assertFalse(pipeline.run(self.item)["unverified"])
+
+    def test_quoted_commands_with_coordinated_request_or_english_punctuation(self):
+        cases = (
+            ("请「换个方法」并讲清楚第二步", "other", True),
+            ("请「不用换方法」并讲清楚第二步", "change_method", False),
+            ('Please "change the method".', "other", True),
+        )
+        votes = [
+            judge_json({**SIX_9, "诉求落实": 9}, intent=intent, same_method=True)
+            for _, intent, rejected in cases
+            for _ in range(2 if rejected else 1)
+        ]
+        self.prepare(
+            current_approach=DRAFT_LINES,
+            generate=[draft() for _ in votes],
+            polish=[polished() for _ in votes],
+            judge=votes,
+        )
+        for instruction, _, rejected in cases:
+            with self.subTest(instruction=instruction):
+                out = pipeline.run({**self.item, "instruction": instruction})
+                self.assertEqual(out["unverified"], rejected)
+
     def test_judge_returns_intent_and_same_method(self):
         self.prepare(
             instruction="换个方法背",
             judge=[judge_json({**SIX_9, "诉求落实": 9}, intent="change_method", same_method=True)],
         )
-        scores, _issues, intent, same_method = pipeline.judge(
+        scores, _issues, intent, same_method, history_repeat = pipeline.judge(
             self.item, {}, ["① 第一步", "② 第二步", "③ 收尾 ——> 慢性的"]
         )
         self.assertEqual(intent, "change_method")
         self.assertTrue(same_method)
+        self.assertFalse(history_repeat)
         self.assertEqual(scores["诉求落实"], 9)
+
+    def test_history_repeat_blocks_pass_even_without_new_instruction(self):
+        item = {"word": "obscure", "meaning": "晦涩的"}
+        scores = {dim: 9 for dim in pipeline.JUDGE_DIMENSIONS}
+        self.assertFalse(
+            pipeline._passed(item, scores, intent=None, same_method=False, history_repeat=True)
+        )
+
+    def test_judge_brief_uses_once_not_consecutive_wording(self):
+        item = {
+            "word": "obscure",
+            "meaning": "晦涩的",
+            "history": "用户原话：不要词根词缀",
+        }
+        brief = pipeline._judge_brief(item)
+        self.assertNotIn("连续", brief)
+        self.assertIn("明确否掉过一次", brief)
+
+    def test_unknown_intent_is_rejudged_and_blocks_same_method(self):
+        item = {
+            "word": "obscure",
+            "meaning": "晦涩的",
+            "model": "fake",
+            "instruction": "换个方法",
+        }
+        first = json.dumps({
+            "intent": "不知道",
+            "same_method": True,
+            "scores": {**SIX_9, "诉求落实": 9},
+            "pass": True,
+            "issues": [],
+        })
+        patch = json.dumps({
+            "intent": "change_method",
+            "same_method": True,
+            "history_repeat": False,
+        })
+        with mock.patch.object(providers, "judge_target", return_value="fake"), \
+                mock.patch.object(providers, "complete", side_effect=[first, patch]):
+            scores, _issues, intent, same_method, history_repeat = pipeline.judge(
+                item, {}, ["① 第一步", "② 第二步", "③ 收尾 ——> 晦涩的"]
+            )
+        self.assertEqual(intent, "change_method")
+        self.assertTrue(same_method)
+        self.assertFalse(
+            pipeline._passed(item, scores, intent, same_method, history_repeat)
+        )
+
+    def test_judge_missing_history_repeat_is_rejudged_once(self):
+        item = {
+            "word": "obscure",
+            "meaning": "晦涩的",
+            "model": "fake",
+            "instruction": "换个方法，不要词根",
+            "history": "用户原话：不要词根词缀",
+        }
+        first = json.dumps({
+            "intent": "change_method",
+            "same_method": False,
+            "scores": {**SIX_9, "诉求落实": 9},
+            "pass": True,
+            "issues": [],
+        })
+        patch = json.dumps({
+            "intent": "change_method",
+            "same_method": True,
+            "history_repeat": True,
+        })
+        with mock.patch.object(providers, "judge_target", return_value="fake"), \
+                mock.patch.object(providers, "complete", side_effect=[first, patch]):
+            _scores, _issues, _intent, same_method, history_repeat = pipeline.judge(
+                item, {}, ["① 第一步", "② 第二步", "③ 收尾 ——> 晦涩的"]
+            )
+        self.assertTrue(history_repeat)
+
+    def test_judge_missing_flag_twice_defers_instead_of_applying(self):
+        item = {
+            "word": "obscure",
+            "meaning": "晦涩的",
+            "model": "fake",
+            "instruction": "换个方法",
+            "history": "用户原话：不要词根词缀",
+        }
+        first = json.dumps({
+            "intent": "change_method",
+            "same_method": False,
+            "scores": {**SIX_9, "诉求落实": 9},
+            "pass": True,
+            "issues": [],
+        })
+        with mock.patch.object(providers, "judge_target", return_value="fake"), \
+                mock.patch.object(providers, "complete", side_effect=[first, "{}"]):
+            with self.assertRaises(pipeline.PipelineError):
+                pipeline.judge(item, {}, ["① 第一步", "② 第二步", "③ 收尾 ——> 晦涩的"])
+
+    def test_judge_without_history_does_not_require_history_repeat(self):
+        item = {"word": "chronic", "meaning": "慢性的", "model": "fake"}
+        first = json.dumps({
+            "scores": SIX_9,
+            "pass": True,
+            "issues": [],
+        })
+        with mock.patch.object(providers, "judge_target", return_value="fake"), \
+                mock.patch.object(providers, "complete", return_value=first) as complete:
+            _scores, _issues, _intent, _same, history_repeat = pipeline.judge(
+                item, {}, ["① 第一步", "② 第二步", "③ 收尾 ——> 慢性的"]
+            )
+        self.assertFalse(history_repeat)
+        self.assertEqual(complete.call_count, 1)
 
     # ------------------------------------------------------------ 诉求缺失
 

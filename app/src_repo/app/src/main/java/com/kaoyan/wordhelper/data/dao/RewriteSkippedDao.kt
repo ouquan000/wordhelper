@@ -24,4 +24,8 @@ interface RewriteSkippedDao {
 
     @Query("DELETE FROM tb_rewrite_skipped WHERE seq = :seq")
     suspend fun delete(seq: Long)
+
+    /** Deferred rows are a transport cache keyed by seq in one result stream. */
+    @Query("DELETE FROM tb_rewrite_skipped")
+    suspend fun clearForReplacedStream()
 }

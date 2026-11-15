@@ -12,7 +12,8 @@ import json
 import os
 import re
 import threading
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta
 
 import providers
 
@@ -21,9 +22,27 @@ KEEP_OK = 5  # 每词最多 5 版（spec §4.4）
 KEEP_FAIL = 3
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
+# 质量不合格/传输失败后的退避：不设总次数，间隔逐级拉长，避免把网关打穿。
+RETRY_DELAYS = (30, 120, 300, 900, 1800, 3600)
+
+
+def _priority_value(value, default=100):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
 
 def _now():
     return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _retry_at(failures):
+    """第 N 次失败后多久再试；超出表长就停在最后一档。"""
+    index = max(0, min(int(failures or 1) - 1, len(RETRY_DELAYS) - 1))
+    return (datetime.now().astimezone() + timedelta(seconds=RETRY_DELAYS[index])).isoformat(
+        timespec="seconds"
+    )
 
 
 def _read_json(path):
@@ -61,10 +80,39 @@ def _current(record):
     return None
 
 
+def book_scope(row):
+    """New marks carry a book ID; old marks can only be scoped by book name."""
+    try:
+        book_id = max(0, int(row.get("bookId") or 0))
+    except (TypeError, ValueError, OverflowError):
+        book_id = 0
+    return book_id, str(row.get("book") or "").strip()[:60]
+
+
+def same_book_scope(left, right):
+    left_id, left_name = book_scope(left)
+    right_id, right_name = book_scope(right)
+    if left_id or right_id:
+        # A name by itself cannot identify a modern book, even if only one
+        # matching ID has been observed so far. Keep legacy rows as-is.
+        return left_id == right_id and (not left_name or not right_name or left_name == right_name)
+    return left_name == right_name
+
+
+def _current_in_book(record, item):
+    return next((e for e in reversed(record["entries"])
+                 if e.get("status") == "ok" and same_book_scope(e, item)), None)
+
+
 def _trim(entries):
-    ok = [e for e in entries if e.get("status") == "ok"][-KEEP_OK:]
-    fail = [e for e in entries if e.get("status") != "ok"][-KEEP_FAIL:]
-    return sorted(ok + fail, key=lambda e: e["seq"])
+    scoped = {}
+    for entry in entries:
+        scoped.setdefault(book_scope(entry), []).append(entry)
+    kept = []
+    for group in scoped.values():
+        kept.extend([e for e in group if e.get("status") == "ok"][-KEEP_OK:])
+        kept.extend([e for e in group if e.get("status") != "ok"][-KEEP_FAIL:])
+    return sorted(kept, key=lambda e: e["seq"])
 
 
 def _public(entry):
@@ -103,8 +151,10 @@ class Store:
         self.feedback_path = os.path.join(data_dir, "feedback.jsonl")
         self._feedback_ids = None
         self.items = []
+        self.accepted_mark_ids = set()
         self.results = {}
         self.seq = 0
+        self.stream_id = uuid.uuid4().hex
         self._closing = False
         self._lock = threading.RLock()
         self._cond = threading.Condition(self._lock)
@@ -116,10 +166,19 @@ class Store:
         queue = _read_json(self.queue_path)
         if isinstance(queue, dict) and isinstance(queue.get("items"), list):
             self.items = [it for it in queue["items"] if isinstance(it, dict) and it.get("clientId")]
+        saved_ids = queue.get("acceptedMarkIds") if isinstance(queue, dict) else None
+        if isinstance(saved_ids, list):
+            self.accepted_mark_ids.update(key for key in saved_ids if isinstance(key, str) and key)
+        self.accepted_mark_ids.update(it["clientId"] for it in self.items)
         state = _read_json(self.state_path)
-        if isinstance(state, dict) and isinstance(state.get("seq"), int):
-            self.seq = state["seq"]
-        # 上次没跑完的（进程被杀）一律退回 pending，别让它们永远卡在 running
+        stored_seq = state.get("seq") if isinstance(state, dict) else None
+        stored_stream = state.get("streamId") if isinstance(state, dict) else None
+        if type(stored_seq) is int and stored_seq >= 0:
+            self.seq = stored_seq
+            if isinstance(stored_stream, str) and re.fullmatch(r"[0-9a-f]{32}", stored_stream):
+                self.stream_id = stored_stream
+        # 只有未被替换的旧 running 任务才接续；过期任务不再占工位。
+        self._retire_superseded(("pending", "running", "retry_wait"))
         for item in self.items:
             if item.get("state") == "running":
                 item["state"] = "pending"
@@ -130,7 +189,22 @@ class Store:
             record = _read_json(os.path.join(self.results_dir, name))
             if isinstance(record, dict) and record.get("word"):
                 self.results[record["word"]] = record
-        if self.items:
+                for entry in record.get("entries") or ():
+                    if not isinstance(entry, dict):
+                        continue
+                    seq = entry.get("seq")
+                    if type(seq) is int:
+                        self.seq = max(self.seq, seq)
+                    client_id = entry.get("clientId")
+                    if isinstance(client_id, str) and client_id:
+                        self.accepted_mark_ids.add(client_id)
+        for item in self.items:
+            seq = item.get("resultSeq")
+            if type(seq) is int:
+                self.seq = max(self.seq, seq)
+        if stored_stream != self.stream_id or stored_seq != self.seq:
+            self._save_state()
+        if self.items or self.accepted_mark_ids:
             self._save_queue()
         return self
 
@@ -149,7 +223,6 @@ class Store:
     def add_marks(self, marks):
         accepted, rejected = [], []
         with self._cond:
-            seen = {it["clientId"] for it in self.items}
             for raw in marks:
                 if not isinstance(raw, dict):
                     rejected.append({"clientId": "", "reason": "标记不是对象"})
@@ -163,11 +236,11 @@ class Store:
                     rejected.append({"clientId": client_id, "reason": "缺 word"})
                 elif model not in providers.MODELS:
                     rejected.append({"clientId": client_id, "reason": "unknown model"})
-                elif client_id in seen:
-                    accepted.append(client_id)  # 幂等：同一个 clientId 只入队一次
+                elif client_id in self.accepted_mark_ids:
+                    accepted.append(client_id)
                 else:
                     self._enqueue(raw, client_id, word, model)
-                    seen.add(client_id)
+                    self.accepted_mark_ids.add(client_id)
                     accepted.append(client_id)
             self._save_queue()
             self._cond.notify_all()
@@ -237,11 +310,12 @@ class Store:
         self._feedback_ids = ids
 
     def _enqueue(self, raw, client_id, word, model):
+        book_id, book = book_scope(raw)
         for item in self.items:
-            if item["word"] != word:
+            if item["word"] != word or not same_book_scope(item, raw):
                 continue
-            if item.get("state") == "pending":
-                # 同词未处理的标记：新的覆盖旧的（spec §3.1）
+            if item.get("state") in ("pending", "retry_wait", "stopped"):
+                # 同词未处理/等重试的标记：新的覆盖旧的（spec §3.1）
                 self.items.remove(item)
                 break
             if item.get("state") == "running":
@@ -255,8 +329,8 @@ class Store:
                 "pos": str(raw.get("pos") or ""),
                 "meaning": str(raw.get("meaning") or ""),
                 "instruction": str(raw.get("instruction") or ""),
-                # 书目在手机上，这边只转存名字：记录页靠它筛选（1.4.4）
-                "book": str(raw.get("book") or "").strip()[:60],
+                "bookId": book_id,
+                "book": book,
                 # 改稿/评委要看到完整上一版（推导 3–5 步）；App 端上报的是按行拆分的全文，
                 # 旧的 [:3] 会把第 4、5 步截掉，评委只看到前 3 步。（1.4.7.1）
                 "currentApproach": [str(x) for x in (raw.get("currentApproach") or [])][:5],
@@ -268,22 +342,74 @@ class Store:
                 "error": "",
                 "createdAt": _now(),
                 "updatedAt": _now(),
+                # 1.4.7.2：持续重写/停止/晚到结果都靠这三个字段
+                "generation": 0,
+                "failures": 0,
+                "nextRunAt": "",
+                "lastReason": "",
+                "bestApproach": [],
+                "bestScores": {},
+                "qualityRejected": False,
+                # G01：前台用户重写默认 100；离线批处理可显式传 10。
+                "priority": max(0, min(100, _priority_value(raw.get("priority")))),
             }
         )
 
+    def _retire_superseded(self, states):
+        """收尾无工人持有的过期任务，不生成结果或移除接收回执。"""
+        changed = False
+        for item in self.items:
+            if item.get("superseded") and item.get("state") in states:
+                item.update(state="done", stage="done", error="", nextRunAt="",
+                            note="被同词新标记覆盖，取消后续运行", updatedAt=_now())
+                changed = True
+        if changed:
+            self._prune()
+        return changed
+
+    def _promote_retries_locked(self):
+        """到点的 retry_wait 放回 pending；没写 nextRunAt 的旧数据立刻可跑。"""
+        changed = self._retire_superseded(("pending", "retry_wait"))
+        now = _now()
+        for item in self.items:
+            if item.get("state") != "retry_wait":
+                continue
+            due = str(item.get("nextRunAt") or "")
+            if not due or due <= now:
+                item["state"] = "pending"
+                item["stage"] = "queued"
+                item["nextRunAt"] = ""
+                item["updatedAt"] = now
+                changed = True
+        if changed:
+            self._save_queue()
+
     def claim(self, timeout=60):
-        """取一条待处理的活；没有就等，等不到继续等，关门才返回 None。"""
+        """取一条到点的活；没有就等，等不到继续等，关门才返回 None。
+
+        公平性：先按 nextRunAt（重试到点时间）/ createdAt 排序，再取第一条；
+        单个词失败不会把整个队列堵死（spec §2.2）。
+        """
         with self._cond:
             while not self._closing:
-                for item in self.items:
-                    if item.get("state") == "pending":
-                        item["state"] = "running"
-                        item["stage"] = "generate"
-                        item["attempts"] = int(item.get("attempts") or 0) + 1
-                        item["startedAt"] = _now()
-                        item["updatedAt"] = item["startedAt"]
-                        self._save_queue()
-                        return dict(item)
+                self._promote_retries_locked()
+                ready = [item for item in self.items if item.get("state") == "pending"]
+                if ready:
+                    item = min(
+                        ready,
+                        key=lambda x: (
+                            -_priority_value(x.get("priority"), 100),
+                            str(x.get("nextRunAt") or ""),
+                            str(x.get("createdAt") or ""),
+                        ),
+                    )
+                    item["state"] = "running"
+                    item["stage"] = "generate"
+                    item["attempts"] = int(item.get("attempts") or 0) + 1
+                    item["startedAt"] = _now()
+                    item["updatedAt"] = item["startedAt"]
+                    self._save_queue()
+                    return dict(item)
                 self._cond.wait(timeout)
             return None
 
@@ -303,11 +429,17 @@ class Store:
 
     # ---------------------------------------------------------- 收尾
 
+    def _same_generation(self, item, live):
+        """晚到的结果/停止后回来的结果：代次不一致就不许写。"""
+        return int(item.get("generation") or 0) == int(live.get("generation") or 0)
+
     def finish_ok(self, item, approach, meta=None):
         meta = meta or {}
         with self._cond:
             live = self._find(item["clientId"])
             if live is None:
+                return None
+            if not self._same_generation(item, live):
                 return None
             if live.get("superseded"):
                 live.update(state="done", stage="done", note="被同词新标记覆盖，结果丢弃", updatedAt=_now())
@@ -316,15 +448,18 @@ class Store:
                 return None
             record = self.results.setdefault(live["word"], {"word": live["word"], "entries": []})
             prev = _current(record)
+            own_prev = _current_in_book(record, live)
             unverified = bool(meta.get("unverified"))
             reason = str(meta.get("reason") or "")[:400]
             entry = {
                 "seq": self._next_seq(),
                 "word": live["word"],
+                "bookId": live.get("bookId", 0),
+                "book": live.get("book", ""),
                 "rev": ((prev or {}).get("rev") or 0) + 1,
                 "approach": list(approach),
                 "method": str(meta.get("method") or ""),  # 六招之一，手机端据此显示「联想 · 词根」标签
-                "prev": list((prev or {}).get("approach") or live.get("currentApproach") or []),
+                "prev": list(live.get("currentApproach") or (own_prev or {}).get("approach") or []),
                 "updatedAt": _now(),
                 "status": "ok",
                 "model": live["model"],
@@ -344,6 +479,12 @@ class Store:
                 resultSeq=entry["seq"],
                 unverified=unverified,
                 reason=reason,
+                nextRunAt="",
+                qualityRejected=False,
+                failures=0,
+                lastReason="",
+                bestApproach=[],
+                bestScores={},
             )
             self._prune()
             self._save_queue()
@@ -355,6 +496,8 @@ class Store:
             live = self._find(item["clientId"])
             if live is None:
                 return None
+            if not self._same_generation(item, live):
+                return None
             # 与 finish_ok 对称：被同词新标记覆盖的旧任务，失败也不许写结果，
             # 否则面板/手机会收到一条本不该存在的 failed。
             if live.get("superseded"):
@@ -364,13 +507,16 @@ class Store:
                 return None
             record = self.results.setdefault(live["word"], {"word": live["word"], "entries": []})
             current = _current(record)
+            own_current = _current_in_book(record, live)
             entry = {
                 "seq": self._next_seq(),
                 "word": live["word"],
+                "bookId": live.get("bookId", 0),
+                "book": live.get("book", ""),
                 "rev": (current or {}).get("rev") or 0,
                 "approach": [],
                 "method": "",
-                "prev": list((current or {}).get("approach") or live.get("currentApproach") or []),
+                "prev": list(live.get("currentApproach") or (own_current or {}).get("approach") or []),
                 "updatedAt": _now(),
                 "status": "failed",
                 "model": live["model"],
@@ -386,6 +532,102 @@ class Store:
             self._cond.notify_all()
             return entry
 
+    def finish_quality_rejected(self, item, approach, meta=None):
+        """质量没过：不交付、不写 results，只留最佳候选并排下一次。
+
+        这是 1.4.7.2 的核心语义变化：以前 unverified 也算 done，用户会永远卡在
+        「两轮都不过」的稿子上；现在失败进 retry_wait，按指数退避一直重试，直到
+        某次通过或用户停止。
+        """
+        meta = meta or {}
+        with self._cond:
+            live = self._find(item["clientId"])
+            if live is None or not self._same_generation(item, live):
+                return None
+            if live.get("superseded"):
+                live.update(state="done", stage="done", note="被同词新标记覆盖，质量结果丢弃", updatedAt=_now())
+                self._save_queue()
+                self._cond.notify_all()
+                return None
+            failures = int(live.get("failures") or 0) + 1
+            reason = str(meta.get("reason") or "质量未过")[:400]
+            if approach:
+                live["bestApproach"] = list(approach)
+                live["bestScores"] = meta.get("scores") or {}
+            next_at = _retry_at(failures)
+            live.update(
+                state="retry_wait",
+                stage="judge",
+                failures=failures,
+                lastReason=reason,
+                error=reason,
+                nextRunAt=next_at,
+                qualityRejected=True,
+                updatedAt=_now(),
+            )
+            self._save_queue()
+            self._cond.notify_all()
+            return {"state": "retry_wait", "failures": failures, "nextRunAt": next_at}
+
+    def finish_retry(self, item, error, meta=None):
+        """传输/格式/限流等可恢复错误：也走退避，不把词永久钉成 failed。"""
+        meta = meta or {}
+        with self._cond:
+            live = self._find(item["clientId"])
+            if live is None or not self._same_generation(item, live):
+                return None
+            if live.get("superseded"):
+                live.update(state="failed", stage="failed", note="被同词新标记覆盖，失败记录丢弃", updatedAt=_now())
+                self._save_queue()
+                self._cond.notify_all()
+                return None
+            failures = int(live.get("failures") or 0) + 1
+            reason = str(error or "可恢复错误")[:400]
+            next_at = _retry_at(failures)
+            live.update(
+                state="retry_wait",
+                stage="generate",
+                failures=failures,
+                lastReason=reason,
+                error=reason,
+                nextRunAt=next_at,
+                qualityRejected=False,
+                updatedAt=_now(),
+            )
+            self._save_queue()
+            self._cond.notify_all()
+            return {"state": "retry_wait", "failures": failures, "nextRunAt": next_at}
+
+    def stop(self, word="", client_id=""):
+        """停止：待运行、等重试、运行中的都标 stopped；运行中的靠 generation+1 丢晚到结果。"""
+        with self._cond:
+            hit = 0
+            for item in self.items:
+                if item.get("state") not in ("pending", "running", "retry_wait"):
+                    continue
+                if client_id and item["clientId"] != client_id:
+                    continue
+                if word and item["word"] != word:
+                    continue
+                item["generation"] = int(item.get("generation") or 0) + 1
+                item.update(
+                    state="stopped",
+                    stage="failed",
+                    error="用户停止",
+                    lastReason="用户停止",
+                    nextRunAt="",
+                    qualityRejected=False,
+                    failures=0,
+                    bestApproach=[],
+                    bestScores={},
+                    updatedAt=_now(),
+                )
+                hit += 1
+            if hit:
+                self._save_queue()
+                self._cond.notify_all()
+            return hit
+
     def retry(self, word, client_id=""):
         """把这个词的失败项重新排进队列（保留原指令、模型与已尝试次数）。
 
@@ -394,7 +636,7 @@ class Store:
         with self._cond:
             hit = None
             for item in reversed(self.items):
-                if item.get("state") != "failed":
+                if item.get("superseded") or item.get("state") not in ("failed", "retry_wait", "stopped"):
                     continue
                 if client_id:
                     if item["clientId"] == client_id:
@@ -406,8 +648,17 @@ class Store:
                     break
             if hit is None:
                 return False
-            hit.update(state="pending", stage="queued", error="", updatedAt=_now())
-            hit.pop("superseded", None)
+            hit.update(
+                state="pending",
+                stage="queued",
+                error="",
+                nextRunAt="",
+                failures=0,
+                bestApproach=[],
+                bestScores={},
+                qualityRejected=False,
+                updatedAt=_now(),
+            )
             hit.pop("unverified", None)
             hit.pop("reason", None)
             self._save_queue()
@@ -418,12 +669,13 @@ class Store:
 
     def status(self):
         with self._lock:
-            counts = {"pending": 0, "running": 0, "done": 0, "failed": 0}
+            counts = {"pending": 0, "running": 0, "retry_wait": 0, "done": 0, "failed": 0, "stopped": 0}
             active, finished = [], []
             for item in self.items:
                 state = item.get("state", "pending")
                 counts[state] = counts.get(state, 0) + 1
                 row = {
+                    "clientId": item["clientId"],
                     "word": item["word"],
                     "model": item["model"],
                     "state": state,
@@ -432,8 +684,10 @@ class Store:
                     "updatedAt": item.get("updatedAt", ""),
                     "unverified": bool(item.get("unverified")),
                     "reason": str(item.get("reason") or ""),
+                    "failures": int(item.get("failures") or 0),
+                    "nextRunAt": item.get("nextRunAt") or "",
                 }
-                (active if state in ("pending", "running") else finished).append(row)
+                (active if state in ("pending", "running", "retry_wait") else finished).append(row)
             finished.sort(key=lambda r: r["updatedAt"], reverse=True)
             recent = sorted(
                 (e for rec in self.results.values() for e in rec["entries"]),
@@ -443,6 +697,8 @@ class Store:
             return {
                 "pending": counts.get("pending", 0),
                 "running": counts.get("running", 0),
+                "retryWait": counts.get("retry_wait", 0),
+                "stopped": counts.get("stopped", 0),
                 "done": counts.get("done", 0),
                 "failed": counts.get("failed", 0),
                 "items": (active + finished)[:30],
@@ -459,8 +715,10 @@ class Store:
             page = entries[:limit]
             return {
                 "results": [_public(e) for e in page],
-                "nextSince": page[-1]["seq"] if page else since,
+                "nextSince": page[-1]["seq"] if page else min(since, self.seq),
                 "more": len(entries) > limit,
+                "streamId": self.stream_id,
+                "highWater": self.seq,
             }
 
     def word_history(self, word):
@@ -549,8 +807,13 @@ class Store:
 
     def _next_seq(self):
         self.seq += 1
-        _write_json(self.state_path, {"seq": self.seq, "updatedAt": _now()})
+        self._save_state()
         return self.seq
+
+    def _save_state(self):
+        _write_json(self.state_path, {
+            "seq": self.seq, "streamId": self.stream_id, "updatedAt": _now(),
+        })
 
     def _count_today(self, status):
         today = datetime.now().astimezone().date()
@@ -564,7 +827,13 @@ class Store:
         return total
 
     def _save_queue(self):
-        _write_json(self.queue_path, {"updatedAt": _now(), "items": self.items})
+        # Write queue + receipt IDs in one atomic replace. Coalescing or
+        # pruning a queue item must never make that request eligible again.
+        _write_json(self.queue_path, {
+            "updatedAt": _now(),
+            "items": self.items,
+            "acceptedMarkIds": sorted(self.accepted_mark_ids),
+        })
 
     def _save_word(self, word):
         record = self.results.get(word)
@@ -575,7 +844,7 @@ class Store:
         keep, dropped = [], 0
         # 倒着扫：先保住最新完成的 KEEP_FINISHED 条，再把更早的丢掉
         for item in reversed(self.items):
-            if item.get("state") in ("pending", "running"):
+            if item.get("state") in ("pending", "running", "retry_wait"):
                 keep.append(item)
             elif dropped < KEEP_FINISHED:
                 keep.append(item)

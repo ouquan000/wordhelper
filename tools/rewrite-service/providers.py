@@ -17,6 +17,8 @@ import time
 import urllib.error
 import urllib.request
 
+import wb_gate
+
 CREDENTIALS_PATH = os.environ.get("REWRITE_CREDENTIALS") or os.path.join(
     os.path.expanduser("~"), ".dsh", ".credentials.yaml"
 )
@@ -27,6 +29,17 @@ WB_KEY = "sk-wb-local-8788"
 # 中转站的 grok 在两条并发时会间歇 502（串行连打三次都正常），
 # 单独给它一把锁：同一个供应商同时只放一条，别让并发把整批词拖成失败。
 _PROVIDER_LOCKS = {"portdan-grok": threading.Lock()}
+
+# 前台/批处理优先级：service 在 claim 到一条任务后设置，WB 统一槽据此让路。
+_task_priority = threading.local()
+
+
+def set_task_priority(priority: int = 100) -> None:
+    _task_priority.value = int(priority)
+
+
+def task_priority() -> int:
+    return int(getattr(_task_priority, "value", 100))
 
 PROVIDER_BASE = {
     "wb": "http://127.0.0.1:8788/v1",
@@ -153,18 +166,23 @@ def _headers(provider):
     return {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
 
 
-def _post(url, payload, headers, timeout):
+def _post(url, payload, headers, timeout, provider=""):
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
+        if provider == "wb":
+            wb_gate.note_success()
     except urllib.error.HTTPError as exc:
         body = ""
         try:
             body = exc.read().decode("utf-8", "replace")[:300]
         except Exception:  # noqa: BLE001 - 读错误体失败不能盖掉原始错误码
             pass
+        if provider == "wb":
+            retry_after = exc.headers.get("Retry-After") if exc.headers else None
+            wb_gate.note_http(exc.code, retry_after, body)
         if exc.code in (408, 409, 425, 429) or exc.code >= 500:
             raise _Retry("HTTP %d %s" % (exc.code, body))
         raise ProviderError("HTTP %d %s" % (exc.code, body))
@@ -222,7 +240,7 @@ def _call(target, system, user, max_tokens, temperature, timeout):
         }
         if target.get("reasoning"):
             body["reasoning_effort"] = target["reasoning"]
-        return _chat_text(_post(base + "/chat/completions", body, headers, timeout))
+        return _chat_text(_post(base + "/chat/completions", body, headers, timeout, target["provider"]))
 
     # openai-responses：system 走 instructions，temperature 不传（推理模型常拒）
     body = {
@@ -233,30 +251,47 @@ def _call(target, system, user, max_tokens, temperature, timeout):
     }
     if target.get("reasoning"):
         body["reasoning"] = {"effort": target["reasoning"]}
-    return _responses_text(_post(base + "/responses", body, headers, timeout))
+    return _responses_text(_post(base + "/responses", body, headers, timeout, target["provider"]))
+
+
+def _complete_locked(target, system, user, max_tokens, temperature, timeout):
+    last = ""
+    backoff = (2, 5, 10)
+    for attempt in range(4):
+        try:
+            return _call(target, system, user, max_tokens, temperature, timeout)
+        except _Retry as exc:
+            last = str(exc)
+            # 429/503 已经在 wb_gate 写下共享冷却；不要再拿 2/5/10 秒重试去撞。
+            if target.get("provider") == "wb":
+                remaining = wb_gate.cooldown_remaining()
+                if remaining > 0:
+                    raise ProviderError("WB 冷却中 %.0fs：%s" % (remaining, last))
+            if attempt < 3:
+                time.sleep(backoff[attempt])
+    raise ProviderError("%s 四次失败：%s" % (label(target), last))
 
 
 def complete(model_id, system, user, *, max_tokens=6000, temperature=0.8, timeout=300):
     """调一次模型拿纯文本；网络类错误重试 3 次（共 4 次）。
 
-    中转站的 502 是间歇性的（同一条词隔几分钟就能过），退避给足一点，
-    别让一次抖动把整个词判成失败。
+    WB 走项目级串行槽 + 共享冷却；portdan-grok 保留原来的供应商锁。
     """
     target = resolve(model_id)
-    last = ""
-    backoff = (2, 5, 10)
-    lock = _PROVIDER_LOCKS.get(target.get("provider"))
-    for attempt in range(4):
+    provider = target.get("provider")
+    if provider == "wb":
         try:
-            if lock is None:
-                return _call(target, system, user, max_tokens, temperature, timeout)
-            with lock:
-                return _call(target, system, user, max_tokens, temperature, timeout)
-        except _Retry as exc:
-            last = str(exc)
-            if attempt < 3:
-                time.sleep(backoff[attempt])
-    raise ProviderError("%s 四次失败：%s" % (label(target), last))
+            # 整个重试循环都持有槽位：避免本条 2s 退避时另一条挤进来，
+            # 也避免 429 冷却刚写下就被下一个请求撞穿。
+            with wb_gate.acquire(priority=task_priority()):
+                return _complete_locked(target, system, user, max_tokens, temperature, timeout)
+        except wb_gate.GateBusy as exc:
+            raise ProviderError(str(exc))
+    lock = _PROVIDER_LOCKS.get(provider)
+    if lock is None:
+        return _complete_locked(target, system, user, max_tokens, temperature, timeout)
+    with lock:
+        return _complete_locked(target, system, user, max_tokens, temperature, timeout)
 
 
 def probe(model_id, timeout=90):

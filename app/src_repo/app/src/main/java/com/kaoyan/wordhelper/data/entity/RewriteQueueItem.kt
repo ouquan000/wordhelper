@@ -9,11 +9,11 @@ import androidx.room.PrimaryKey
  * 手机上的一条「重写记忆思路」标记（1.4.3）。
  *
  * 手机只负责打标记与上传，真正的生成/润色/评分在电脑端跑。
- * 按 word_id 唯一：同一个词再点一次 = 覆盖旧的指令与模型，不会堆多条。
+ * 同书同词唯一：重复重写更新指令，另一本书有独立的任务与作答状态。
  */
 @Entity(
     tableName = "tb_rewrite_queue",
-    indices = [Index(value = ["word_id"], unique = true)]
+    indices = [Index(value = ["word_id", "book_id"], unique = true)]
 )
 data class RewriteQueueItem(
     @PrimaryKey(autoGenerate = true)
@@ -38,18 +38,24 @@ data class RewriteQueueItem(
     val status: String = RewriteStatus.PENDING,
     val error: String? = null,
     /**
-     * 1.4.6.1（DB20）：用户点过「跳过，先背下一个」、但这个词还没被真正插回当天的队列。
+     * 1.4.7.2 W2：这张重写卡还欠用户一次「实际作答」。
      *
-     * 光靠内存里的等待集合不行：进程一死，意图就丢了；而电脑端的结果可能在学习页恢复
-     * 之前先被自动同步写成 done。把「待插回」持久化，行就算已经 done 也仍然能补插。
-     * 正常点「重写思路」不置位；插回成功 / 发现已在队列 / 今天已答过 / 用户重写或撤销时清掉。
+     * 置位：用户点「跳过，先背下一个」（[markNeedsReinsert]）。
+     * 清零：用户对这张卡真的作答（三键 / 太简单 / 拼写成功），或词表里已经没有这个词。
+     *
+     * 关键口径：**生成完成、合格、插回队列、退出学习页都不等于作答完成**，
+     * 所以 1.4.7.2 起插回时不再清这个标记（1.4.6 的「插回即结清」是完成页提前出现的根因）。
+     * 进程重启靠它把「跳过但没背」的意图恢复回来，也是当天完成判定的唯一依据。
      */
     @ColumnInfo(name = "needs_reinsert", defaultValue = "0")
     val needsReinsert: Boolean = false,
     @ColumnInfo(name = "created_at")
     val createdAt: Long,
     @ColumnInfo(name = "updated_at")
-    val updatedAt: Long
+    val updatedAt: Long,
+    /** 空串仅用于升级前的请求，继续使用旧 clientId 认领已在途的结果。 */
+    @ColumnInfo(name = "request_id", defaultValue = "''")
+    val requestId: String = ""
 )
 
 /** 标记状态。done 保留一行，用来显示「上次重写时间 + 撤销」。 */

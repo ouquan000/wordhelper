@@ -21,8 +21,13 @@ import com.kaoyan.wordhelper.data.model.ApproachRevision
 import com.kaoyan.wordhelper.data.model.RewriteModel
 import com.kaoyan.wordhelper.data.model.RewriteModels
 import com.kaoyan.wordhelper.data.network.CardBackAddress
+import com.kaoyan.wordhelper.data.network.LanDiscovery
+import com.kaoyan.wordhelper.data.network.OriginTrustPolicy
 import com.kaoyan.wordhelper.data.network.RetryPolicy
 import com.kaoyan.wordhelper.data.network.ServerHealth
+import com.kaoyan.wordhelper.data.network.TlsPinned
+import com.kaoyan.wordhelper.util.DateUtils
+import java.net.URI
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +54,7 @@ import java.text.SimpleDateFormat
 import java.time.OffsetDateTime
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
@@ -84,6 +90,69 @@ data class RewriteSyncResult(
  *
  * 地址复用「卡背结构地址」的 host:port，只把路径换成 /rewrite 下的接口。
  */
+/** 升级前已投递的任务继续使用原 clientId。 */
+internal fun rewriteClientId(item: RewriteQueueItem): String =
+    item.requestId.ifBlank { "w${item.wordId}-${item.createdAt}" }
+
+/** 老服务按词头合并任务：同词一次只投递一书，其他书的独立任务留在本地。 */
+internal fun selectRewriteUploads(
+    pending: List<RewriteQueueItem>,
+    queued: List<RewriteQueueItem>,
+    staleBefore: Long
+): List<RewriteQueueItem> {
+    fun key(item: RewriteQueueItem) = item.word.trim().lowercase(Locale.ROOT)
+    val remoteWords = queued.mapTo(hashSetOf(), ::key)
+    return (queued.filter { it.updatedAt < staleBefore } +
+        pending.filter { key(it) !in remoteWords }).distinctBy(::key)
+}
+
+/** 无 clientId 的旧结果只认唯一全局旧任务，不靠词头猜词书。 */
+internal fun matchRewriteResultMark(
+    marks: List<RewriteQueueItem>,
+    clientId: String?
+): RewriteQueueItem? {
+    val incoming = clientId?.takeIf { it.isNotBlank() }
+    return if (incoming != null) {
+        marks.singleOrNull { rewriteClientId(it) == incoming }
+    } else {
+        marks.singleOrNull()?.takeIf { it.requestId.isBlank() && it.bookId == 0L }
+    }
+}
+
+/** 同书重写保留欠卡和原学习日；新指令用新的请求键。 */
+internal fun buildRewriteRequest(
+    existing: RewriteQueueItem?,
+    wordId: Long,
+    bookId: Long,
+    word: String,
+    model: String,
+    instruction: String,
+    now: Long,
+    newRequestId: String
+): RewriteQueueItem {
+    val prior = existing?.takeIf { it.wordId == wordId && it.bookId == bookId }
+    val trimmed = instruction.trim()
+    if (prior != null && prior.status == RewriteStatus.PENDING &&
+        prior.instruction == trimmed && prior.model == model &&
+        DateUtils.currentLearningDate(prior.createdAt) == DateUtils.currentLearningDate(now)
+    ) {
+        return prior.copy(updatedAt = now)
+    }
+    return RewriteQueueItem(
+        id = prior?.id ?: 0,
+        wordId = wordId,
+        bookId = bookId,
+        word = word,
+        instruction = trimmed,
+        model = model,
+        needsReinsert = prior?.needsReinsert == true,
+        createdAt = prior?.takeIf { it.needsReinsert }?.createdAt ?: now,
+        updatedAt = now,
+        requestId = newRequestId
+    )
+}
+
+
 class RewriteRepository(
     private val settingsRepository: SettingsRepository,
     private val wordDao: WordDao,
@@ -100,6 +169,8 @@ class RewriteRepository(
 ) {
     private val gson = Gson()
     private val syncMutex = Mutex()
+    private val queueWriteMutex = Mutex()
+    private var lastLegacyResultReplay = 0L
 
     @Volatile
     private var cachedModels: List<RewriteModel>? = null
@@ -121,6 +192,13 @@ class RewriteRepository(
     /** 已经写进 DataStore 的 last-good；一次同步要发十几页请求，别每页都写盘。 */
     @Volatile
     private var savedLastGood: String? = null
+
+    /** 1.4.7.2 W4：HTTPS 配置地址的 /identity 锚点最多 10 分钟拉一次。 */
+    @Volatile
+    private var anchorFetchedAt = 0L
+
+    @Volatile
+    private var anchorFetchedKey = ""
 
     /** 自动补发节流：断网/重连常常连着抖几个回调，不必每次都全量 sync。 */
     @Volatile
@@ -187,7 +265,8 @@ class RewriteRepository(
         }
     }
 
-    fun observeMark(wordId: Long): Flow<RewriteQueueItem?> = queueDao.observeByWordId(wordId)
+    fun observeMark(wordId: Long, bookId: Long): Flow<RewriteQueueItem?> =
+        queueDao.observeForBook(wordId, bookId)
 
     fun observeOpenCount(): Flow<Int> = queueDao.observeOpenCount()
 
@@ -201,14 +280,30 @@ class RewriteRepository(
     suspend fun needsReinsertForBook(bookId: Long): List<RewriteQueueItem> =
         queueDao.getNeedsReinsertForBook(bookId)
 
-    /** 用户点了「跳过」：先落库，进程死掉也能在下次加载时补插回队列。 */
-    suspend fun markNeedsReinsert(wordId: Long, bookId: Long) {
-        queueDao.markNeedsReinsert(wordId, bookId)
-    }
+    /**
+     * 1.4.7.2 W2：当前书里「跳过之后还没被实际作答」的重写卡（flow 版）。
+     * 当天完成判定、等待卡条数都读它，过滤学习日由 ViewModel 做。
+     */
+    fun observeNeedsReinsertForBook(bookId: Long): Flow<List<RewriteQueueItem>> =
+        queueDao.observeNeedsReinsertForBook(bookId)
 
-    /** 插回成功 / 发现已在队列 / 今天已答过 / 重新重写或撤销时清掉待插回标记。 */
-    suspend fun clearNeedsReinsert(wordId: Long) {
-        queueDao.clearNeedsReinsert(wordId)
+    /** 单条标记（取 createdAt 用：插回位置的稳定种子）。 */
+    suspend fun markOf(wordId: Long, bookId: Long): RewriteQueueItem? =
+        queueDao.getVisibleForBook(wordId, bookId)
+
+    /** 用户点了「跳过」：先落库，进程死掉也能在下次加载时补插回队列。 */
+    suspend fun markNeedsReinsert(wordId: Long, bookId: Long): Boolean =
+        queueWriteMutex.withLock { queueDao.markNeedsReinsert(wordId, bookId) == 1 }
+
+    /**
+     * 用户真的作答了这张重写卡（三键 / 太简单 / 拼写成功），才结清欠卡。
+     * 生成完成、插回队列、退出学习页都不调用它。
+     *
+     * 必须带上作答发生的那本书：同一个 word_id 可以同时属于多本书，
+     * 只按 word_id 清会误清另一本书的欠卡（见 RewriteQueueDao.clearNeedsReinsert）。
+     */
+    suspend fun clearNeedsReinsert(wordId: Long, bookId: Long) {
+        queueWriteMutex.withLock { queueDao.clearNeedsReinsert(wordId, bookId) }
     }
 
     /** 有没有填电脑地址（手填的或上次成功过的都算）；没填就别往队列里塞东西。 */
@@ -318,41 +413,83 @@ class RewriteRepository(
         instruction: String,
         bookId: Long = 0L
     ): Boolean {
-        val now = System.currentTimeMillis()
-        val existing = queueDao.getByWordId(wordId)
-        // 同一条未发出的标记反复点，沿用原来的 clientId，电脑端可以按幂等去重
-        val createdAt = if (existing != null && existing.status == RewriteStatus.PENDING) {
-            existing.createdAt
-        } else {
-            now
+        syncMutex.withLock {
+            queueWriteMutex.withLock {
+                queueDao.upsert(
+                    buildRewriteRequest(
+                        existing = queueDao.getForBook(wordId, bookId),
+                        wordId = wordId,
+                        bookId = bookId,
+                        word = word,
+                        instruction = instruction,
+                        model = model,
+                        now = System.currentTimeMillis(),
+                        newRequestId = newRewriteRequestId(wordId, bookId)
+                    )
+                )
+            }
         }
-        queueDao.upsert(
-            RewriteQueueItem(
-                wordId = wordId,
-                bookId = bookId,
-                word = word,
-                instruction = instruction.trim(),
-                model = model,
-                status = RewriteStatus.PENDING,
-                error = null,
-                createdAt = createdAt,
-                updatedAt = now
-            )
-        )
         sync()
-        // 以队列里的真实状态为准：上传成功但拉结果失败时，也不能骗用户说没发出去。
-        return queueDao.getByWordId(wordId)?.status == RewriteStatus.QUEUED
+        val status = queueDao.getForBook(wordId, bookId)?.status
+        return status == RewriteStatus.QUEUED || status == RewriteStatus.DONE
     }
 
-    /** 取消标记。已经发给电脑的（queued）不在这里删，等结果回来。 */
-    suspend fun cancel(wordId: Long) {
-        val existing = queueDao.getByWordId(wordId) ?: return
-        if (existing.status == RewriteStatus.QUEUED) return
-        queueDao.delete(wordId)
+    /** 已投递或还欠作答的任务不能通过取消删掉。 */
+    suspend fun cancel(wordId: Long, bookId: Long = 0L): Boolean = syncMutex.withLock {
+        queueWriteMutex.withLock write@{
+            val existing = queueDao.getVisibleForBook(wordId, bookId) ?: return@write false
+            if (existing.status != RewriteStatus.PENDING || existing.needsReinsert) return@write false
+            queueDao.delete(wordId, existing.bookId)
+            true
+        }
+    }
+
+    /**
+     * 1.4.7.2：让电脑停止重写。word 为空 = 停全部。
+     * 服务端会 generation+1，晚到的结果不会再被采纳；本地等待态由 ViewModel 收尾。
+     */
+    suspend fun stopRewrite(word: String? = null): Boolean = syncMutex.withLock {
+        stopRewriteLocked(word)
+    }
+
+    /** 锁内版本：stopAllRewrites 要「停远端 + 结清本地」整段原子，不能再抢一次锁。 */
+    private suspend fun stopRewriteLocked(word: String?): Boolean {
+        val payload = if (word.isNullOrBlank()) "{}" else gson.toJson(mapOf("word" to word))
+        val outcome = send(
+            path = "/rewrite/stop",
+            payload = payload,
+            attempts = 1,
+            report = false
+        )
+        return outcome.kind == RetryPolicy.Kind.OK
+    }
+
+    /**
+     * 停止全部重写并结清本地队列。电脑没收到停止指令时不动本地：
+     * 否则界面上停了、电脑还在跑，下一轮同步又把结果插回来。
+     *
+     * 1.4.7.2：整段放在 syncMutex 里。否则 stop 返回后、本地结清前，
+     * 另一次 sync 会抢到锁把仍是 pending 的标记再传上去，服务端 stop 之后
+     * 又建一条任务，结果回来时把卡背写回新思路（W2 复测 P2-1）。
+     */
+    suspend fun stopAllRewrites(): Boolean = syncMutex.withLock {
+        if (!stopRewriteLocked(null)) return@withLock false
+        val now = System.currentTimeMillis()
+        queueDao.getOpen().forEach { item ->
+            queueDao.updateStatus(item.wordId, item.bookId, RewriteStatus.FAILED, "用户停止", now)
+        }
+        // 已经生成完、欠一次插回的行也不能在停止后偷偷插回来。
+        queueDao.clearAllNeedsReinsert()
+        true
     }
 
     /** 撤销一次重写；返回恢复后的旧思路，没有可撤销版本时返回 null。 */
-    suspend fun undo(wordId: Long, bookId: Long = 0L): String? {
+    suspend fun undo(wordId: Long, bookId: Long = 0L): String? = syncMutex.withLock {
+        queueWriteMutex.withLock { undoLocked(wordId, bookId) }
+    }
+
+    private suspend fun undoLocked(wordId: Long, bookId: Long): String? {
+        if (queueDao.getVisibleForBook(wordId, bookId)?.needsReinsert == true) return null
         if (bookId > 0L) {
             val own = bookMemoryDao.getForBook(wordId, bookId) ?: return null
             val prev = own.prevApproach?.takeIf { it.isNotBlank() } ?: return null
@@ -375,7 +512,7 @@ class RewriteRepository(
                     updatedAt = System.currentTimeMillis()
                 )
             )
-            queueDao.delete(wordId)
+            queueDao.delete(wordId, bookId)
             return prev
         }
         val memory = wordMemoryDao.getByWordId(wordId) ?: return null
@@ -397,7 +534,7 @@ class RewriteRepository(
                 updatedAt = System.currentTimeMillis()
             )
         )
-        queueDao.delete(wordId)
+        queueDao.delete(wordId, bookId)
         return prev
     }
 
@@ -415,13 +552,23 @@ class RewriteRepository(
         val touched = ArrayList<Long>()
         var failed = 0
 
-        // 已送出去但半小时没回音的，重新挂回待发：电脑端清过数据、或服务重启丢了任务时靠它自愈。
-        val staleBefore = System.currentTimeMillis() - STALE_QUEUED_MILLIS
-        queueDao.getStaleQueued(staleBefore).forEach { item ->
-            queueDao.updateStatus(item.wordId, RewriteStatus.PENDING, item.error, System.currentTimeMillis())
+        val retryAt = System.currentTimeMillis()
+        queueDao.getFailedDebtsBefore(retryAt - FAILED_DEBT_RETRY_MILLIS).forEach { item ->
+            queueDao.retryFailedDebt(item.id, newRewriteRequestId(item.wordId, item.bookId), retryAt)
         }
-
-        val pending = queueDao.getPending()
+        // 电脑端仍按词头合并任务；等前一书有结果再传下一书，避免远端覆盖。
+        // 半小时无回音时优先重投原请求，不能让候补任务抢先覆盖它。
+        val staleBefore = System.currentTimeMillis() - STALE_QUEUED_MILLIS
+        val open = queueDao.getOpen()
+        val pending = if (ServerHealth.supports(serverHealth, CAP_REWRITE_SCOPED) == true) {
+            open.filter { it.status == RewriteStatus.PENDING || it.updatedAt < staleBefore }
+        } else {
+            selectRewriteUploads(
+                open.filter { it.status == RewriteStatus.PENDING },
+                open.filter { it.status == RewriteStatus.QUEUED },
+                staleBefore
+            )
+        }
         if (pending.isNotEmpty()) {
             val result = upload(pending)
             val accepted = result.accepted
@@ -431,16 +578,12 @@ class RewriteRepository(
             }
             val now = System.currentTimeMillis()
             pending.forEach { item ->
-                if (accepted.contains(clientIdOf(item))) {
-                    queueDao.updateStatus(item.wordId, RewriteStatus.QUEUED, null, now)
+                if (accepted.contains(rewriteClientId(item))) {
+                    queueDao.updateStatus(item.wordId, item.bookId, RewriteStatus.QUEUED, null, now)
                     uploaded += 1
                 }
             }
         }
-
-        // 1.4.6：上次同步里「认领不到 / 词还没导进来」被跳过的结果，这里补一次。
-        // 游标早就走过它们了，不补就是永久丢。
-        retrySkipped()
 
         // 1.4.6：攒下来的 👍/👎 顺手补发；它坏了不该把整轮判死。
         // 1.4.7：但也不能静默 —— 404（电脑端没有 /rewrite/feedback）之类会带一句话进本次结果，
@@ -449,14 +592,13 @@ class RewriteRepository(
         runCatching { pushFeedback(feedbackDao.getUnsynced(FEEDBACK_BATCH)) }
             .getOrNull()?.let { feedbackIssue = it }
 
-        var since = settingsRepository.rewriteLastSeq()
+        var cursor = settingsRepository.rewriteResultCursor()
         var seqRewound = false
-        // 补拉表里已有的行：同一行再次被跳过时 attempts 要累加，不能从 0 重新数。
+        var skippedChecked = false
+        val legacyRewoundSeq = settingsRepository.rewriteLegacyRewoundSeq()
         val skippedAttempts = HashMap<Long, Int>()
-        skippedDao.getPending(SKIPPED_RETRY_LIMIT, RewriteSkippedResult.MAX_ATTEMPTS).forEach {
-            skippedAttempts[it.seq] = it.attempts
-        }
         repeat(MAX_PAGES) {
+            val since = cursor.seq
             val outcome = send("/rewrite/results?since=$since&limit=50")
             if (outcome.kind != RetryPolicy.Kind.OK) {
                 // 404 → 版本过旧；429 → 限流（带剩余秒数）；连不上 → 电脑没连上。
@@ -470,14 +612,41 @@ class RewriteRepository(
             }
             val page = runCatching { gson.fromJson(body, ResultsPage::class.java) }.getOrNull()
                 ?: return@withLock RewriteSyncResult(uploaded, touched, failed, "电脑返回的结果读不懂")
-            // 电脑端清过 data/ 之后 seq 会从 1 重新数，本地 since 还停在旧值 —— 那样会一直拉到空页。
-            // 发现服务端游标回退，就把本地游标归零重拉一次。
-            val serverNext = page.nextSince
-            if (!seqRewound && serverNext != null && since > 0 && serverNext < since) {
+            val binding = cursor.bind(page.streamId, page.highWater, page.nextSince)
+            val now = System.currentTimeMillis()
+            val legacyReplay = !seqRewound && page.streamId.isNullOrBlank() &&
+                since > 0 && page.nextSince == since && page.results.isNullOrEmpty() &&
+                now - lastLegacyResultReplay >= LEGACY_REPLAY_INTERVAL_MS &&
+                since != legacyRewoundSeq
+            if (binding.rewind && seqRewound) {
+                return@withLock RewriteSyncResult(uploaded, touched, failed, "重写结果流正在切换，请稍后重试")
+            }
+            if (binding.replaceSkipped) {
+                // 旧流的 seq 可与新结果重号；只清补拉缓存，待发任务与用户卡片不动。
+                skippedDao.clearForReplacedStream()
+                skippedAttempts.clear()
+                skippedChecked = false
+            }
+            val nextCursor = if (legacyReplay) binding.cursor.copy(seq = 0L) else binding.cursor
+            if (nextCursor != cursor) {
+                cursor = nextCursor
+                settingsRepository.updateRewriteResultCursor(cursor)
+            }
+            if (binding.rewind || legacyReplay) {
+                if (legacyReplay) {
+                    lastLegacyResultReplay = now
+                    settingsRepository.updateRewriteLegacyRewoundSeq(since)
+                }
                 seqRewound = true
-                since = 0L
-                settingsRepository.updateRewriteLastSeq(0L)
                 return@repeat
+            }
+            if (!skippedChecked) {
+                // 先核对结果流，再补上轮未认领的行。
+                retrySkipped()
+                skippedDao.getPending(SKIPPED_RETRY_LIMIT, RewriteSkippedResult.MAX_ATTEMPTS).forEach {
+                    skippedAttempts[it.seq] = it.attempts
+                }
+                skippedChecked = true
             }
             // 刚装好/刚清数据时，种子还没导完，词表里查不到这个词 —— 这条结果先别丢：
             // 不推进 since，下次同步还会再拉一遍。否则「换机恢复」会静默地一条都恢复不了。
@@ -519,8 +688,8 @@ class RewriteRepository(
             }
             val next = page.nextSince ?: since
             if (next > since) {
-                since = next
-                settingsRepository.updateRewriteLastSeq(since)
+                cursor = cursor.copy(seq = next)
+                settingsRepository.updateRewriteResultCursor(cursor)
             }
             if (page.more != true) {
                 return@withLock RewriteSyncResult(uploaded, touched, failed, feedbackIssue)
@@ -564,7 +733,7 @@ class RewriteRepository(
         val key = dto.word?.trim()?.lowercase(Locale.ROOT).orEmpty()
         if (key.isEmpty()) return SKIP_NO_WORD
         val wordId = wordDao.getWordIdByKey(key) ?: return SKIP_WORD_MISSING
-        if (queueDao.getByWordId(wordId) == null) return SKIP_NO_MARK
+        if (queueDao.getAllForWord(wordId).isEmpty()) return SKIP_NO_MARK
         if (dto.approach.isNullOrEmpty()) return SKIP_EMPTY_APPROACH
         return SKIP_CLIENT_MISMATCH
     }
@@ -641,6 +810,7 @@ class RewriteRepository(
                     method = item.method,
                     model = item.model,
                     instruction = item.instruction,
+                    approachRev = item.approachRev,
                     createdAt = isoTime(item.createdAt)
                 )
             }
@@ -687,7 +857,8 @@ class RewriteRepository(
      * 只发一次请求：这个方法被 4 秒一次的轮询调用，失败时重试三次会把一个轮询周期拖到几十秒，
      * 用户看到的进度反而更卡。断网就静默返回 null，界面上显示「等电脑上线」。
      */
-    suspend fun statusOf(word: String, sinceMillis: Long = 0L): RewriteStatusSnapshot? {
+    suspend fun statusOf(mark: RewriteQueueItem): RewriteStatusSnapshot? {
+        val word = mark.word
         // /health 已经说过「这台电脑没有 rewrite 能力」：别再每 4 秒撞一次 404。
         if (ServerHealth.supports(serverHealth, CAP_REWRITE) == false) return null
         val outcome = send("/rewrite/status", attempts = 1, rotate = false, report = false)
@@ -696,14 +867,20 @@ class RewriteRepository(
         if (body.isNullOrBlank()) return null
         val page = runCatching { gson.fromJson(body, StatusPage::class.java) }.getOrNull() ?: return null
         val key = word.trim().lowercase(Locale.ROOT)
-        val matches = page.items.orEmpty().filter {
-            it.word?.trim()?.lowercase(Locale.ROOT) == key
+        val forWord = page.items.orEmpty().filter { it.word?.trim()?.lowercase(Locale.ROOT) == key }
+        val exact = forWord.filter { it.clientId == rewriteClientId(mark) }
+        val matches = exact.ifEmpty {
+            // 老服务器没有 clientId；只在本地确认这是唯一已发送任务时展示推测进度。
+            if (mark.status == RewriteStatus.QUEUED &&
+                queueDao.getAllForWord(mark.wordId).count { it.status == RewriteStatus.QUEUED } == 1
+            ) forWord.filter { it.clientId.isNullOrBlank() } else emptyList()
         }.filterNot { item ->
             // 服务端留着同一词的历史：上一条 done/failed 可能比这次标记还早。
             // 不滤掉的话，刚点完重写第一轮就会读到旧的 100%，进度条先冲满再退回来。
             val terminal = item.state == "done" || item.state == STATUS_FAILED
-            terminal && sinceMillis > 0L &&
-                (parseServerMillis(item.updatedAt) ?: Long.MAX_VALUE) + TERMINAL_STALE_TOLERANCE_MS < sinceMillis
+            terminal && mark.createdAt > 0L &&
+                (parseServerMillis(item.updatedAt) ?: Long.MAX_VALUE) +
+                TERMINAL_STALE_TOLERANCE_MS < mark.createdAt
         }
         // 同一个词可能有多条历史（上一条 done/failed + 这次 running），正在跑的优先
         val item = matches.firstOrNull { it.state == "pending" || it.state == "running" }
@@ -736,18 +913,16 @@ class RewriteRepository(
         // - 没有队列行 = 已撤销 / 已应用完 / 换机清过队列：一律丢弃。
         //   旧逻辑在这里接受合法 clientId，然后把 bookId 当 0 写进全局那份，
         //   结果就是「撤销后迟到的结果穿透到主书」（1.4.5 验收 P0）。
-        // - 有队列行：带 clientId 时必须和这条标记完全一致；不带 clientId 的老结果也接受。
-        val mark = queueDao.getByWordId(wordId) ?: return null
-        val incoming = dto.clientId?.takeIf { it.isNotBlank() }
-        if (incoming != null) {
-            val owner = CLIENT_ID.matchEntire(incoming)?.groupValues?.get(1)?.toLongOrNull()
-            if (owner == null || owner != wordId) return null
-            if (incoming != clientIdOf(mark)) return null
-        }
+        // - 有队列行：精确匹配 clientId，不靠词头猜词书。
+        val mark = matchRewriteResultMark(queueDao.getAllForWord(wordId), dto.clientId) ?: return null
+        // 已完成的请求被回放，不覆盖当前卡背，也不让迟到的失败倒退状态。
+        if (mark.status == RewriteStatus.DONE) return wordId
+        if (mark.status == RewriteStatus.FAILED && mark.error == "用户停止") return null
 
-        if (dto.status == STATUS_FAILED) {
+        if (dto.status == STATUS_FAILED || (mark.needsReinsert && dto.unverified == true)) {
             queueDao.updateStatus(
                 wordId,
+                mark.bookId,
                 RewriteStatus.FAILED,
                 dto.error?.takeIf { it.isNotBlank() } ?: "电脑端没生成出合格思路",
                 now
@@ -783,7 +958,7 @@ class RewriteRepository(
 
         // 1.4.5：这条标记是在哪本书里点的，就只改哪本书的卡背。
         // bookId=0 是老队列/换机恢复，沿用旧行为写全局那份。
-        val bookId = mark?.bookId ?: 0L
+        val bookId = mark.bookId
         if (bookId > 0L) {
             val own = bookMemoryDao.getForBook(wordId, bookId)
             // 1.4.6 幂等：同一行结果被重拉一遍（游标没推进 / 服务端重发）时，
@@ -797,7 +972,7 @@ class RewriteRepository(
                         own.copy(unverified = unverified, unverifiedReason = unverifiedReason)
                     )
                 }
-                queueDao.updateStatus(wordId, RewriteStatus.DONE, null, now)
+                queueDao.updateStatus(wordId, bookId, RewriteStatus.DONE, null, now)
                 return wordId
             }
             // 这一版之前生效的方法标签：撤销时跟思路一起退回去。
@@ -821,7 +996,7 @@ class RewriteRepository(
                     unverifiedReason = unverifiedReason
                 )
             )
-            queueDao.updateStatus(wordId, RewriteStatus.DONE, null, now)
+            queueDao.updateStatus(wordId, bookId, RewriteStatus.DONE, null, now)
             return wordId
         }
 
@@ -833,7 +1008,7 @@ class RewriteRepository(
                     existing.copy(unverified = unverified, unverifiedReason = unverifiedReason)
                 )
             }
-            queueDao.updateStatus(wordId, RewriteStatus.DONE, null, now)
+            queueDao.updateStatus(wordId, bookId, RewriteStatus.DONE, null, now)
             return wordId
         }
         wordMemoryDao.upsert(
@@ -852,7 +1027,7 @@ class RewriteRepository(
                 unverifiedReason = unverifiedReason
             )
         )
-        queueDao.updateStatus(wordId, RewriteStatus.DONE, null, now)
+        queueDao.updateStatus(wordId, bookId, RewriteStatus.DONE, null, now)
         return wordId
     }
 
@@ -875,7 +1050,8 @@ class RewriteRepository(
                 null
             }
             MarkDto(
-                clientId = clientIdOf(item),
+                clientId = rewriteClientId(item),
+                bookId = item.bookId.takeIf { it > 0L },
                 word = item.word,
                 phonetic = word?.phonetic.orEmpty(),
                 pos = posOf(word?.meaning.orEmpty()),
@@ -883,7 +1059,7 @@ class RewriteRepository(
                 model = item.model,
                 instruction = item.instruction,
                 book = bookNameOf(if (item.bookId > 0L) item.bookId else (word?.bookId ?: 0L)),
-                markedAt = isoTime(item.createdAt),
+                markedAt = isoTime(item.updatedAt),
                 currentApproach = (scopedMemory?.approach ?: memory?.approach).orEmpty()
                     .split("\n")
                     .map { it.trim() }
@@ -906,7 +1082,8 @@ class RewriteRepository(
         return UploadResult(response.accepted.orEmpty().toSet(), null)
     }
 
-    private fun clientIdOf(item: RewriteQueueItem): String = "w${item.wordId}-${item.createdAt}"
+    private fun newRewriteRequestId(wordId: Long, bookId: Long): String =
+        "w$wordId-b$bookId-${UUID.randomUUID()}"
 
     /** 反馈的幂等键：同一本书、同一个词、同一版思路、同一个态度只产生一行。 */
     private fun feedbackClientId(
@@ -962,7 +1139,8 @@ class RewriteRepository(
         build: () -> Request,
         maxAttempts: Int = RetryPolicy.DEFAULT_MAX_ATTEMPTS,
         respectRateLimit: Boolean = false,
-        report: Boolean = true
+        report: Boolean = true,
+        client: OkHttpClient = this.client
     ): HttpOutcome = withContext(Dispatchers.IO) {
         var attempt = 0
         var lastCode: Int? = null
@@ -1103,8 +1281,18 @@ class RewriteRepository(
     ): HttpOutcome {
         val endpoint = cardBackEndpoint(rotate)
             ?: return HttpOutcome(RetryPolicy.Kind.FATAL, null, null, message = NO_ADDRESS)
+        val knownInstance = knownInstanceId()
         var last: HttpOutcome? = null
         for (origin in endpoint.origins) {
+            // 已配对过：私网 http 候选先做无口令 /identity?nonce 校验，
+            // 验不过就不把口令发给它（防同 WiFi 伪造地址/中继）。
+            if (!originAllowed(origin, knownInstance, endpoint.token)) continue
+            val originClient = httpClientFor(origin, endpoint.tlsPin)
+            if (originClient == null) {
+                Log.w(TAG, "跳过无 pin 的 LAN HTTPS 候选：${CardBackAddress.originOf(origin) ?: origin}")
+                continue
+            }
+            if (!httpsLanIdentityOk(origin, knownInstance, endpoint.token, endpoint.tlsPin)) continue
             val outcome = call(
                 build = {
                     val builder = Request.Builder()
@@ -1120,15 +1308,17 @@ class RewriteRepository(
                 },
                 maxAttempts = attempts,
                 respectRateLimit = respectRateLimit,
-                report = report
+                report = report,
+                client = originClient
             )
             last = outcome
-            if (outcome.code != null) {
+            if (OriginTrustPolicy.canRememberSuccess(outcome.code)) {
                 rememberSuccess(origin)
                 return outcome
             }
             // 限流闸内短路：换地址也没用（限流按 IP 算），直接返回（已经上报过）。
             if (outcome.kind == RetryPolicy.Kind.RATE_LIMITED) return outcome
+            if (outcome.code != null) continue
         }
         return last ?: HttpOutcome(RetryPolicy.Kind.FATAL, null, null, message = NO_ADDRESS)
     }
@@ -1144,7 +1334,15 @@ class RewriteRepository(
         if (now - lastHealthProbeAt < HEALTH_PROBE_MIN_INTERVAL_MS) return
         val endpoint = cardBackEndpoint(rotate = true) ?: return
         lastHealthProbeAt = now
+        val knownInstance = knownInstanceId()
         for (origin in endpoint.origins) {
+            if (!originAllowed(origin, knownInstance, endpoint.token)) continue
+            val originClient = httpClientFor(origin, endpoint.tlsPin)
+            if (originClient == null) {
+                Log.w(TAG, "跳过无 pin 的 LAN HTTPS 候选：${CardBackAddress.originOf(origin) ?: origin}")
+                continue
+            }
+            if (!httpsLanIdentityOk(origin, knownInstance, endpoint.token, endpoint.tlsPin)) continue
             val outcome = call(
                 build = {
                     withToken(
@@ -1159,10 +1357,11 @@ class RewriteRepository(
                 // /health 不参与限流：状态页不该因为我们自己贴着 429 冷却就看不到电脑端信息。
                 respectRateLimit = false,
                 // 探测失败不该把状态页从 OK 翻成 RETRYING；只有 404 / 401 这种「确定结论」才报。
-                report = false
+                report = false,
+                client = originClient
             )
             if (outcome.code == null) continue
-            rememberSuccess(origin)
+            if (OriginTrustPolicy.canRememberSuccess(outcome.code)) rememberSuccess(origin)
             when (outcome.kind) {
                 RetryPolicy.Kind.OK -> {
                     val info = ServerHealth.parse(outcome.body)
@@ -1219,6 +1418,25 @@ class RewriteRepository(
             endpointRevisionSeen = revision
             activeOrigin = null
         }
+        // 1.4.7.2 W4：同 WiFi 只走 HTTPS + SPKI pin。没有 pin 时先向 HTTPS 配置地址
+        // 取锚点；拿不到就不发现，绝不退回明文 HTTP。
+        var lanPin = TlsPinned.normalizePin(settings.cardBackTlsPin).orEmpty()
+        var lanPort = settings.cardBackTlsPort
+        // 首次配对：配对行已经给了 pin + tls_port，但 instance_id 还空。
+        // 此时必须先走 pin 绑定的 HTTPS，不能让 token 先发明文 HTTP。
+        val firstPairOrigin = firstPairPinnedOrigin(settings, lanPin, lanPort)
+        if (firstPairOrigin != null) {
+            activeOrigin = firstPairOrigin
+            lanPort = settings.cardBackTlsPort.takeIf { it in 1..65535 } ?: DEFAULT_TLS_PORT
+        }
+        if (rotate && settings.cardBackLanAuto && firstPairOrigin == null) {
+            val lan = resolveLan(settings)
+            if (lan != null) {
+                activeOrigin = lan.origin
+                lanPin = lan.pin
+                lanPort = lan.port
+            }
+        }
         val origins = if (rotate) {
             CardBackAddress.candidates(
                 active = activeOrigin,
@@ -1234,8 +1452,75 @@ class RewriteRepository(
                 )
             )
         }
-        if (origins.isEmpty()) return null
-        return CardBackEndpoint(origins = origins, token = settings.cardBackToken)
+        // 有 pin 时，明文 HTTP+IP 一律不进候选：token 只能发给 pin 证明过的 HTTPS
+        // 或已受信 HTTPS 域名。没有 pin 的老配置保持原行为。
+        val safeOrigins = if (lanPin.isNotBlank()) {
+            origins.filterNot { isPlainHttpIpOrigin(it) }
+        } else {
+            origins
+        }
+        if (safeOrigins.isEmpty()) return null
+        return CardBackEndpoint(
+            origins = safeOrigins,
+            token = settings.cardBackToken,
+            tlsPin = lanPin,
+            tlsPort = lanPort
+        )
+    }
+
+    /**
+     * 配对行给了 pin/tls_port、地址主机是 IP 时，把 http://IP:8765 升成
+     * https://IP:tlsPort。instance 空不空都允许升级：已配对用户重贴带 pin
+     * 的配对行也必须能走这条路，否则候选会被明文过滤清空、同步停摆。
+     */
+    private fun firstPairPinnedOrigin(settings: UserSettings, pin: String, port: Int): String? {
+        val normalized = TlsPinned.normalizePin(pin) ?: return null
+        val origin = CardBackAddress.originOf(settings.cardBackUrl) ?: return null
+        val host = runCatching { URI(origin).host }.getOrNull()?.trim().orEmpty()
+        if (!TlsPinned.isIpLiteral(host)) return null
+        val tlsPort = port.takeIf { it in 1..65535 } ?: DEFAULT_TLS_PORT
+        return "https://$host:$tlsPort"
+    }
+
+    /** 有 pin 时任何明文 http 候选都不能再发口令，不只是 IP 字面量。 */
+    private fun isPlainHttpIpOrigin(origin: String): Boolean =
+        origin.startsWith("http://", ignoreCase = true)
+
+    /**
+     * 自动发现 LAN HTTPS 端点；pin 缺失时只允许从 HTTPS 配置地址的 /identity 取锚点。
+     */
+    private suspend fun resolveLan(settings: UserSettings): LanEndpoint? {
+        val expected = settings.cardBackInstanceId.trim()
+        val token = settings.cardBackToken.trim()
+        if (expected.isBlank() || token.isBlank()) return null
+        var pin = TlsPinned.normalizePin(settings.cardBackTlsPin)
+        var port = settings.cardBackTlsPort.takeIf { it in 1..65535 } ?: 8443
+        val now = System.currentTimeMillis()
+        val anchorKey = "${settings.cardBackUrl}|$expected|${token.hashCode()}"
+        val httpsConfig = TlsPinned.normalizedHttpsOrigin(settings.cardBackUrl) != null
+        val shouldFetchAnchor = httpsConfig && (
+            pin == null ||
+                anchorFetchedKey != anchorKey ||
+                now - anchorFetchedAt >= ANCHOR_REFRESH_MS
+            )
+        if (shouldFetchAnchor) {
+            val anchor = runCatching {
+                LanDiscovery.fetchAnchor(settings.cardBackUrl, token, expected)
+            }.getOrNull()
+            anchorFetchedAt = now
+            anchorFetchedKey = anchorKey
+            if (anchor != null) {
+                runCatching { settingsRepository.updateCardBackTlsAnchor(anchor.pin, anchor.port) }
+                pin = TlsPinned.normalizePin(anchor.pin)
+                port = anchor.port
+            }
+        }
+        val usablePin = pin ?: return null
+        val found = runCatching {
+            LanDiscovery.discover(settingsRepository.appContext, token, expected, usablePin, port)
+        }.getOrNull() ?: return null
+        if (found.instanceId != expected) return null
+        return LanEndpoint(origin = found.origin, pin = usablePin, port = port)
     }
 
     /**
@@ -1250,7 +1535,51 @@ class RewriteRepository(
         runCatching { settingsRepository.updateCardBackLastGoodUrl(origin) }
     }
 
-    private data class CardBackEndpoint(val origins: List<String>, val token: String)
+    private data class CardBackEndpoint(
+        val origins: List<String>,
+        val token: String,
+        val tlsPin: String = "",
+        val tlsPort: Int = 8443
+    )
+
+    private data class LanEndpoint(val origin: String, val pin: String, val port: Int)
+
+    private suspend fun knownInstanceId(): String =
+        runCatching { settingsRepository.settingsFlow.first().cardBackInstanceId }.getOrDefault("")
+
+    /**
+     * 已配对电脑的私网 http 地址必须先证明身份，才允许把口令发过去。
+     * 未配对 / HTTPS 域名保持原行为（首次配对靠用户手填地址）。
+     */
+    private suspend fun originAllowed(origin: String, knownInstance: String, token: String): Boolean {
+        if (!OriginTrustPolicy.needsProof(origin, knownInstance)) return true
+        return LanDiscovery.verifyOrigin(origin, knownInstance, token)
+    }
+
+    /**
+     * https + IP 的 LAN 候选：TLS pin 只证明「这张证书」，还要再证明「这个 instance」。
+     * 已配对时先做无口令 `/identity?nonce`，验不过就不发 token；未配对保持原行为。
+     */
+    private suspend fun httpsLanIdentityOk(
+        origin: String,
+        knownInstance: String,
+        token: String,
+        pin: String
+    ): Boolean {
+        if (!TlsPinned.isLanHttps(origin)) return true
+        // instance 空也照样做一次无口令 /identity?nonce：pin 只证明证书，
+        // proof/proof_peer 才证明「这台电脑知道口令」；首配不能跳过。
+        return TlsPinned.verifyIdentity(origin, knownInstance, token, pin) != null
+    }
+
+    /**
+     * 按 origin 选择客户端：域名/普通地址用系统信任；https + IP 的 LAN 必须用 pin。
+     * 返回 null 表示「这是 LAN HTTPS，但没有可用的 pin」，调用方必须跳过而不是降级。
+     */
+    private fun httpClientFor(origin: String, pin: String): OkHttpClient? {
+        if (!TlsPinned.isLanHttps(origin)) return client
+        return TlsPinned.clientFor(pin)
+    }
 
     /** 电脑端不在本机时，每个请求都得带口令；没填就照发（本机浏览器编辑卡背免票）。 */
     private fun withToken(builder: Request.Builder, token: String): Request.Builder {
@@ -1273,13 +1602,14 @@ class RewriteRepository(
 
     private data class MarkDto(
         val clientId: String,
+        val bookId: Long?,
         val word: String,
         val phonetic: String,
         val pos: String,
         val meaning: String,
         val model: String,
         val instruction: String,
-        /** 书名；记录页按书筛，电脑端只存这个字符串。老版本不传，默认空。 */
+        /** 书名供记录页显示；旧服务忽略独立的 bookId。 */
         val book: String = "",
         val markedAt: String,
         val currentApproach: List<String>? = null
@@ -1290,7 +1620,9 @@ class RewriteRepository(
     private data class ResultsPage(
         val results: List<RewriteResultDto>?,
         val nextSince: Long?,
-        val more: Boolean?
+        val more: Boolean?,
+        val streamId: String?,
+        val highWater: Long?
     )
 
     private data class RewriteResultDto(
@@ -1319,7 +1651,8 @@ class RewriteRepository(
         val state: String?,
         val stage: String?,
         val error: String?,
-        val updatedAt: String?
+        val updatedAt: String?,
+        val clientId: String?
     )
 
     private data class ModelsPage(val models: List<ModelDto>?)
@@ -1337,7 +1670,7 @@ class RewriteRepository(
      * 一条反馈。clientId 由（词、书、评价）拼出来 —— 服务端据此幂等去重，
      * 手机端断了网重推同一批也不会在 data/feedback.jsonl 里堆重复行。
      */
-    private data class FeedbackDto(
+    internal data class FeedbackDto(
         val clientId: String,
         val wordId: Long,
         val bookId: Long,
@@ -1372,8 +1705,14 @@ class RewriteRepository(
         /** /health 探测节流：60 秒最多问一次。 */
         private const val HEALTH_PROBE_MIN_INTERVAL_MS = 60_000L
 
+        /** HTTPS 配置地址的 TLS 锚点刷新间隔；pin 轮换时不必等下次冷启动。 */
+        private const val ANCHOR_REFRESH_MS = 10 * 60_000L
+        private const val DEFAULT_TLS_PORT = 8443
+
         /** /health 能力清单里重写链路真正依赖的两项。 */
         private const val CAP_REWRITE = "rewrite"
+        private const val CAP_REWRITE_SCOPED = "rewrite_scoped"
+        private const val LEGACY_REPLAY_INTERVAL_MS = 60_000L
         private const val CAP_FEEDBACK = "feedback"
 
         /** 网络恢复自动补发的最小间隔：连重连抖动几下也只发一次。 */
@@ -1382,6 +1721,7 @@ class RewriteRepository(
         /** /rewrite/status 连上了，但列表里没有这个词（电脑端清过数据）。 */
         const val STATE_MISSING = "missing"
         private const val STALE_QUEUED_MILLIS = 30 * 60 * 1000L
+        private const val FAILED_DEBT_RETRY_MILLIS = 60_000L
 
         /** 判断历史终态是否比本次标记还早时，允许的时钟误差。 */
         private const val TERMINAL_STALE_TOLERANCE_MS = 2_000L
@@ -1407,7 +1747,6 @@ class RewriteRepository(
         private const val SKIP_CLIENT_MISMATCH = "client_mismatch"
 
         /** 本 App 发出的 clientId 形状：w{wordId}-{createdAt}。 */
-        private val CLIENT_ID = Regex("^w(\\d+)-(\\d+)$")
 
         /** 释义开头的词性前缀：adj. / v. / n. / adv. / vt. … */
         private val POS_PREFIX = Regex("^([a-zA-Z]{1,5}(?:\\.[a-zA-Z]{1,5})?)\\.")

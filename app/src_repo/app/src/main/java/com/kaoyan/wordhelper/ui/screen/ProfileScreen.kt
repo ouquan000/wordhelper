@@ -240,13 +240,15 @@ fun ProfileScreen(
                         plannedNewWordsEnabled = settings.plannedNewWordsEnabled,
                         showBuiltinFullBooks = showBuiltinFullBooks,
                         cardBackUrl = settings.cardBackUrl,
+                        cardBackLanAuto = settings.cardBackLanAuto,
                         rewritePendingCount = rewritePendingCount,
                         onNewWordsLimitChange = viewModel::updateNewWordsLimit,
                         onFontScaleChange = viewModel::updateFontScale,
                         onDarkModeChange = viewModel::updateDarkMode,
                         onPlannedNewWordsEnabledChange = viewModel::updatePlannedNewWordsEnabled,
                         onShowBuiltinFullBooksChange = viewModel::updateShowBuiltinFullBooks,
-                        onCardBackUrlChange = viewModel::updateCardBackUrl
+                        onCardBackUrlChange = viewModel::updateCardBackUrl,
+                        onCardBackLanAutoChange = viewModel::updateCardBackLanAuto
                     )
                 }
             }
@@ -608,13 +610,15 @@ private fun SettingsCard(
     plannedNewWordsEnabled: Boolean,
     showBuiltinFullBooks: Boolean,
     cardBackUrl: String,
+    cardBackLanAuto: Boolean,
     rewritePendingCount: Int,
     onNewWordsLimitChange: (Int) -> Unit,
     onFontScaleChange: (Float) -> Unit,
     onDarkModeChange: (DarkMode) -> Unit,
     onPlannedNewWordsEnabledChange: (Boolean) -> Unit,
     onShowBuiltinFullBooksChange: (Boolean) -> Unit,
-    onCardBackUrlChange: (String) -> Unit
+    onCardBackUrlChange: (String) -> Unit,
+    onCardBackLanAutoChange: (Boolean) -> Unit
 ) {
     // 电脑端给的是「地址#口令」一整行，这里只让用户粘一次，解析在 SettingsRepository 里做。
     var cardBackUrlInput by remember(cardBackUrl) { mutableStateOf(cardBackUrl) }
@@ -699,6 +703,21 @@ private fun SettingsCard(
             )
             Text(
                 text = "「完整词库」「完整词库（精选）」各 5000 多词，日常背词用不到；隐藏只是不显示、不导入，开回来下次启动生效。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            SettingRow(
+                title = "同 WiFi 自动直连",
+                options = listOf(false, true),
+                optionLabels = listOf("关闭", "开启"),
+                optionTags = listOf("settings_lan_auto_off", "settings_lan_auto_on"),
+                selected = cardBackLanAuto,
+                onSelect = onCardBackLanAutoChange
+            )
+            Text(
+                text = "开启后同一 WiFi 下会先找这台电脑的局域网地址，失败再走域名。" +
+                    "仅建议在可信的家庭 WiFi 使用：同一网段的主动攻击无法被明文 HTTP 完全防住；" +
+                    "在咖啡馆/公司等公共网络请保持关闭。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

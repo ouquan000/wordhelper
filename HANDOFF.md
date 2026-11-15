@@ -54,7 +54,7 @@
 | md5 | `e3bd6b57c4fb9a0016aac6ccb5be6183` |
 | 下载（本机开 18795 时） | `http://10.105.85.173:18795/english-app-1.4.3.2.apk` |
 | DB 版本 | **15**（14→15：`tb_word_memory` 加 `source/rev/prev_approach`，新增 `tb_rewrite_queue`） |
-| 签名 | `_toolchain/signing/wordhelper.jks`，alias `wordhelper`，密码 `wordhelper123` |
+| 签名 | `_toolchain/signing/wordhelper.jks`，alias `wordhelper`，口令见本地 `app/src_repo/app/keystore.properties`（不入库） |
 
 **版本号铁律**：每次对外发版 `versionCode` 必须 +1；不为一个 bug 连跳版本号。
 下个对外版本是 **1.4.4 → versionCode 9**；如果只改 schema 之类的小修，内部包沿用同号覆盖。

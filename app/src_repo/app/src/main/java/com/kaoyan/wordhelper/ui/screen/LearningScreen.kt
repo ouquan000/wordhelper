@@ -28,6 +28,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -180,6 +181,7 @@ fun LearningScreen(
     val checkInState by viewModel.checkInState.collectAsStateWithLifecycle()
     val waitingRewriteCount by viewModel.waitingRewriteCount.collectAsStateWithLifecycle()
     val rewriteMark by viewModel.currentRewriteMark.collectAsStateWithLifecycle()
+    val skipRewriteLatchedWordId by viewModel.skipRewriteLatchedWordId.collectAsStateWithLifecycle()
     val rewriteModels by viewModel.rewriteModels.collectAsStateWithLifecycle()
     val rewriteModelId by viewModel.rewriteModelId.collectAsStateWithLifecycle()
     val rewriteProgress by viewModel.rewriteProgress.collectAsStateWithLifecycle()
@@ -240,8 +242,8 @@ fun LearningScreen(
     val shouldPollRewrite = isCardFlipped && (
         rewriteMark?.status == RewriteStatus.PENDING || rewriteMark?.status == RewriteStatus.QUEUED
         )
-    // H：只有点过重写、结果还没回来时才给「跳过」。
-    val showSkipRewrite = rewriteMark?.status.let { it != null && it != RewriteStatus.DONE }
+    // W3：点过重写就锁存，生成完成也不收起；换词后 currentWord 变了才失效。
+    val showSkipRewrite = skipRewriteLatchedWordId != null && skipRewriteLatchedWordId == currentWord?.id
     LifecycleStartEffect(shouldPollRewrite) {
         if (shouldPollRewrite) {
             viewModel.startRewriteProgressPolling()
@@ -607,9 +609,7 @@ fun LearningScreen(
                                                         onUndo = viewModel::undoRewrite,
                                                         enabled = live && !isAnswering,
                                                         progress = rewriteProgress,
-                                                        justUpdated = rewriteJustUpdated,
-                                                        showSkip = showSkipRewrite,
-                                                        onSkip = viewModel::skipCurrentWordForRewrite
+                                                        justUpdated = rewriteJustUpdated
                                                     )
                                                     RewriteFeedbackRow(
                                                         feedback = rewriteFeedback,
@@ -634,7 +634,10 @@ fun LearningScreen(
                                     } else {
                                         handleAnswer(StudyRating.GOOD)
                                     }
-                                }
+                                },
+                                showSkip = showSkipRewrite && rewriteMark != null,
+                                skipEnabled = rewriteMark?.status != RewriteStatus.DONE,
+                                onSkip = viewModel::skipCurrentWordForRewrite
                             )
                         }
                     }
@@ -699,7 +702,12 @@ private val RECOGNITION_SECTION_SPACING = 10.dp
 private const val SWIPE_TRIGGER_RATIO = 0.3f
 private const val SWIPE_ACTIVE_ZONE_RATIO = 0.8f
 
-/** H：当天词背完、但还有重写思路没回来时，不显示「完成」，显示这张等待卡。 */
+/**
+ * H：当天词背完、但今天发起过的重写卡还没被实际背掉时，不显示「完成」，显示这张等待卡。
+ *
+ * 1.4.7.2 W2：学习页不再提供「停止重写」入口 —— 停掉生成会让欠卡永远背不掉，
+ * 用户也就永远看不到真实完成。停止能力只留在后端/运维侧。
+ */
 @Composable
 private fun LearningWaitingRewriteCard(
     count: Int,
@@ -715,9 +723,9 @@ private fun LearningWaitingRewriteCard(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
-            Text("还有 $count 条记忆思路在生成", style = MaterialTheme.typography.titleMedium)
+            Text("还有 $count 张重写卡没背完", style = MaterialTheme.typography.titleMedium)
             Text(
-                text = "生成好会自动插回今天的队列，请耐心等待。",
+                text = "正在生成或等待重试；合格一张就插回一张，背完今天才算完成。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1565,6 +1573,9 @@ private fun RecognitionActionPanel(
     onAgain: () -> Unit,
     onHard: () -> Unit,
     onGood: () -> Unit,
+    showSkip: Boolean = false,
+    skipEnabled: Boolean = true,
+    onSkip: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -1589,12 +1600,18 @@ private fun RecognitionActionPanel(
                 modifier = Modifier
                     .weight(1f)
                     .testTag("learning_action_again"),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = AlertRed.copy(alpha = 0.18f),
                     contentColor = AlertRed
                 )
             ) {
-                Text(text = "不认识")
+                Text(
+                    text = "不认识",
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2
+                )
             }
             FilledTonalButton(
                 onClick = onHard,
@@ -1603,12 +1620,18 @@ private fun RecognitionActionPanel(
                 modifier = Modifier
                     .weight(1f)
                     .testTag("learning_action_hard"),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = FuzzyYellow.copy(alpha = 0.28f),
                     contentColor = MaterialTheme.colorScheme.onSurface
                 )
             ) {
-                Text(text = "模糊")
+                Text(
+                    text = "模糊",
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2
+                )
             }
             val goodText = if (isNewWordsBook) "认识并移出" else "认识"
             FilledTonalButton(
@@ -1618,12 +1641,42 @@ private fun RecognitionActionPanel(
                 modifier = Modifier
                     .weight(1f)
                     .testTag("learning_action_good"),
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = KnownGreen.copy(alpha = 0.22f),
                     contentColor = KnownGreen
                 )
             ) {
-                Text(text = goodText, textAlign = TextAlign.Center)
+                Text(
+                    text = goodText,
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                    // 320dp + fontScale 1.5 + 四按钮时，5 个字的「认识并移出」两行放不下；
+                    // 第三行只在这一种窄组合出现，正常字号仍是一行。
+                    maxLines = 3
+                )
+            }
+            if (showSkip) {
+                FilledTonalButton(
+                    onClick = onSkip,
+                    enabled = !isAnswering && skipEnabled,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("learning_action_skip"),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    Text(
+                        text = "跳过",
+                        style = MaterialTheme.typography.labelMedium,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2
+                    )
+                }
             }
         }
     }

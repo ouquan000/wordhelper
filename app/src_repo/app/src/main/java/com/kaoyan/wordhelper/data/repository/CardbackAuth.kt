@@ -19,24 +19,58 @@ object CardbackAuth {
     fun headerValue(token: String): String? = token.trim().ifEmpty { null }
 
     /**
+     * 电脑端给的一整行现在可能带局域网 TLS 锚点：
+     * `http://192.168.1.5:8765#aBcD1234&pin=<64hex>&tls_port=8443`。
+     *
+     * `pin` 是电脑端证书公钥的 SHA-256，属于可信一次性配对输入，只能从这行
+     * 或受信 HTTPS 的 `/identity` 得到；`#` 后面整段不会进请求行/日志。
+     */
+    data class PairInfo(
+        val url: String,
+        val token: String?,
+        val tlsPin: String?,
+        val tlsPort: Int?
+    )
+
+    /**
      * 拆电脑端给的那一整行：`http://192.168.1.5:8765#aBcD1234`。
      *
      * 返回「地址 to 口令」：
      * - 地址 = `#` 之前的部分，去掉 `/cardback.json` 后缀（读取端会自己补），trim；
-     * - 口令 = `#` 之后的部分；没有 `#`，或 `#` 后面是空的，就是 null。
+     * - 口令 = `#` 之后的第一段（`&` 之前）；没有 `#`，或 `#` 后面是空的，就是 null。
      *
      * 口令为 null 的含义是「这次没带口令」，**不是「把口令清空」** ——
      * 老用户单独填过口令的，只改地址不能把它弄丢。
      */
     fun parsePair(raw: String): Pair<String, String?> {
+        val info = parsePairInfo(raw)
+        return info.url to info.token
+    }
+
+    fun parsePairInfo(raw: String): PairInfo {
         // 地址框能接受粘贴：多行文本（例如整段诊断信息）只取第一行。
         // 否则带换行的地址解析失败，会静默回退到上次成功地址，用户却以为新地址生效了。
         val text = raw.trim().lineSequence().firstOrNull()?.trim().orEmpty()
-        if (text.isEmpty()) return "" to null
+        if (text.isEmpty()) return PairInfo("", null, null, null)
         val cut = text.indexOf('#')
         val rawUrl = if (cut >= 0) text.substring(0, cut) else text
-        val rawToken = if (cut >= 0) text.substring(cut + 1) else ""
-        return stripFileName(rawUrl.trim()) to rawToken.trim().ifEmpty { null }
+        val fragment = if (cut >= 0) text.substring(cut + 1) else ""
+        val parts = fragment.split('&')
+        val token = parts.firstOrNull()?.trim()?.ifEmpty { null }
+        var pin: String? = null
+        var port: Int? = null
+        parts.drop(1).forEach { part ->
+            val eq = part.indexOf('=')
+            if (eq <= 0) return@forEach
+            val key = part.substring(0, eq).trim().lowercase()
+            val value = part.substring(eq + 1).trim()
+            when (key) {
+                "pin" -> pin = value.takeIf { it.matches(Regex("^[0-9a-fA-F]{64}$")) }
+                    ?.lowercase()
+                "tls_port", "tlsport" -> port = value.toIntOrNull()?.takeIf { it in 1..65535 }
+            }
+        }
+        return PairInfo(stripFileName(rawUrl.trim()), token, pin, port)
     }
 
     /** `http://ip:8765/cardback.json` → `http://ip:8765`；末尾斜杠也去掉，其余原样。 */

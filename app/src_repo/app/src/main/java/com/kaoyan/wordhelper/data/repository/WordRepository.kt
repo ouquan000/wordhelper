@@ -57,6 +57,7 @@ class WordRepository(private val database: AppDatabase) {
     private val earlyReviewDao = database.earlyReviewDao()
     private val forecastCacheDao = database.forecastCacheDao()
     private val wordMemoryDao = database.wordMemoryDao()
+    private val rewriteQueueDao = database.rewriteQueueDao()
     /** 1.4.6：root 标签刷新要按书那份一起改（卡背读的是 tb_book_memory）。 */
     private val bookMemoryDao = database.bookMemoryDao()
 
@@ -93,6 +94,8 @@ class WordRepository(private val database: AppDatabase) {
             val wasActive = book.isActive
             earlyReviewDao.deleteByBook(book.id)
             progressDao.deleteByBook(book.id)
+            // 队列行没有外键；不清理会留下 needs_reinsert=1 的孤儿，永久挡住同词。
+            rewriteQueueDao.deleteByBook(book.id)
             wordDao.deleteByBook(book.id)
             wordDao.deleteOrphanWords()
             bookDao.delete(book)
@@ -114,7 +117,7 @@ class WordRepository(private val database: AppDatabase) {
             val bookId = bookDao.insert(
                 Book(name = name, type = Book.TYPE_IMPORTED, totalCount = 0, isActive = false)
             )
-            upsertDraftsForBook(bookId, drafts)
+            upsertDraftsForBook(bookId, drafts, memorySource = WordMemory.SOURCE_IMPORT)
             bookDao.updateTotalCount(bookId, wordDao.getWordCount(bookId))
             bookId
         }
@@ -138,7 +141,12 @@ class WordRepository(private val database: AppDatabase) {
             bookId = existing?.id ?: bookDao.insert(
                 Book(name = bookName, type = Book.TYPE_IMPORTED, totalCount = 0, isActive = false)
             )
-            upsertDraftsForBook(bookId, drafts)
+            upsertDraftsForBook(
+                bookId,
+                drafts,
+                seedFingerprints = SeedMemoryUpgrade.previousFingerprints(seed.version, bookName),
+                externalSeedOverride = seed.externalOverride
+            )
             bookDao.updateTotalCount(bookId, wordDao.getWordCount(bookId))
             val active = bookDao.getActiveBook()
             if (active == null || active.type == Book.TYPE_NEW_WORDS) {
@@ -1148,7 +1156,13 @@ class WordRepository(private val database: AppDatabase) {
         return mixed
     }
 
-    private suspend fun upsertDraftsForBook(bookId: Long, drafts: List<WordDraft>) {
+    private suspend fun upsertDraftsForBook(
+        bookId: Long,
+        drafts: List<WordDraft>,
+        memorySource: String = WordMemory.SOURCE_SEED,
+        seedFingerprints: Map<String, String> = emptyMap(),
+        externalSeedOverride: Boolean = false
+    ) {
         if (drafts.isEmpty()) return
 
         val normalizedDrafts = LinkedHashMap<String, WordDraft>(drafts.size)
@@ -1222,10 +1236,7 @@ class WordRepository(private val database: AppDatabase) {
 
         // 记忆思路与搭配按 word_id 单独存，重新导入只覆盖它们自己，
         // 不会碰 tb_progress，所以更新内容不会重置学习进度。
-        // 1.4.3：用户重写过的词（source=user）跳过，否则种子版本一涨就把重写冲掉。
-        val userSourcedWordIds = wordMemoryDao.getUserSourcedWordIds().toHashSet()
-        // 1.4.6：先查已存在的记忆行。已存在的只更新正文，保留 method/source/rev/prev_approach；
-        // 只有库里没有的行才 INSERT，避免种子 version 一涨就把标签和撤销冲空。
+        // 已存在的行需先确认来源，只更新正文和来源，保留标签、版本及撤销记录。
         val existingMemories = HashMap<Long, WordMemory>(normalizedDrafts.size)
         wordIdsByKey.values
             .distinct()
@@ -1237,19 +1248,27 @@ class WordRepository(private val database: AppDatabase) {
         val newMemories = ArrayList<WordMemory>(normalizedDrafts.size)
         normalizedDrafts.forEach { (key, draft) ->
             val wordId = wordIdsByKey[key] ?: return@forEach
-            if (wordId in userSourcedWordIds) return@forEach
             val approach = draft.approach.trim()
             val collocations = draft.collocations.trim()
             if (approach.isBlank() && collocations.isBlank()) return@forEach
-            if (existingMemories.containsKey(wordId)) {
-                wordMemoryDao.updateContent(wordId, approach, collocations, updatedAt)
+            val existingMemory = existingMemories[wordId]
+            if (existingMemory != null) {
+                if (SeedMemoryUpgrade.canReplace(
+                        existingMemory, memorySource, seedFingerprints[key], externalSeedOverride
+                    ) &&
+                    (existingMemory.approach != approach || existingMemory.collocations != collocations ||
+                        existingMemory.source != memorySource)
+                ) {
+                    wordMemoryDao.updateContent(wordId, approach, collocations, memorySource, updatedAt)
+                }
             } else {
                 newMemories.add(
                     WordMemory(
                         wordId = wordId,
                         approach = approach,
                         collocations = collocations,
-                        updatedAt = updatedAt
+                        updatedAt = updatedAt,
+                        source = memorySource
                     )
                 )
             }

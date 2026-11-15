@@ -8,8 +8,10 @@ import com.kaoyan.wordhelper.data.entity.Progress
 import com.kaoyan.wordhelper.data.entity.SyncOp
 import com.kaoyan.wordhelper.data.entity.SyncState
 import com.kaoyan.wordhelper.data.network.CardBackAddress
+import com.kaoyan.wordhelper.data.network.LanDiscovery
 import com.kaoyan.wordhelper.data.network.RetryPolicy
 import com.kaoyan.wordhelper.data.network.ServerHealth
+import com.kaoyan.wordhelper.data.network.TlsPinned
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -64,11 +66,25 @@ class SyncRepository(
     /** 1.4.6.1 P1：本次进程里最后一次真正连通的地址（手填地址坏了时靠它兜底）。 */
     @Volatile
     private var activeOrigin: String? = null
+
+    /**
+     * 本轮已经通过 `/health` 身份校验的地址。一旦确定，只把请求发到它；
+     * 否则伪服务/陌生地址可能先拿到 2xx，后续 pull/push 仍会把 token 发过去。
+     */
+    @Volatile
+    private var pinnedOrigin: String? = null
     private var endpointRevisionSeen = settingsRepository?.endpointRevision ?: -1L
 
     /** 已写进 DataStore 的 last-good；一轮同步要发多次请求，别每次都写盘。 */
     @Volatile
     private var savedLastGood: String? = null
+
+    /** 1.4.7.2 W4：HTTPS 配置地址的 /identity 锚点最多 10 分钟拉一次（pin 轮换兜底）。 */
+    @Volatile
+    private var anchorFetchedAt = 0L
+
+    @Volatile
+    private var anchorFetchedKey = ""
 
     /** 断网恢复自动补同步的节流。 */
     @Volatile
@@ -97,6 +113,14 @@ class SyncRepository(
     /** 上次 GET /health 的时间：60 秒最多探一次，别让状态页每次刷新都多打一个请求。 */
     @Volatile
     private var lastHealthProbeAt = 0L
+
+    /** 上次探测的地址；地址变了要立刻重探，不能拿旧电脑的 instance 判断新电脑。 */
+    @Volatile
+    private var lastHealthProbeOrigin = ""
+
+    /** 上次探测通过身份校验的地址；60 秒节流内复用，避免每轮都打 /health。 */
+    @Volatile
+    private var lastVerifiedOrigin: String? = null
 
     /**
      * 上一次上报的状态。4 秒一轮自动同步时，同一个失败会重复几十次；
@@ -304,12 +328,45 @@ class SyncRepository(
             if (ids.isNotEmpty()) syncDao.deleteByOpIds(ids)
             Log.w(TAG, "电脑端拒收 ${rejected.size} 条：${rejected.take(3).mapNotNull { it.reason }}")
         }
-        syncDao.putState(
-            state.copy(
-                serverRev = response.serverRev ?: state.serverRev,
-                lastSyncAt = System.currentTimeMillis()
+
+        // 1.4.7.2 W5：诊断字段。冲突/清理/重放分开记，别把正常重放当冲突吓自己。
+        val conflicts = response.conflicts.orEmpty()
+        if (conflicts.isNotEmpty()) {
+            Log.w(
+                TAG,
+                "电脑端判定 ${conflicts.size} 条真实冲突：" +
+                    conflicts.take(3).joinToString("; ") {
+                        "${it.word}/${it.reason}(old=${it.oldLrt},new=${it.newLrt})"
+                    }
             )
+        }
+        val trimmed = response.trimmed ?: 0
+        if (trimmed > 0) {
+            Log.w(TAG, "电脑端为容量清理了 $trimmed 行（按书 ${response.trimmedByBook.orEmpty()}）")
+        }
+        val replayed = response.replayed.orEmpty()
+        if (replayed.isNotEmpty()) {
+            Log.i(TAG, "电脑端确认 ${replayed.size} 条幂等重放（不涨 rev、不算冲突）")
+        }
+        SyncStatusStore.reportSyncDiagnostics(
+            epoch = response.epoch ?: state.epoch,
+            conflicts = conflicts.size,
+            trimmed = trimmed,
+            replayed = replayed.size
         )
+
+        var newState = state.copy(
+            serverRev = response.serverRev ?: state.serverRev,
+            lastSyncAt = System.currentTimeMillis()
+        )
+        val serverEpoch = response.epoch ?: state.epoch
+        if (serverEpoch != state.epoch) {
+            // 服务端换库/坏文件重建：旧 rev 会静默漏行，必须归零重拉；
+            // 本地 tb_sync_op 未发队列一条都不删（用户刚背的进度先留在手机上）。
+            Log.w(TAG, "电脑端恢复代次变了：${state.epoch} -> $serverEpoch，游标归零重拉")
+            newState = newState.copy(serverRev = 0L, epoch = serverEpoch)
+        }
+        syncDao.putState(newState)
         // ack 之后队列短了，状态页的「待同步 N 条」要立刻跟上，不能等下次进页面。
         SyncStatusStore.reportPending(syncDao.pendingCount())
         return Result.success(acked.size)
@@ -345,6 +402,24 @@ class SyncRepository(
             }
             val page = runCatching { gson.fromJson(pullBody, PullPage::class.java) }.getOrNull()
                 ?: return Result.failure(SyncException("电脑返回的同步数据读不懂"))
+
+            // 1.4.7.2 W5：恢复代次变了 = 服务端换库/坏文件重建。只归零游标重拉，
+            // 本地待发队列原样保留；最多重来一次，第二次还变就报错让用户先别同步。
+            val pageEpoch = page.epoch
+            if (pageEpoch != null && pageEpoch != state.epoch) {
+                if (rewound) return Result.failure(SyncException("电脑端恢复代次反复变化，先别同步"))
+                rewound = true
+                Log.w(TAG, "电脑端恢复代次变了：${state.epoch} -> $pageEpoch，游标归零重拉")
+                state = state.copy(serverRev = 0L, epoch = pageEpoch)
+                syncDao.putState(state)
+                SyncStatusStore.reportSyncDiagnostics(
+                    epoch = pageEpoch,
+                    conflicts = 0,
+                    trimmed = 0,
+                    replayed = 0
+                )
+                return@repeat
+            }
 
             val serverRev = page.serverRev
             if (serverRev != null && serverRev < state.serverRev) {
@@ -451,6 +526,8 @@ class SyncRepository(
      */
     suspend fun hasAddress(): Boolean {
         val settings = settingsRepository?.settingsFlow?.first() ?: return false
+        // 用户清空地址 = 解除配对；activeOrigin 可能还是本进程上一轮的地址，不能让它复活后台任务。
+        if (settings.cardBackUrl.isBlank() && settings.cardBackLastGoodUrl.isBlank()) return false
         return CardBackAddress.candidates(
             active = activeOrigin,
             current = settings.cardBackUrl,
@@ -480,25 +557,39 @@ class SyncRepository(
     private suspend fun syncOnceLocked(): Result<String> = syncMutex.withLock {
         // 1.4.7：同步前先问一句 /health（60 秒节流一次），状态页才有电脑端版本与能力可显示。
         // 探不到不阻塞：老服务端没有这个接口，真正的同步请求会拿到 404，由 call() 归档成 SERVER_TOO_OLD。
-        config()?.let { probeHealth(it) }
-        // 第一次同步前先把「升级前就背过的词」补进队列：服务端 rev=0 且从没同步过才走这里。
-        bulkEnqueueIfFresh(ensureState())
-        val firstPull = pullLocked()
-        if (firstPull.isFailure) {
-            return@withLock Result.failure<String>(firstPull.exceptionOrNull() ?: SyncException("同步失败"))
+        val probeConfig = config()
+        val verifiedOrigin = if (probeConfig != null) probeHealth(probeConfig) else null
+        val knownInstance = settingsRepository?.settingsFlow?.first()?.cardBackInstanceId.orEmpty()
+        // 已配对过就绝不把 token 发给没通过 /health 身份校验的候选。
+        if (knownInstance.isNotBlank() && verifiedOrigin == null) {
+            return@withLock Result.failure(
+                SyncException("电脑身份未确认，本轮同步已停止；请确认在同一 WiFi 或检查地址/口令")
+            )
         }
-        val pushed = pushLocked()
-        if (pushed.isFailure) {
-            return@withLock Result.failure<String>(pushed.exceptionOrNull() ?: SyncException("同步失败"))
+        // 本轮后续 pull/push 只发这个地址，避免 probe 通过后又按候选顺序回到伪服务。
+        pinnedOrigin = verifiedOrigin
+        try {
+            // 第一次同步前先把「升级前就背过的词」补进队列：服务端 rev=0 且从没同步过才走这里。
+            bulkEnqueueIfFresh(ensureState())
+            val firstPull = pullLocked()
+            if (firstPull.isFailure) {
+                return@withLock Result.failure<String>(firstPull.exceptionOrNull() ?: SyncException("同步失败"))
+            }
+            val pushed = pushLocked()
+            if (pushed.isFailure) {
+                return@withLock Result.failure<String>(pushed.exceptionOrNull() ?: SyncException("同步失败"))
+            }
+            val secondPull = pullLocked()
+            if (secondPull.isFailure) {
+                return@withLock Result.failure<String>(secondPull.exceptionOrNull() ?: SyncException("同步失败"))
+            }
+            val total = firstPull.getOrDefault(0) + pushed.getOrDefault(0) + secondPull.getOrDefault(0)
+            return@withLock Result.success(
+                if (total == 0) "已经是最新的了" else "已同步 $total 条"
+            )
+        } finally {
+            pinnedOrigin = null
         }
-        val secondPull = pullLocked()
-        if (secondPull.isFailure) {
-            return@withLock Result.failure<String>(secondPull.exceptionOrNull() ?: SyncException("同步失败"))
-        }
-        val total = firstPull.getOrDefault(0) + pushed.getOrDefault(0) + secondPull.getOrDefault(0)
-        return@withLock Result.success(
-            if (total == 0) "已经是最新的了" else "已同步 $total 条"
-        )
     }
 
     /** 队列里还有几条没发出去（给界面显示「待同步 N 条」用，不触发网络）。 */
@@ -554,18 +645,51 @@ class SyncRepository(
     private suspend fun config(rotate: Boolean = true): SyncConfig? {
         // 只读一次 settingsFlow：地址与口令必须来自同一份快照。
         val settings = settingsRepository?.settingsFlow?.first() ?: return null
+        val token = settings.cardBackToken.trim()
+        val settingsPin = TlsPinned.normalizePin(settings.cardBackTlsPin).orEmpty()
         // 1.4.7：用户改过地址/口令就丢掉本会话缓存的 activeOrigin，否则新地址不会被优先尝试。
+        // 必须先于 pinned 早退：改口令会清 pin，旧 LAN 地址不能再拿 token。
         val revision = settingsRepository?.endpointRevision ?: 0L
         if (revision != endpointRevisionSeen) {
             endpointRevisionSeen = revision
             activeOrigin = null
+            pinnedOrigin = null
             // 1.4.7 验收 B2：换电脑/重装后服务端 rev 属于另一台机器，旧游标会静默漏行，必须归零从头拉。
             syncDao.state()?.let { st ->
                 if (st.serverRev != 0L) syncDao.putState(st.copy(serverRev = 0L))
             }
         }
+        // 本轮 /health 已确认身份：只认这个地址，不给伪服务/陌生候选任何拿 token 的机会。
+        val pinned = pinnedOrigin
+        if (!pinned.isNullOrBlank()) {
+            return SyncConfig(
+                origins = listOf(pinned),
+                token = token,
+                tlsPin = settingsPin,
+                tlsPort = settings.cardBackTlsPort
+            )
+        }
+        // 1.4.7.2 W4：同 WiFi 只走 HTTPS + SPKI pin。pin 要么本地已有，要么先从
+        // **HTTPS 配置地址**的 /identity 取锚点；取不到就不发现，绝不退回明文 HTTP。
+        var lanPin = settingsPin
+        var lanPort = settings.cardBackTlsPort
+        // 首次配对：配对行已经给了 pin + tls_port。此时 instance_id 还是空的，
+        // 不能让流程退回「先 HTTP 发 token 再学身份」——必须先走 pin 绑定的 HTTPS。
+        val firstPairOrigin = firstPairPinnedOrigin(settings, lanPin, lanPort)
+        if (firstPairOrigin != null) {
+            activeOrigin = firstPairOrigin
+            lanPort = settings.cardBackTlsPort.takeIf { it in 1..65535 } ?: DEFAULT_TLS_PORT
+        }
+        if (rotate && settings.cardBackLanAuto && firstPairOrigin == null) {
+            val lan = resolveLan(settings)
+            if (lan != null) {
+                activeOrigin = lan.origin
+                lanPin = lan.pin
+                lanPort = lan.port
+            }
+        }
         // 1.4.6.1 P1：和改写链路同一套候选/上次成功，手填地址写坏时学习记录也能自愈。
-        val origins = if (rotate) {
+        val rawOrigins = if (rotate) {
             CardBackAddress.candidates(
                 active = activeOrigin,
                 current = settings.cardBackUrl,
@@ -580,8 +704,59 @@ class SyncRepository(
                 )
             )
         }
+        // 有 pin 时，同一台电脑的明文 HTTP 地址一律不进候选：token 只能发给
+        // 「pin 证明过的 https://ip:tlsPort」或已受信的 HTTPS 域名。
+        val origins = if (lanPin.isNotBlank()) {
+            rawOrigins.filterNot { isPlainHttpIpOrigin(it) }
+        } else {
+            rawOrigins
+        }
         if (origins.isEmpty()) return null
-        return SyncConfig(origins = origins, token = settings.cardBackToken.trim())
+        return SyncConfig(
+            origins = origins,
+            token = token,
+            tlsPin = lanPin,
+            tlsPort = lanPort
+        )
+    }
+
+    /**
+     * 自动发现 LAN HTTPS 端点。只有本地有 expected instance_id 才继续；
+     * pin 缺失时先尝试从 HTTPS 配置地址取锚点，仍没有就返回 null。
+     */
+    private suspend fun resolveLan(settings: UserSettings): LanEndpoint? {
+        val expected = settings.cardBackInstanceId.trim()
+        val token = settings.cardBackToken.trim()
+        if (expected.isBlank() || token.isBlank()) return null
+        val context = settingsRepository?.appContext ?: return null
+        var pin = TlsPinned.normalizePin(settings.cardBackTlsPin)
+        var port = settings.cardBackTlsPort.takeIf { it in 1..65535 } ?: 8443
+        val now = System.currentTimeMillis()
+        val anchorKey = "${settings.cardBackUrl}|$expected|${token.hashCode()}"
+        val httpsConfig = TlsPinned.normalizedHttpsOrigin(settings.cardBackUrl) != null
+        val shouldFetchAnchor = httpsConfig && (
+            pin == null ||
+                anchorFetchedKey != anchorKey ||
+                now - anchorFetchedAt >= ANCHOR_REFRESH_MS
+            )
+        if (shouldFetchAnchor) {
+            val anchor = runCatching {
+                LanDiscovery.fetchAnchor(settings.cardBackUrl, token, expected)
+            }.getOrNull()
+            anchorFetchedAt = now
+            anchorFetchedKey = anchorKey
+            if (anchor != null) {
+                runCatching { settingsRepository?.updateCardBackTlsAnchor(anchor.pin, anchor.port) }
+                pin = TlsPinned.normalizePin(anchor.pin)
+                port = anchor.port
+            }
+        }
+        val usablePin = pin ?: return null
+        val found = runCatching {
+            LanDiscovery.discover(context, token, expected, usablePin, port)
+        }.getOrNull() ?: return null
+        if (found.instanceId != expected) return null
+        return LanEndpoint(origin = found.origin, pin = usablePin, port = port)
     }
 
     /** 记下真正连通的地址；下次冷启动/换 Wi-Fi 还能兜底。 */
@@ -616,7 +791,14 @@ class SyncRepository(
         return name
     }
 
-    private data class SyncConfig(val origins: List<String>, val token: String)
+    private data class SyncConfig(
+        val origins: List<String>,
+        val token: String,
+        val tlsPin: String = "",
+        val tlsPort: Int = 8443
+    )
+
+    private data class LanEndpoint(val origin: String, val pin: String, val port: Int)
 
     private data class PullApply(val applied: Int, val skipped: Int)
 
@@ -665,7 +847,8 @@ class SyncRepository(
         build: () -> Request,
         maxAttempts: Int = RetryPolicy.DEFAULT_MAX_ATTEMPTS,
         respectRateLimit: Boolean = true,
-        report: Boolean = true
+        report: Boolean = true,
+        client: OkHttpClient = this.client
     ): HttpOutcome = withContext(Dispatchers.IO) {
         var attempt = 0
         var lastCode: Int? = null
@@ -792,17 +975,57 @@ class SyncRepository(
     private suspend fun sendToOrigins(config: SyncConfig, build: (String) -> Request): HttpOutcome {
         var last: HttpOutcome? = null
         for (origin in config.origins) {
-            val outcome = call(build = { build(origin) })
+            // https LAN origin 必须走 pin；没有合法 pin 就跳过，绝不回退系统信任的明文/普通 TLS。
+            val originClient = httpClientFor(origin, config.tlsPin)
+            if (originClient == null) {
+                Log.w(TAG, "跳过无 pin 的 LAN HTTPS 候选：${CardBackAddress.originOf(origin) ?: origin}")
+                continue
+            }
+            val outcome = call(build = { build(origin) }, client = originClient)
             last = outcome
-            if (outcome.code != null) {
-                rememberSuccess(origin)
+            // 只有 2xx 才算「这个地址能用」。但 2xx 也可能来自伪装服务：
+            // 不在这里记 last-good，等 /health 解析出 instance_id 并通过身份校验后再记。
+            if (outcome.code != null && outcome.code in 200..299) {
                 return outcome
             }
             // 限流闸内短路：换地址也没用，直接返回（RATE_LIMITED 已经上报过）。
+            // 401/404 只说明这个候选不可用（口令/版本不对），继续试下一个地址（LAN 失败走域名）。
             if (outcome.kind == RetryPolicy.Kind.RATE_LIMITED) return outcome
         }
         return last ?: HttpOutcome(RetryPolicy.Kind.RETRYABLE, null, null, message = UNREACHABLE)
     }
+
+    /**
+     * 按 origin 选择客户端：域名/普通地址用系统信任；https + IP 的 LAN 必须用 pin。
+     * 返回 null 表示「这是 LAN HTTPS，但没有可用的 pin」，调用方必须跳过而不是降级。
+     */
+    private fun httpClientFor(origin: String, pin: String): OkHttpClient? {
+        if (!TlsPinned.isLanHttps(origin)) return client
+        return TlsPinned.clientFor(pin)
+    }
+
+    /**
+     * pin 在配对行里，地址主机是 IP 时，直接把配置地址换成
+     * `https://host:tlsPort`。这不是发现，是「用用户贴进来的 pin 验证同一台
+     * 电脑的 TLS 端点」，所以 instance 空不空都不影响：已配对用户重贴带 pin
+     * 的配对行时也必须能升级，否则会拿不到任何候选、同步停摆。
+     */
+    private fun firstPairPinnedOrigin(settings: UserSettings, pin: String?, port: Int): String? {
+        val normalized = TlsPinned.normalizePin(pin) ?: return null
+        val origin = CardBackAddress.originOf(settings.cardBackUrl) ?: return null
+        val uri = runCatching { URI(origin) }.getOrNull() ?: return null
+        val host = uri.host?.trim().orEmpty()
+        if (!TlsPinned.isIpLiteral(host)) return null
+        val tlsPort = port.takeIf { it in 1..65535 } ?: DEFAULT_TLS_PORT
+        return "https://$host:$tlsPort"
+    }
+
+    /**
+     * 有 pin 时 token 只允许走 pin 证明过的 HTTPS 或受信 HTTPS 域名；
+     * 任何 http:// 候选（不只是 IP 字面量）都不能再发口令。
+     */
+    private fun isPlainHttpIpOrigin(origin: String): Boolean =
+        origin.startsWith("http://", ignoreCase = true)
 
     /**
      * 1.4.7：GET /health 问出电脑端版本与能力（60 秒最多一次）。
@@ -810,34 +1033,91 @@ class SyncRepository(
      * 判旧端**不看版本号**（服务端还是 1.4.2，没升）：只看 `/health` 在不在、能力清单有没有缺。
      * 探测失败不阻塞主流程 —— 真正的同步请求会给出最终结论。
      */
-    private suspend fun probeHealth(config: SyncConfig) {
+    private suspend fun probeHealth(config: SyncConfig): String? {
         val now = System.currentTimeMillis()
-        if (now - lastHealthProbeAt < HEALTH_PROBE_MIN_INTERVAL_MS) return
+        val firstOrigin = config.origins.firstOrNull().orEmpty()
+        // 地址变了（LAN/域名/换电脑）必须立刻重探，否则 60 秒内会拿旧电脑的
+        // instance_id 判断新电脑，游标不归零，拉取会静默漏行。
+        val originChanged = firstOrigin != lastHealthProbeOrigin
+        if (!originChanged && now - lastHealthProbeAt < HEALTH_PROBE_MIN_INTERVAL_MS) {
+            return lastVerifiedOrigin
+        }
         lastHealthProbeAt = now
+        lastHealthProbeOrigin = firstOrigin
+        lastVerifiedOrigin = null
+        val knownInstance = settingsRepository?.settingsFlow?.first()?.cardBackInstanceId.orEmpty()
         for (origin in config.origins) {
+            // 有 pin 时，明文 HTTP+IP 绝不能拿 token；首配也必须先走 pin 绑定的 HTTPS。
+            if (config.tlsPin.isNotBlank() && origin.startsWith("http://") && isPlainHttpIpOrigin(origin)) {
+                Log.w(TAG, "拒绝有 pin 时的明文 HTTP 候选：${CardBackAddress.originOf(origin) ?: origin}")
+                continue
+            }
+            // 1.4.7.2 W4-B P1-1：私网 http 候选在发 token 前先用 /identity?nonce 验身份。
+            // 否则伪 LAN 服务能先拿到 X-Cardback-Token，等发现 instance 不对已经晚了。
+            if (knownInstance.isNotBlank() && origin.startsWith("http://") &&
+                !LanDiscovery.verifyOrigin(origin, knownInstance, config.token)
+            ) {
+                Log.w(TAG, "拒绝未通过 identity 校验的候选：${CardBackAddress.originOf(origin) ?: origin}")
+                continue
+            }
+            var verifiedInstance = knownInstance
+            // 首次配对（known 为空）也要证明：pin 已由配对行给出，用 pinned TLS
+            // 无 token 请求 /identity?nonce，proof/proof_peer 通过才允许发 token。
+            if (TlsPinned.isLanHttps(origin) && config.tlsPin.isNotBlank()) {
+                val probed = TlsPinned.verifyIdentity(origin, knownInstance, config.token, config.tlsPin)
+                if (probed.isNullOrBlank()) {
+                    Log.w(TAG, "拒绝未通过 pinned identity 校验的 LAN HTTPS：$origin")
+                    continue
+                }
+                verifiedInstance = probed
+            }
+            val originClient = httpClientFor(origin, config.tlsPin)
+            if (originClient == null) {
+                Log.w(TAG, "跳过无 pin 的 LAN HTTPS 候选：${CardBackAddress.originOf(origin) ?: origin}")
+                continue
+            }
             val outcome = call(
                 build = { requestGet(origin + ServerHealth.PATH, config.token) },
                 maxAttempts = 1,
                 // /health 不参与限流：状态页不应该因为我们自己贴着 429 冷却就看不到电脑端信息。
                 respectRateLimit = false,
                 // 探测失败不该把状态页从 OK 翻成 RETRYING；只有 404/401 这类「确定结论」才报。
-                report = false
+                report = false,
+                client = originClient
             )
             if (outcome.code == null) continue // 连不上：换下一个地址
-            rememberSuccess(origin)
             when (outcome.kind) {
                 RetryPolicy.Kind.OK -> {
                     val info = ServerHealth.parse(outcome.body)
                     if (info == null) {
                         Log.w(TAG, "/health 回了 200 但读不懂：${outcome.body?.take(120)}")
-                    } else {
-                        serverHealth = info
-                        SyncStatusStore.reportServer(info.version, info.startedAt, info.capabilities)
-                        Log.i(
-                            TAG,
-                            "/health: ${info.version} protocol=${info.protocol} caps=${info.capabilities}"
-                        )
+                        continue
                     }
+                    val instanceId = info.instanceId
+                    // 已知/刚由 identity 证明的电脑身份，2xx 也必须对得上；对不上可能
+                    // 是伪装服务/换了电脑。换电脑请清空地址或口令重新配对。
+                    if (verifiedInstance.isNotBlank() &&
+                        (instanceId.isNullOrBlank() || verifiedInstance != instanceId)
+                    ) {
+                        Log.w(TAG, "拒绝未通过身份校验的 /health：known=$verifiedInstance got=${instanceId ?: "(none)"}")
+                        continue
+                    }
+                    if (instanceId.isNullOrBlank()) {
+                        Log.w(TAG, "/health 没给 instance_id，拒绝把 token 继续发给该地址：$origin")
+                        continue
+                    }
+                    rememberSuccess(origin)
+                    serverHealth = info
+                    lastVerifiedOrigin = origin
+                    if (verifiedInstance.isBlank()) {
+                        settingsRepository?.updateCardBackInstanceId(instanceId)
+                    }
+                    SyncStatusStore.reportServer(info.version, info.startedAt, info.capabilities)
+                    Log.i(
+                        TAG,
+                        "/health: ${info.version} protocol=${info.protocol} caps=${info.capabilities}"
+                    )
+                    return origin
                 }
                 RetryPolicy.Kind.NOT_FOUND -> {
                     // 线上 8765 现在还是旧进程：这里就是那次「电脑端版本过旧」的现实来源。
@@ -849,8 +1129,9 @@ class SyncRepository(
                 }
                 else -> Unit // 5xx / 超时：静默，别用一个探测失败打扰用户
             }
-            return
+            // 这个候选不可用/身份不对：继续试域名兜底，不能因为一个伪 LAN 候选就停在 token 发送前。
         }
+        return null
     }
 
     /**
@@ -928,8 +1209,14 @@ class SyncRepository(
 
     private data class PushResponse(
         @SerializedName("server_rev") val serverRev: Long? = null,
+        /** 1.4.7.2 W5：服务端恢复代次；缺省 = 老服务端，按 1 处理。 */
+        @SerializedName("epoch") val epoch: Long? = null,
         @SerializedName("acked") val acked: List<String>? = null,
-        @SerializedName("rejected") val rejected: List<RejectedOp>? = null
+        @SerializedName("rejected") val rejected: List<RejectedOp>? = null,
+        @SerializedName("conflicts") val conflicts: List<SyncConflict>? = null,
+        @SerializedName("trimmed") val trimmed: Int? = null,
+        @SerializedName("trimmed_by_book") val trimmedByBook: Map<String, Int>? = null,
+        @SerializedName("replayed") val replayed: List<String>? = null
     )
 
     /** 服务端拒收的行：op_id + 原因（服务端字段名就是 op_id / reason）。 */
@@ -938,8 +1225,19 @@ class SyncRepository(
         @SerializedName("reason") val reason: String? = null
     )
 
+    /** 服务端判定的真实冲突（不是普通幂等重放）。 */
+    private data class SyncConflict(
+        @SerializedName("op_id") val opId: String? = null,
+        @SerializedName("word") val word: String? = null,
+        @SerializedName("kept_op_id") val keptOpId: String? = null,
+        @SerializedName("reason") val reason: String? = null,
+        @SerializedName("old_lrt") val oldLrt: Long? = null,
+        @SerializedName("new_lrt") val newLrt: Long? = null
+    )
+
     private data class PullPage(
         @SerializedName("server_rev") val serverRev: Long? = null,
+        @SerializedName("epoch") val epoch: Long? = null,
         @SerializedName("next_since_rev") val nextSinceRev: Long? = null,
         @SerializedName("rows") val rows: List<WireOp>? = null,
         @SerializedName("more") val more: Boolean? = null
@@ -949,6 +1247,7 @@ class SyncRepository(
         private const val TAG = "SyncRepository"
         private const val PUSH_PATH = "/sync/push"
         private const val PULL_PATH = "/sync/pull"
+        private const val DEFAULT_TLS_PORT = 8443
 
         /** 一次最多推 100 条（契约上限口径，也免得一批太大被 python 端读超时）。 */
         private const val PUSH_BATCH = 100
@@ -956,6 +1255,8 @@ class SyncRepository(
 
         /** /health 探测节流：60 秒最多问一次，再怎么点同步也不该多打请求。 */
         private const val HEALTH_PROBE_MIN_INTERVAL_MS = 60_000L
+        /** HTTPS 配置地址的 TLS 锚点刷新间隔；pin 轮换时不必等下次冷启动。 */
+        private const val ANCHOR_REFRESH_MS = 10 * 60_000L
 
         /** /health 能力清单里学习记录这条链路真正依赖的两项。 */
         private const val CAP_SYNC_PUSH = "sync_push"

@@ -15,10 +15,16 @@
 
 from __future__ import annotations
 
+import builtins
+import hashlib
+import hmac
 import json
 import os
+import socket
 import sys
 import tempfile
+from types import SimpleNamespace
+from unittest.mock import patch
 import threading
 import time
 import urllib.error
@@ -63,6 +69,8 @@ def use_temp_data_dir(tmp):
     server.CONFIG_PATH = os.path.join(server.PUBLISHED_DIR, "cardback.json")
     server.STATE_PATH = os.path.join(server.PUBLISHED_DIR, "state.json")
     server.TOKEN_PATH = os.path.join(tmp, ".cardback_token")
+    server.INSTANCE_PATH = os.path.join(tmp, ".cardback_instance")
+    server.INSTANCE_ID = ""
     server.SYNC_PATH = os.path.join(tmp, "sync.json")
     server.PORT = PORT
     server.LAN_URL = "http://%s:%d/cardback.json" % (HOST, PORT)
@@ -82,11 +90,16 @@ def main():
         httpd = server.CardbackServer((HOST, PORT), server.Handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
+        # 发现端口换一个，避免和正在跑的 8765（它占着 8767）抢。
+        server.DISCOVERY_PORT = 8798
+        discovery_sock = server._start_discovery()
         time.sleep(0.2)  # 让 serve_forever 进循环
 
         try:
             run_checks(token)
         finally:
+            if discovery_sock is not None:
+                discovery_sock.close()
             httpd.shutdown()
             httpd.server_close()
             thread.join(timeout=3)
@@ -133,6 +146,15 @@ def run_checks(token):
           "skip" not in caps and "outbox" not in caps, repr(caps))
     check("口令没回显", token not in body, "token 长度 %d" % len(token))
 
+    check("当前重写模块声明 rewrite_scoped", "rewrite_scoped" in caps, repr(caps))
+    with patch.object(server, "_rewrite_module", return_value=SimpleNamespace()):
+        old_caps = json.loads(http_get("/health")[2]).get("capabilities", [])
+    check("旧重写模块不声明 rewrite_scoped", "rewrite_scoped" not in old_caps, repr(old_caps))
+    with patch.object(server, "_rewrite_module", side_effect=ImportError("not installed")):
+        missing_status, _, missing_body = http_get("/health")
+    check("未安装重写模块时健康检查仍正常，不声明 rewrite_scoped",
+          missing_status == 200 and "rewrite_scoped" not in json.loads(missing_body).get("capabilities", []))
+
     # ---------- 2. Server 头仍用同一常量
     check(
         "Server 头以 %s 开头" % server.SERVER_VERSION,
@@ -163,6 +185,68 @@ def run_checks(token):
     # ---------- 5. 不占限流额度：连打 30 次都是 200
     codes = [http_get("/health")[0] for _ in range(30)]
     check("连打 30 次 /health 全 200（不走限流）", set(codes) == {200}, repr(sorted(set(codes))))
+
+    # ---------- 6. 服务身份与局域网发现（1.4.7.2 W4）
+    status, _, body = http_get("/identity")
+    identity = json.loads(body)
+    check("/identity 200", status == 200, "→ %d" % status)
+    check("identity 带稳定 instance_id",
+          identity.get("instance_id") == server.ensure_instance_id()
+          and identity.get("instance_id", "").startswith("cb-"),
+          repr(identity.get("instance_id")))
+    check("/health 也带同一个 instance_id",
+          json.loads(http_get("/health")[2]).get("instance_id") == identity.get("instance_id"),
+          "")
+
+    # 不带口令的 nonce 挑战：电脑用口令做 HMAC，手机本地验算；口令不出手机。
+    nonce = "0123456789abcdef0123456789abcdef"
+    status, _, body = http_get("/identity?nonce=" + nonce)
+    proof_body = json.loads(body) if status == 200 else {}
+    want_proof = hmac.new(token.encode("utf-8"), nonce.encode("utf-8"), hashlib.sha256).hexdigest()
+    check("无口令 nonce /identity 200", status == 200, "→ %d" % status)
+    check("nonce proof 与服务端口令一致", proof_body.get("proof") == want_proof,
+          repr(proof_body.get("proof")))
+    check("nonce proof 同时带 instance_id",
+          proof_body.get("instance_id") == identity.get("instance_id"), "")
+    want_peer = hmac.new(
+        token.encode("utf-8"), ("%s|127.0.0.1" % nonce).encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    check("nonce proof_peer 绑定直连 IP", proof_body.get("proof_peer") == want_peer,
+          repr(proof_body.get("proof_peer")))
+
+    # 公网隧道回源也带 CF-Connecting-IP：nonce 挑战不能变成公开的 HMAC 预言机。
+    status, _, _ = http_get(
+        "/identity?nonce=" + nonce,
+        headers={"CF-Connecting-IP": "203.0.113.9"},
+    )
+    check("带 CF-Connecting-IP 的 nonce 挑战被拒", status == 401, "→ %d" % status)
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp:
+        udp.settimeout(2)
+        udp.sendto(server.DISCOVERY_MAGIC, ("127.0.0.1", server.DISCOVERY_PORT))
+        raw, _addr = udp.recvfrom(4096)
+    found = json.loads(raw.decode("utf-8"))
+    check("UDP 发现应答带 service/port/instance_id",
+          found.get("service") == server.SERVICE_NAME
+          and found.get("port") == server.PORT
+          and found.get("instance_id") == identity.get("instance_id"),
+          repr(found))
+
+    # ---------- 7. 回归：stdout 被关掉时，日志不能把响应带死
+    # 现场 8765 的 Empty reply 就是 send_response() -> log_request() -> print()
+    # 在响应头写出前抛 OSError，而 _responded 已经置位，兜底 500 也写不出去。
+    real_print = builtins.print
+
+    def broken_print(*args, **kwargs):
+        raise OSError("stdout 已关闭")
+
+    builtins.print = broken_print
+    try:
+        status, _, body = http_get("/health")
+    finally:
+        builtins.print = real_print
+    check("stdout 关闭时 /health 仍 200（日志失败不影响回包）", status == 200,
+          "→ %d %s" % (status, body[:80]))
 
 
 if __name__ == "__main__":

@@ -19,5 +19,13 @@ data class SyncState(
     @ColumnInfo(name = "device_id")
     val deviceId: String = "",
     @ColumnInfo(name = "last_sync_at")
-    val lastSyncAt: Long = 0
+    val lastSyncAt: Long = 0,
+    /**
+     * 1.4.7.2 W5：服务端恢复代次。
+     *
+     * 正常同步保持不变；服务端从坏文件重建时递增。客户端发现它变了只归零
+     * [serverRev] 重新拉，绝不删本地 tb_sync_op 里还没发出去的进度。
+     */
+    @ColumnInfo(name = "epoch")
+    val epoch: Long = 1
 )

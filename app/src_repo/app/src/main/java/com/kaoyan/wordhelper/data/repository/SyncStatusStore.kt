@@ -55,7 +55,15 @@ data class SyncStatusSnapshot(
     val retryAtEpochMs: Long? = null,
     val serverVersion: String? = null,
     val serverStartedAt: String? = null,
-    val capabilities: Set<String> = emptySet()
+    val capabilities: Set<String> = emptySet(),
+    /** 1.4.7.2 W5：服务端恢复代次（老服务端没有这个字段时保持 1）。 */
+    val syncEpoch: Long = 1,
+    /** 最近一次 push 回执里的真实冲突数（普通幂等重放不算）。 */
+    val lastConflictCount: Int = 0,
+    /** 最近一次 push 回执里被容量清理的行数。 */
+    val lastTrimmedCount: Int = 0,
+    /** 最近一次 push 回执里被服务端确认的幂等重放数。 */
+    val lastReplayCount: Int = 0
 )
 
 /**
@@ -125,6 +133,23 @@ object SyncStatusStore {
                 serverVersion = version,
                 serverStartedAt = startedAt,
                 capabilities = capabilities
+            )
+        }
+    }
+
+    /**
+     * 1.4.7.2 W5：同步回执里的数据治理信息。
+     *
+     * [conflicts] 是服务端判定「这条 op 真的旧了/同 lrt 输了」的条数；
+     * 幂等重放单独记 [replayed]，不要把正常重试记成冲突。
+     */
+    fun reportSyncDiagnostics(epoch: Long, conflicts: Int, trimmed: Int, replayed: Int) {
+        _state.update {
+            it.copy(
+                syncEpoch = epoch.coerceAtLeast(1),
+                lastConflictCount = conflicts.coerceAtLeast(0),
+                lastTrimmedCount = trimmed.coerceAtLeast(0),
+                lastReplayCount = replayed.coerceAtLeast(0)
             )
         }
     }

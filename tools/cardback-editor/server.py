@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import html
 import ipaddress
@@ -36,6 +37,11 @@ import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
+
+try:  # 打包 exe / 单独拷走 server.py 时也不能因为缺这个文件就起不来
+    import tls_support
+except Exception:  # noqa: BLE001 - 只在启动 TLS 时降级，HTTP 不受影响
+    tls_support = None
 
 # ---------------------------------------------------------------- 常量
 
@@ -77,6 +83,24 @@ CONFIG_PATH = os.path.join(PUBLISHED_DIR, "cardback.json")
 STATE_PATH = os.path.join(PUBLISHED_DIR, "state.json")
 INDEX_PATH = os.path.join(BUNDLE_DIR, "index.html")
 
+# ---- 局域网 TLS（1.4.7.2 W4）：同一个 Handler/CardbackServer，多包一层自签 TLS。
+# 默认 8443；端口被占/证书生成失败只打印 warning，HTTP 监听照旧。
+try:
+    TLS_PORT = int(os.environ.get("CARDBACK_TLS_PORT", "8443"))
+except ValueError:
+    TLS_PORT = 8443
+if not 0 <= TLS_PORT <= 65535:  # 0 只给测试用（系统分配），生产默认 8443
+    TLS_PORT = 8443
+TLS_HOST = HOST
+TLS_DIR = os.path.join(BASE_DIR, ".cardback_tls")
+TLS_CERT_PATH = os.path.join(TLS_DIR, "cert.pem")
+TLS_KEY_PATH = os.path.join(TLS_DIR, "key.pem")
+TLS_HTTPD = None  # 成功启动后的 CardbackServer；None = 没起来
+TLS_THREAD = None
+TLS_BOUND_PORT = 0  # 实际监听端口（TLS_PORT=0 时由系统分配）
+TLS_SPKI_SHA256 = ""  # 证书 DER SPKI 的 SHA-256，小写 hex
+TLS_NOT_AFTER = ""  # 证书到期时间，ISO8601
+
 # ---- 学习进度同步（1.4.4）：手机把 tb_progress 的结果态当 op 发过来，别的设备按 rev 拉。
 # 存储和读写规则都在 sync_store.py 里；这里只做 HTTP 壳。
 SYNC_PATH = os.path.join(BASE_DIR, "sync.json")
@@ -99,6 +123,20 @@ TOKEN_PATH = os.path.join(BASE_DIR, ".cardback_token")
 TOKEN_HEADER = "X-Cardback-Token"
 TOKEN_LENGTH = 16  # secrets.token_urlsafe(16) → 22 个字符
 TOKEN = ""  # 启动时填；见 ensure_token()
+
+# ---- 服务身份（1.4.7.2 W4）：同一台电脑/同一个数据目录必须始终是同一个 id。
+# 这个 id 不是口令，公开它不能授权；App 只在拿到它之后再用口令打 /identity 验一次，
+# 确认「发现的这个 IP」确实是已配对的那台电脑，避免同名服务/换网串台。
+INSTANCE_PATH = os.path.join(BASE_DIR, ".cardback_instance")
+INSTANCE_ID = ""  # 启动时填；见 ensure_instance_id()
+
+# ---- 局域网发现（1.4.7.2 W4）：UDP 广播应答，不带口令，只报身份和端口。
+# 手机在同一 WiFi 里广播一句 DISCOVERY_MAGIC，电脑回一份 JSON；手机再拿口令验 /identity。
+try:
+    DISCOVERY_PORT = int(os.environ.get("CARDBACK_DISCOVERY_PORT", "8767"))
+except ValueError:
+    DISCOVERY_PORT = 8767
+DISCOVERY_MAGIC = b"CARDBACK_EDITOR_DISCOVER_V1"
 
 # ---- 限流：只卡「会调模型 / 会改数据」的请求，普通读接口不限（手机轮询不受影响）。
 # (窗口秒数, 窗口内次数)；本机也计，否则额度漏了照样能刷穿。
@@ -210,6 +248,43 @@ def ensure_token():
     return TOKEN
 
 
+_INSTANCE_LOCK = threading.Lock()
+
+
+def ensure_instance_id():
+    """读/生成服务身份；和口令不同，这个可以公开，只用于「这是同一台电脑」的比对。"""
+    global INSTANCE_ID
+    if INSTANCE_ID:
+        return INSTANCE_ID
+    # 并发首次请求可能同时进来；不锁会出现「文件里是 A、内存里是 B」的串台。
+    with _INSTANCE_LOCK:
+        if INSTANCE_ID:
+            return INSTANCE_ID
+        try:
+            with open(INSTANCE_PATH, "r", encoding="utf-8") as fh:
+                existing = fh.read().strip()
+        except FileNotFoundError:
+            existing = ""
+        except OSError:
+            existing = ""
+        if existing:
+            INSTANCE_ID = existing
+            return INSTANCE_ID
+
+        instance_id = "cb-" + secrets.token_hex(16)
+        try:
+            with open(INSTANCE_PATH, "w", encoding="utf-8") as fh:
+                fh.write(instance_id + chr(10))
+            try:
+                os.chmod(INSTANCE_PATH, 0o600)
+            except OSError:
+                pass
+        except OSError:
+            pass
+        INSTANCE_ID = instance_id
+        return INSTANCE_ID
+
+
 def _token_ok(supplied):
     expected = ensure_token()
     if not supplied or not supplied.strip() or not expected:
@@ -224,12 +299,19 @@ def pair_url():
     `#` 后面那截客户端从不发送——不进请求行、Referer、代理日志；手机解析后只用
     host:port 和 X-Cardback-Token 头，所以鉴权逻辑（_token_ok / loopback 免票）一行不用改。
     这里不带文件路径，手机端 normalizeUrl 会补 /cardback.json。
+
+    1.4.7.2 W4：TLS 可用时把完整 SPKI pin 和 tls_port 也放进 `#` 片段。pin 是
+    证书公钥摘要，不是口令；放在片段里同样不会进请求行/日志。手机把这一行
+    当一次性配对输入，先有 pin 才可能自动发现局域网 HTTPS。
     """
     base = LAN_URL
     suffix = "/cardback.json"
     if base.endswith(suffix):
         base = base[: -len(suffix)]
-    return "%s#%s" % (base, ensure_token())
+    fragment = ensure_token()
+    if TLS_BOUND_PORT and TLS_SPKI_SHA256:
+        fragment += "&pin=%s&tls_port=%d" % (TLS_SPKI_SHA256, TLS_BOUND_PORT)
+    return "%s#%s" % (base, fragment)
 
 
 def _is_loopback_peer(peer):
@@ -918,6 +1000,19 @@ class CardbackServer(ThreadingHTTPServer):
     allow_reuse_address = os.name != "nt"
 
 
+def _tls_public_fields():
+    """/health 和 /identity 共用：App 靠这三个字段找 TLS 并固定证书。
+
+    TLS 没起来时 tls_port=0、指纹/到期时间为 None —— 让 App 明确知道「这台
+    电脑这次没开 TLS」，而不是拿一个连不上的端口去重试。
+    """
+    return {
+        "tls_port": TLS_BOUND_PORT,
+        "tls_spki_sha256": TLS_SPKI_SHA256 or None,
+        "tls_not_after": TLS_NOT_AFTER or None,
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = SERVER_VERSION
     # 关掉 keep-alive：本地小工具不需要，省得连接复用时一个异常把后面全带崩
@@ -938,6 +1033,14 @@ class Handler(BaseHTTPRequestHandler):
         直接跳过 token。Cloudflare 一定会带 CF-Connecting-IP，用它把隧道流量区分开。
         """
         return _is_loopback_peer(self._peer()) and not self.headers.get("CF-Connecting-IP")
+
+    def _is_private_peer(self):
+        """只允许局域网/本机做 nonce 挑战；公网隧道不暴露这条免口令分支。"""
+        try:
+            addr = ipaddress.ip_address(self._peer())
+        except ValueError:
+            return False
+        return addr.is_private or addr.is_loopback or addr.is_link_local
 
     def _post_origin_ok(self):
         """挡跨站 POST —— 尤其是 text/plain 那种不用预检的「简单请求」。"""
@@ -965,7 +1068,17 @@ class Handler(BaseHTTPRequestHandler):
         随便打几下就能把本机 200 次/天的额度耗光。先 401 就能让未授权请求
         一个计数都不花；带上口令之后仍按每 IP 的额度限流。
         """
-        if not self._is_local() and not _token_ok(self.headers.get(TOKEN_HEADER, "")):
+        # /identity 允许带 nonce 的「挑战应答」：电脑用口令对 nonce 做 HMAC，
+        # 手机拿本地口令验算。这样手机不必把口令发给一个只凭 UDP 广播自称是
+        # 已配对电脑的陌生 IP；没有 nonce 时仍走原来的口令鉴权。
+        nonce_identity = (
+            method == "GET"
+            and path == "/identity"
+            and not self.headers.get("CF-Connecting-IP")
+            and self._is_private_peer()
+            and bool((parse_qs(urlsplit(self.path).query).get("nonce") or [""])[0].strip())
+        )
+        if not nonce_identity and not self._is_local() and not _token_ok(self.headers.get(TOKEN_HEADER, "")):
             self._reject(401, "token_required", "核对口令")
             return True
         if method == "POST" and not self._post_origin_ok():
@@ -1038,6 +1151,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._serve_index()
         if path == "/health":
             return self._api_health()
+        if path == "/identity":
+            return self._api_identity()
         if path == "/cardback.json":
             return self._serve_config()
         if path == "/api/state":
@@ -1080,20 +1195,61 @@ class Handler(BaseHTTPRequestHandler):
           其余必须带 X-Cardback-Token（App 走隧道时就是这一支）。
         - 不参与限流：_rate_budget_for() 只认写接口和 /sync/*，/health 不在里面。
         """
-        self._send_json(
-            {
-                "ok": True,
-                "service": SERVICE_NAME,
-                "version": SERVICE_VERSION,
-                "server": SERVER_VERSION,
-                "protocol": HEALTH_PROTOCOL,
-                "started_at": _iso(_STARTED_AT),
-                "uptime_s": max(0, int(time.monotonic() - _STARTED_MONO)),
-                "pid": os.getpid(),
-                "port": PORT,
-                "capabilities": list(CAPABILITIES),
-            }
-        )
+        payload = {
+            "ok": True,
+            "service": SERVICE_NAME,
+            "version": SERVICE_VERSION,
+            "server": SERVER_VERSION,
+            "protocol": HEALTH_PROTOCOL,
+            "started_at": _iso(_STARTED_AT),
+            "uptime_s": max(0, int(time.monotonic() - _STARTED_MONO)),
+            "pid": os.getpid(),
+            "port": PORT,
+            "instance_id": ensure_instance_id(),
+            "capabilities": _health_capabilities(),
+        }
+        payload.update(_tls_public_fields())
+        self._send_json(payload)
+
+    def _api_identity(self):
+        """GET /identity：给 App 做「同一台电脑」比对。
+
+        走和 /health 一样的鉴权：LAN/隧道来源必须带口令。公开 UDP 应答里虽然也有
+        instance_id，但那只是线索；App 必须再带 token 打到这里，拿到同一个 id 才算配对成功。
+        """
+        payload = {
+            "ok": True,
+            "service": SERVICE_NAME,
+            "version": SERVICE_VERSION,
+            "protocol": HEALTH_PROTOCOL,
+            "instance_id": ensure_instance_id(),
+            "port": PORT,
+            "capabilities": _health_capabilities(),
+        }
+        payload.update(_tls_public_fields())
+        # 带 nonce 时额外给一份 HMAC 证明：手机用本地口令验算，验过才把口令
+        # 发给这个地址。instance_id 是公开线索，单凭它不能证明「这就是那台电脑」。
+        nonce = (parse_qs(urlsplit(self.path).query).get("nonce") or [""])[0].strip()
+        if nonce:
+            if not re.fullmatch(r"[0-9a-fA-F]{16,64}", nonce):
+                return self._fail(400, "nonce 必须是 16-64 位十六进制")
+            proof_key = ensure_token().encode("utf-8")
+            payload["proof"] = hmac.new(
+                proof_key,
+                nonce.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            # 把「谁在直接连我」绑进证明：同一 WiFi 的攻击者若伪造 UDP 候选、
+            # 把 nonce 转发给真电脑，真电脑会按攻击者 IP 生成 proof_peer，
+            # 手机用自己 IP 验不过，就不会把口令发出去。
+            peer = self._peer()
+            if peer:
+                payload["proof_peer"] = hmac.new(
+                    proof_key,
+                    ("%s|%s" % (nonce, peer)).encode("utf-8"),
+                    hashlib.sha256,
+                ).hexdigest()
+        self._send_json(payload)
 
     def _api_state(self):
         payload = {"ok": True}
@@ -1278,7 +1434,6 @@ class Handler(BaseHTTPRequestHandler):
     def _send_bytes(self, data, content_type, status=200, cache="no-store", extra_headers=None):
         if getattr(self, "_responded", False):
             return
-        self._responded = True
         try:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
@@ -1288,29 +1443,44 @@ class Handler(BaseHTTPRequestHandler):
             for name, value in (extra_headers or {}).items():
                 self.send_header(name, value)
             self.end_headers()
+            self._responded = True
             if data:
                 self.wfile.write(data)
-        except (BrokenPipeError, ConnectionResetError):
-            pass
+        except OSError:
+            # 客户端断开、控制台被关掉导致 stdout 写失败等，都不能让请求线程带着
+            # “半截响应”继续跑；标成已响应，避免兜底逻辑再写一次。
+            self._responded = True
 
     def _internal_error(self, exc, method, path):
         try:
             import traceback
 
-            traceback.print_exc()
+            self._log(traceback.format_exc().rstrip())
             self._fail(500, "服务端内部错误：%s" % exc)
-        except (BrokenPipeError, ConnectionResetError):
-            pass
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            self._responded = True
 
     # ------------------------------------------------------------ 日志
 
+    def _log(self, message):
+        """stdout 可能已经被关掉（终端退出、父进程重定向到坏管道）。
+
+        这里绝不能把 OSError 放出去：send_response() -> log_request() ->
+        log_message() 是在响应头写出之前调用的，一旦抛异常，客户端只会看到
+        “Empty reply from server”。日志失败就静默丢弃，服务必须继续回包。
+        """
+        try:
+            print(message, flush=True)
+        except (OSError, ValueError):
+            pass
+
     def log_message(self, fmt, *args):
         stamp = datetime.now().strftime("%H:%M:%S")
-        print("[%s] %s" % (stamp, fmt % args), flush=True)
+        self._log("[%s] %s" % (stamp, fmt % args))
 
     def log_error(self, fmt, *args):
         stamp = datetime.now().strftime("%H:%M:%S")
-        print("[%s] %s" % (stamp, fmt % args), flush=True)
+        self._log("[%s] %s" % (stamp, fmt % args))
 
 
 def _content_type(path, ext):
@@ -1415,6 +1585,17 @@ def _rewrite_module():
     return _REWRITE["module"]
 
 
+def _health_capabilities():
+    caps = list(CAPABILITIES)
+    try:
+        # Import the mounted module, never start its workers for a health probe.
+        if "rewrite_scoped" in getattr(_rewrite_module(), "CAPABILITIES", ()):
+            caps.append("rewrite_scoped")
+    except Exception:  # noqa: BLE001 - the editor remains healthy without the rewrite sidecar
+        pass
+    return caps
+
+
 def _serve_rewrite(handler, method, body=b""):
     """接得住就回包返回 True，不是重写服务的路径返回 False。"""
     result = _rewrite_module().respond(method, handler.path, body)
@@ -1433,8 +1614,142 @@ def _start_rewrite():
         print("  重写服务没起来（编辑器照常可用）：%r" % exc, flush=True)
 
 
+def start_tls_server(host=None, port=None):
+    """起 TLS 监听（1.4.7.2 W4）：同一个 Handler/CardbackServer，多包一层。
+
+    做法是先把 CardbackServer 正常 bind 到 0.0.0.0:8443（或 CARDBACK_TLS_PORT），
+    再把它的监听 socket 用 SSLContext 包起来，丢进 daemon 线程 serve_forever。
+    Handler、鉴权、/identity?nonce 的 peer 逻辑全部复用，不另写一套。
+
+    任何失败（证书生成、端口占用、ssl 模块异常）都只打印 warning 并返回 None，
+    HTTP 监听已经起好了，绝不能被 TLS 拖下水。
+    """
+    global TLS_HTTPD, TLS_THREAD, TLS_BOUND_PORT, TLS_SPKI_SHA256, TLS_NOT_AFTER
+    global TLS_CERT_PATH, TLS_KEY_PATH
+
+    if TLS_HTTPD is not None:  # 重复调用（测试/热路径）直接复用
+        return TLS_HTTPD
+    if os.environ.get("CARDBACK_DISABLE_TLS") == "1":
+        print("  TLS：已按 CARDBACK_DISABLE_TLS=1 关闭（只跑 HTTP）", flush=True)
+        return None
+    if tls_support is None:
+        print("  [warning] TLS 没起来（找不到 tls_support.py），HTTP 照常可用", flush=True)
+        return None
+
+    host = TLS_HOST if host is None else host
+    port = TLS_PORT if port is None else port
+    httpd = None
+    try:
+        info = tls_support.ensure_certificate(TLS_DIR, detect_lan_ips())
+        context = tls_support.make_server_context(info.cert_path, info.key_path)
+        httpd = CardbackServer((host, port), Handler)
+        try:
+            httpd.socket = tls_support.wrap_listening_socket(context, httpd.socket)
+        except Exception:
+            httpd.server_close()
+            raise
+        bound_port = int(httpd.server_address[1])
+        thread = threading.Thread(
+            target=httpd.serve_forever, name="tls-server", daemon=True
+        )
+        thread.start()
+    except Exception as exc:  # noqa: BLE001 - TLS 是增强项，失败不能影响 HTTP
+        if httpd is not None:
+            try:
+                httpd.server_close()
+            except OSError:
+                pass
+        print("  [warning] TLS 没起来（HTTP 照常可用）：%s" % exc, flush=True)
+        return None
+
+    TLS_HTTPD = httpd
+    TLS_THREAD = thread
+    TLS_BOUND_PORT = bound_port
+    TLS_SPKI_SHA256 = info.spki_sha256
+    TLS_NOT_AFTER = info.not_after_iso
+    TLS_CERT_PATH = info.cert_path
+    TLS_KEY_PATH = info.key_path
+    print(
+        "  TLS：端口 %d（自签证书 %s，SPKI %s…）"
+        % (bound_port, info.cert_path, info.spki_sha256[:16]),
+        flush=True,
+    )
+    return httpd
+
+
+def stop_tls_server(httpd=None):
+    """关掉 TLS 监听（测试/退出用）；不动 HTTP。"""
+    global TLS_HTTPD, TLS_THREAD, TLS_BOUND_PORT, TLS_SPKI_SHA256, TLS_NOT_AFTER
+    target = TLS_HTTPD if httpd is None else httpd
+    if target is None:
+        return
+    try:
+        target.shutdown()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        target.server_close()
+    except OSError:
+        pass
+    if target is TLS_HTTPD:
+        thread = TLS_THREAD
+        TLS_HTTPD = None
+        TLS_THREAD = None
+        TLS_BOUND_PORT = 0
+        TLS_SPKI_SHA256 = ""
+        TLS_NOT_AFTER = ""
+        if thread is not None:
+            thread.join(timeout=3)
+
+
+def _start_discovery():
+    """在局域网里应答 UDP 广播（1.4.7.2 W4）。
+
+    只回「我是谁、在哪个端口」，不回口令、不回数据；手机拿到后再用口令打 /identity
+    验证。绑定失败（端口被另一个实例占用）就静默跳过，不影响主 HTTP 服务。
+    """
+    if os.environ.get("CARDBACK_DISABLE_DISCOVERY") == "1":
+        return None
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind(("", DISCOVERY_PORT))
+    except OSError:
+        sock.close()
+        return None
+
+    def loop():
+        while True:
+            try:
+                data, addr = sock.recvfrom(1024)
+                if data.strip() != DISCOVERY_MAGIC:
+                    continue
+                payload = {
+                    "ok": True,
+                    "service": SERVICE_NAME,
+                    "version": SERVICE_VERSION,
+                    "protocol": HEALTH_PROTOCOL,
+                    "instance_id": ensure_instance_id(),
+                    "port": PORT,
+                    # UDP 是公开广播，只报「TLS 在哪个端口」；指纹必须走带口令的
+                    # /identity 再核对，不能拿广播里的值当 pin。
+                    "tls_port": TLS_BOUND_PORT,
+                }
+                sock.sendto(
+                    json.dumps(payload, ensure_ascii=False).encode("utf-8"), addr
+                )
+            except OSError:
+                return
+            except Exception:  # noqa: BLE001 - 发现线程不能把服务拖死
+                continue
+
+    thread = threading.Thread(target=loop, name="lan-discovery", daemon=True)
+    thread.start()
+    return sock
+
+
 def main(argv=None):
-    global LAN_URL, PORT
+    global LAN_URL, PORT, TLS_PORT
 
     args = list(sys.argv[1:] if argv is None else argv)
 
@@ -1456,6 +1771,25 @@ def main(argv=None):
             _pause_if_frozen()
             return 2
         PORT = port
+
+    # --tls-port 8443 / --tls-port=8443：默认取 CARDBACK_TLS_PORT（或 8443）
+    for i, arg in enumerate(args):
+        value = None
+        if arg == "--tls-port" and i + 1 < len(args):
+            value = args[i + 1]
+        elif arg.startswith("--tls-port="):
+            value = arg.split("=", 1)[1]
+        if value is None:
+            continue
+        try:
+            tls_port = int(value)
+        except ValueError:
+            tls_port = -1
+        if not 0 <= tls_port <= 65535:
+            print("TLS 端口不对：%s（要给 0-65535 之间的数字）" % value, flush=True)
+            _pause_if_frozen()
+            return 2
+        TLS_PORT = tls_port
 
     open_browser = "--no-browser" not in args and "--no-open" not in args
 
@@ -1496,6 +1830,15 @@ def main(argv=None):
     print("  浏览器打开：%s" % local_url, flush=True)
     print("  自检：%s" % health_url, flush=True)
     _start_rewrite()
+    tls_httpd = start_tls_server()
+    if TLS_BOUND_PORT:
+        print(
+            "  TLS 自检：https://%s:%d/health（自签证书，浏览器会提示不受信任）"
+            % (primary or "127.0.0.1", TLS_BOUND_PORT),
+            flush=True,
+        )
+        print("  TLS pin（完整，配对行里已带）: %s" % TLS_SPKI_SHA256, flush=True)
+    discovery_sock = _start_discovery()
     if primary:
         print("  手机：粘贴这一行 → %s" % pair_url(), flush=True)
     else:
@@ -1528,6 +1871,7 @@ def main(argv=None):
     except KeyboardInterrupt:
         print("\n已停止。", flush=True)
     finally:
+        stop_tls_server(tls_httpd)
         try:
             httpd.server_close()
         except OSError:

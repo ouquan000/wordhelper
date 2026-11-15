@@ -42,23 +42,20 @@ interface WordMemoryDao {
     )
     fun observeApproachReview(wordId: Long): Flow<ApproachReview?>
 
-    /** 被用户重写过的词，种子重新导入时必须跳过，否则会把重写冲掉。 */
-    @Query("SELECT word_id FROM tb_word_memory WHERE source = 'user'")
-    suspend fun getUserSourcedWordIds(): List<Long>
-
     /**
-     * 1.4.6：种子重导只更新正文，不碰 method/source/rev/prev_approach。
+     * 导入只更新正文和来源，不碰 method/rev/prev_approach。
      * 已存在的行必须走 UPDATE，不能整行 REPLACE，否则标签和撤销都会被冲掉。
      */
     @Query(
         """UPDATE tb_word_memory
-           SET approach = :approach, collocations = :collocations, updated_at = :updatedAt
+           SET approach = :approach, collocations = :collocations, source = :source, updated_at = :updatedAt
            WHERE word_id = :wordId"""
     )
     suspend fun updateContent(
         wordId: Long,
         approach: String,
         collocations: String,
+        source: String,
         updatedAt: Long
     ): Int
 

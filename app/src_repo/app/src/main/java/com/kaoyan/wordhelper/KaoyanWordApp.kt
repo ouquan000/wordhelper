@@ -155,11 +155,11 @@ class KaoyanWordApp : Application() {
                     }
                 }
             }
-            // 1.4.3.2：一次性清空学习记录（进度/复习/新词引用/统计/日志/ML 样本/生词本），
-            // 只在升级后第一次启动执行一次，之后正常背词不会被清。
+            // 1.4.3.2 的一次性清空学习记录是历史任务：1.4.7.2 起退役自动清理。
+            // 启动时只补写「已清理」标记，不再自动调用 resetStudyRecords()/clearTodayNewWordsPlan()，
+            // 避免旧版直升或 DataStore 标记丢失时误清用户学习进度（保数据）。
+            // 手动清空入口与相关 API 保留不变；全新安装本就无记录，无需破坏性清空。
             if (!settingsRepository.cleanup132Done()) {
-                repository.resetStudyRecords()
-                settingsRepository.clearTodayNewWordsPlan()
                 settingsRepository.markCleanup132Done()
             }
             // 1.4.4/1.4.6：老卡片补「记忆方法」标签。资产里是由 by-word 语料抽出来的 word→method，

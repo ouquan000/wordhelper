@@ -33,7 +33,7 @@ data class WordMemory(
     val collocations: String = "",
     @ColumnInfo(name = "updated_at")
     val updatedAt: Long = 0,
-    /** 来源：seed = 内置种子；user = 用户重写过。种子重新导入时跳过 user，避免冲掉重写。 */
+    /** 来源：seed = 内置种子；import = 文件导入；user = 用户重写过。 */
     val source: String = SOURCE_SEED,
     /** 重写版本号；0 = 从没重写过。 */
     val rev: Int = 0,
@@ -68,6 +68,7 @@ data class WordMemory(
 ) {
     companion object {
         const val SOURCE_SEED = "seed"
+        const val SOURCE_IMPORT = "import"
         const val SOURCE_USER = "user"
     }
 }

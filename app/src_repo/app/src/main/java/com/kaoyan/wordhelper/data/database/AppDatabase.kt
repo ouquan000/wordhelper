@@ -77,7 +77,7 @@ import kotlinx.coroutines.launch
         RewriteFeedback::class,
         RewriteSkippedResult::class
     ],
-    version = 21,
+    version = 23,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -138,7 +138,9 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_17_18,
                     MIGRATION_18_19,
                     MIGRATION_19_20,
-                    MIGRATION_20_21
+                    MIGRATION_20_21,
+                    MIGRATION_21_22,
+                    MIGRATION_22_23
                 )
                 .build()
         }
@@ -907,6 +909,32 @@ abstract class AppDatabase : RoomDatabase() {
                 ensureColumnExists(db, "tb_word_memory", "unverified_reason", "TEXT")
                 ensureColumnExists(db, "tb_book_memory", "unverified", "INTEGER NOT NULL DEFAULT 0")
                 ensureColumnExists(db, "tb_book_memory", "unverified_reason", "TEXT")
+            }
+        }
+
+        /**
+         * 1.4.7.2（DB 22）：同步恢复代次。
+         *
+         * 服务端从坏文件重建时 epoch+1；客户端只归零 server_rev 重拉，
+         * 不动 tb_sync_op 里还没发出去的本地进度。老库默认 1。
+         */
+        @VisibleForTesting
+        val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureColumnExists(db, "tb_sync_state", "epoch", "INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
+        /** 1.4.7.2：同词不同书各有一条队列。保留旧行和在途请求的 clientId。 */
+        @VisibleForTesting
+        val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureColumnExists(db, "tb_rewrite_queue", "request_id", "TEXT NOT NULL DEFAULT ''")
+                db.execSQL("DROP INDEX IF EXISTS index_tb_rewrite_queue_word_id")
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_tb_rewrite_queue_word_id_book_id " +
+                        "ON tb_rewrite_queue (word_id, book_id)"
+                )
             }
         }
 

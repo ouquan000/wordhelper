@@ -40,6 +40,7 @@ neko-health.cmd
 # ── 卡背编辑器运行时数据（发布清单、历史版本、state）──
 tools/cardback-editor/published/
 tools/cardback-editor/__pycache__/
+tools/cardback-editor/.cardback_instance
 tools/rewrite-service/__pycache__/
 tools/rewrite-service/data/
 artifacts-test/
@@ -47,3 +48,32 @@ artifacts-test/
 # 真机/模拟器数据库备份（含用户学习数据，不入库）
 _backup/
 _recon/db145/
+
+# ── 敏感文件（密钥/证书/环境变量）─────────────────
+.env*
+*.key
+*.pem
+*.jks
+*.keystore
+**/keystore.properties
+.DS_Store
+Thumbs.db
+
+# ── 通用构建/依赖产物 ──────────────────────────
+node_modules/
+build/
+.gradle/
+__pycache__/
+*.pyc
+
+# ── 本地缓存与运行时数据 ───────────────────────
+tools/cardback-editor/sync.json
+tools/cardback-editor/sync.json.epoch
+tools/cardback-editor/sync.json.rev
+tools/cardback-editor/data/
+_probe/
+.dsh-scope.json
+
+# ── 大词包不参与代码评审（磁盘保留，不进版本管理）──
+app/src_repo/wordbook_full_from_e2c.json
+app/src_repo/wordbook_full.json
