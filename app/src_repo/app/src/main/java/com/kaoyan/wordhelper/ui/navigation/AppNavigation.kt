@@ -3,6 +3,7 @@ package com.kaoyan.wordhelper.ui.navigation
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -43,6 +44,7 @@ import com.kaoyan.wordhelper.ui.screen.SearchScreen
 import com.kaoyan.wordhelper.ui.screen.StatsScreen
 import com.kaoyan.wordhelper.ui.screen.SyncStatusScreen
 import com.kaoyan.wordhelper.ui.screen.TodayNewWordsSelectScreen
+import com.kaoyan.wordhelper.ui.screen.UiDemoScreen
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     data object Learning : Screen("learning", "学习", Icons.Filled.MenuBook)
@@ -53,6 +55,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     data object Stats : Screen("stats", "学习数据", Icons.Filled.MenuBook)
     data object BookBuildGuide : Screen("book_build_guide", "词书构建教程", Icons.Outlined.LibraryBooks)
     data object SyncStatus : Screen("sync_status", "同步状态", Icons.Filled.Sync)
+    data object UiDemo : Screen("ui_demo", "UI 动效沙盒", Icons.Filled.AutoAwesome)
     data object TodayNewWordSelect : Screen("today_new_word_select/{bookId}", "今日新词", Icons.Filled.MenuBook) {
         fun createRoute(bookId: Long): String = "today_new_word_select/$bookId"
     }
@@ -91,6 +94,7 @@ fun AppNavigation() {
                                     Screen.Stats -> "tab_stats"
                                     Screen.BookBuildGuide -> "tab_book_build_guide"
                                     Screen.SyncStatus -> "tab_sync_status"
+                                    Screen.UiDemo -> "tab_ui_demo"
                                     Screen.TodayNewWordSelect -> "tab_today_new_word_select"
                                 }
                             ),
@@ -153,8 +157,12 @@ fun AppNavigation() {
                 ProfileScreen(
                     onOpenStats = { navController.navigate(Screen.Stats.route) },
                     onOpenAiLab = { navController.navigate(Screen.AILab.route) },
-                    onOpenSyncStatus = { navController.navigate(Screen.SyncStatus.route) }
+                    onOpenSyncStatus = { navController.navigate(Screen.SyncStatus.route) },
+                    onOpenUiDemo = { navController.navigate(Screen.UiDemo.route) }
                 )
+            }
+            composable(Screen.UiDemo.route) {
+                UiDemoScreen(onBack = { navController.popBackStack() })
             }
             composable(Screen.SyncStatus.route) {
                 SyncStatusScreen(onBack = { navController.popBackStack() })

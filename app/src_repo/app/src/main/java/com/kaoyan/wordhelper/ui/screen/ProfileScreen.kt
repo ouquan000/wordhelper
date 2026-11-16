@@ -24,10 +24,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -76,7 +79,8 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = viewModel(),
     onOpenStats: () -> Unit = {},
     onOpenAiLab: () -> Unit = {},
-    onOpenSyncStatus: () -> Unit = {}
+    onOpenSyncStatus: () -> Unit = {},
+    onOpenUiDemo: () -> Unit = {}
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val showBuiltinFullBooks by viewModel.showBuiltinFullBooks.collectAsStateWithLifecycle()
@@ -191,6 +195,58 @@ fun ProfileScreen(
                 .testTag("profile_list"),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // UI 动效沙盒临时入口（feat/frontend-ui）：放在第一个 item，StatsCard 之前。
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("profile_ui_demo_entry"),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                    ),
+                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onOpenUiDemo)
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = "进入 UI 动效沙盒",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "全息卡片预览：材质 / 手感 / 双主题",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = "试试 ›",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
             item {
                 AnimatedVisibility(
                     visible = statsVisible,
