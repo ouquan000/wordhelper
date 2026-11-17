@@ -58,6 +58,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.kaoyan.wordhelper.ui.component.AppDrawerContent
 import com.kaoyan.wordhelper.ui.component.DrawerDestination
+import com.kaoyan.wordhelper.ui.component.rememberCardStyleDrawerState
 import com.kaoyan.wordhelper.ui.screen.AILabScreen
 import com.kaoyan.wordhelper.ui.screen.BookBuildGuideScreen
 import com.kaoyan.wordhelper.ui.screen.BookManageScreen
@@ -107,6 +108,9 @@ fun AppNavigation() {
     val drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)
     // 0f = 全关，1f = 全开。拖动时直接改这个值，所以抽屉是跟手的。
     val drawerProgress = remember { Animatable(0f) }
+    // 右侧「卡片材质」抽屉的状态提到这里：两个抽屉共用一套手势仲裁，
+    // 材质抽屉打开时左抽屉的拖动必须让位，避免两边同时跟手叠在一起。
+    val styleDrawerState = rememberCardStyleDrawerState()
 
     // 只在三个主页面响应全屏拖动抽屉，二级页不掺和
     val drawerSwipeRoutes = remember {
@@ -157,10 +161,15 @@ fun AppNavigation() {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            // 底层必须自己铺主题背景：抽屉打开时 Scaffold 会整体缩到 0.968，
+            // 不铺的话缩放四周露出的就是 Activity 的窗口白底（夜间尤其明显）。
+            .background(MaterialTheme.colorScheme.background)
             .draggable(
                 state = dragState,
                 orientation = Orientation.Horizontal,
-                enabled = canDragDrawer,
+                // 材质抽屉打开/拖动期间左抽屉不接手势，避免两个抽屉同时跟手叠在一起；
+                // 关掉材质抽屉后右滑才重新归左抽屉。
+                enabled = canDragDrawer && !styleDrawerState.isOpen,
                 onDragStopped = { velocity ->
                     val target = when {
                         velocity > 600f -> 1f
@@ -207,7 +216,9 @@ fun AppNavigation() {
                     composable(Screen.Learning.route) {
                         LearningScreen(
                             initialMode = learningMode,
-                            onOpenDrawer = openDrawer
+                            onOpenDrawer = openDrawer,
+                            styleDrawerState = styleDrawerState,
+                            navDrawerOpen = drawerOpen
                         )
                     }
                     composable(Screen.Search.route) { SearchScreen() }

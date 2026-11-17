@@ -239,7 +239,7 @@ fun ProfileScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = "全息卡片预览：材质 / 手感 / 双主题",
+                                text = "心流燃烧进度条：速度档位 / 24 套色盘 / 颗粒流光",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

@@ -1,5 +1,10 @@
 package com.kaoyan.wordhelper.ui.component
 
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -7,6 +12,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -37,9 +43,14 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.exp
@@ -237,11 +248,25 @@ fun HoloCardTheme(style: HoloCardStyle, content: @Composable () -> Unit) {
     }
 }
 
+/** 姿态最大有效倾角（弧度，约 28.6°），超出按满偏移处理。 */
+private const val SENSOR_MAX_TILT_RAD = 0.5f
+
+/** 光源映射跨度：以 0.5 为中心 ±0.35，恰好落在 0.15..0.85。 */
+private const val SENSOR_LIGHT_SPAN = 0.35f
+private const val SENSOR_LIGHT_MIN = 0.15f
+private const val SENSOR_LIGHT_MAX = 0.85f
+
+/** 一阶低通系数：SENSOR_DELAY_GAME（≈50Hz）下约 0.2s 收敛，足够压手抖又不拖沓。 */
+private const val SENSOR_LOW_PASS_ALPHA = 0.12f
+
+/** 李萨如呼吸叠加到传感器基准上的比例：只做微动，不抢姿态主体。 */
+private const val SENSOR_BREATH_RATIO = 0.18f
+
 /**
  * 虚拟光源。卡片本身永远水平（rotationX = 0），所有「流光」都来自这里。
  *
- * - cardMotionEnabled = true：李萨如自动呼吸（12.4s / 10.3s），指针按下后改为追光；
- * - cardMotionEnabled = false：锁定 (0.34, 0.22)，不启动帧循环。
+ * - cardMotionEnabled = true：李萨如呼吸（12.4s / 10.3s）叠加姿态传感器微倾，指针按下后改为追光；
+ * - cardMotionEnabled = false：锁定 (0.34, 0.22)，不注册传感器、也不启动帧循环。
  */
 @Stable
 class HoloLightState {
@@ -259,6 +284,13 @@ class HoloLightState {
     private var velocityY = 0f
     private var time = 0f
 
+    /** 相对中立姿态的倾角（弧度）：roll 管左右、pitch 管前后。 */
+    private var tiltRoll = 0f
+    private var tiltPitch = 0f
+
+    /** 是否已有有效姿态；没有时退回纯李萨如呼吸，保证老设备观感不变。 */
+    private var hasTilt = false
+
     fun pointerAt(nx: Float, ny: Float) {
         if (!motionEnabled) return
         pointerActive = true
@@ -274,6 +306,7 @@ class HoloLightState {
         motionEnabled = enabled
         if (!enabled) {
             pointerActive = false
+            clearTilt()
             lightX.floatValue = 0.34f
             lightY.floatValue = 0.22f
             hover.floatValue = 0f
@@ -283,21 +316,48 @@ class HoloLightState {
         }
     }
 
+    /**
+     * 传感器回调入口（已在回调侧做过低通滤波）。
+     * 这里只登记「基准倾角」，真正的位置变化仍然交给 [step] 里的弹簧，避免跳变。
+     */
+    internal fun onSensorTilt(roll: Float, pitch: Float) {
+        tiltRoll = roll.coerceIn(-SENSOR_MAX_TILT_RAD, SENSOR_MAX_TILT_RAD)
+        tiltPitch = pitch.coerceIn(-SENSOR_MAX_TILT_RAD, SENSOR_MAX_TILT_RAD)
+        hasTilt = true
+    }
+
+    /** 注销监听 / 关闭动效 / 重置基准时清空姿态，避免残留倾角把光源钉在一边。 */
+    internal fun clearTilt() {
+        tiltRoll = 0f
+        tiltPitch = 0f
+        hasTilt = false
+    }
+
     internal fun step(dt: Float) {
         time += dt
         val hoverTarget = if (pointerActive) 1f else 0f
         val ease = 1f - exp(-7f * dt)
         hover.floatValue += (hoverTarget - hover.floatValue) * ease
 
+        val lissX = 0.25f * sin(2f * PI.toFloat() * time / 12.4f)
+        val lissY = 0.235f * sin(2f * PI.toFloat() * time / 10.3f + 1.1f)
+
         val targetX: Float
         val targetY: Float
         if (pointerActive) {
+            // 指针按下优先级最高，直接追光。
             targetX = pointerX
             targetY = pointerY
+        } else if (hasTilt) {
+            // 传感器姿态作为基准 target，李萨如只按小比例叠加呼吸微动；整体夹在 0.15..0.85。
+            val baseX = 0.5f + (tiltRoll / SENSOR_MAX_TILT_RAD).coerceIn(-1f, 1f) * SENSOR_LIGHT_SPAN
+            val baseY = 0.5f + (tiltPitch / SENSOR_MAX_TILT_RAD).coerceIn(-1f, 1f) * SENSOR_LIGHT_SPAN
+            targetX = (baseX + lissX * SENSOR_BREATH_RATIO).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
+            targetY = (baseY + lissY * SENSOR_BREATH_RATIO).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
         } else {
-            // 李萨如：x 0.25..0.75，y 0.18..0.65，周期 10~14s。
-            targetX = 0.5f + 0.25f * sin(2f * PI.toFloat() * time / 12.4f)
-            targetY = 0.415f + 0.235f * sin(2f * PI.toFloat() * time / 10.3f + 1.1f)
+            // 没有可用姿态传感器：保持原有李萨如自动呼吸（x 0.25..0.75，y 0.18..0.65）。
+            targetX = 0.5f + lissX
+            targetY = 0.415f + lissY
         }
         // 无过冲阻尼弹簧：stiffness 160，damping 25.3（≈ 2√160）。
         velocityX += (160f * (targetX - lightX.floatValue) - 25.3f * velocityX) * dt
@@ -325,7 +385,190 @@ fun rememberHoloLightState(motionEnabled: Boolean): HoloLightState {
             }
         }
     }
+
+    // 姿态传感器：只有开启卡片动效时才注册；跟随宿主生命周期，离开前台即注销，回来重新学习基准。
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(motionEnabled, context, lifecycleOwner) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val sensor = sensorManager?.let(::pickTiltSensor)
+        if (!motionEnabled || sensorManager == null || sensor == null) {
+            // 关闭动效 / 没有传感器服务 / 设备缺这三种传感器：静默降级为纯呼吸，不注册任何监听。
+            state.clearTilt()
+            return@DisposableEffect onDispose { }
+        }
+        val listener = HoloTiltSensorListener(sensor.type, state)
+        // registered 标记：ON_RESUME 与「创建时已处于 RESUMED」两条路径只会注册一次，避免重复注册。
+        var registered = false
+        val register = {
+            if (!registered) {
+                listener.resetBaseline()
+                registered = sensorManager.registerListener(
+                    listener,
+                    sensor,
+                    SensorManager.SENSOR_DELAY_GAME,
+                )
+            }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                // 回到前台：重新注册并重置姿态基准，避免暂停期间累积的角度漂移。
+                Lifecycle.Event.ON_RESUME -> register()
+                // 退到后台：立刻注销，省电且不让后台数据继续推光源。
+                Lifecycle.Event.ON_PAUSE -> {
+                    if (registered) {
+                        sensorManager.unregisterListener(listener)
+                        registered = false
+                    }
+                    listener.resetBaseline()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            register()
+        }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            sensorManager.unregisterListener(listener)
+            state.clearTilt()
+        }
+    }
     return state
+}
+
+/** 按优先级挑选姿态传感器：游戏旋转矢量 → 重力计 → 加速度计，全部缺失时返回 null。 */
+private fun pickTiltSensor(manager: SensorManager): Sensor? =
+    manager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+        ?: manager.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        ?: manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+/**
+ * 姿态监听器：把手机相对「中立姿态」的 roll/pitch 交给 [HoloLightState.onSensorTilt]。
+ *
+ * - 恢复注册后的首个有效事件只记基准（baseline），之后才输出相对角度；
+ * - 角度差归一化到 [-π, π]，避免 ±180° 翻转；
+ * - 一阶低通 alpha = 0.12（SENSOR_DELAY_GAME ≈ 50Hz）；
+ * - values 长度不足、姿态矩阵不可用等异常输入一律静默丢弃，绝不抛异常。
+ */
+private class HoloTiltSensorListener(
+    private val sensorType: Int,
+    private val state: HoloLightState,
+) : SensorEventListener {
+
+    private val rotationMatrix = FloatArray(9)
+    private val baseRotation = FloatArray(9)
+    private val relativeRotation = FloatArray(9)
+    private val orientation = FloatArray(3)
+    private var hasBase = false
+    private var baseRoll = 0f
+    private var basePitch = 0f
+    private var hasFiltered = false
+    private var filteredRoll = 0f
+    private var filteredPitch = 0f
+
+    /** 重置姿态基准：重新注册 / 回到前台时调用，把当前姿态认成新的中立位。 */
+    fun resetBaseline() {
+        hasBase = false
+        hasFiltered = false
+        filteredRoll = 0f
+        filteredPitch = 0f
+        state.clearTilt()
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        val e = event ?: return
+        if (e.sensor?.type != sensorType) return
+        val values = e.values ?: return
+        if (!readTilt(values)) return
+        if (!hasFiltered) {
+            // 首帧直接对齐，避免从 0 缓慢爬升造成「回前台先偏一下」。
+            filteredRoll = rawRoll
+            filteredPitch = rawPitch
+            hasFiltered = true
+        } else {
+            filteredRoll += (rawRoll - filteredRoll) * SENSOR_LOW_PASS_ALPHA
+            filteredPitch += (rawPitch - filteredPitch) * SENSOR_LOW_PASS_ALPHA
+        }
+        state.onSensorTilt(filteredRoll, filteredPitch)
+    }
+
+    private var rawRoll = 0f
+    private var rawPitch = 0f
+
+    /** 读取当前相对倾角到 [rawRoll] / [rawPitch]；返回 false 表示本帧不可用（含基准帧 / 坏帧）。 */
+    @Suppress("DEPRECATION")
+    private fun readTilt(values: FloatArray): Boolean {
+        if (sensorType == Sensor.TYPE_GAME_ROTATION_VECTOR) {
+            // 旋转矢量至少 3 个分量（x, y, z）。
+            if (values.size < 3) return false
+            // 矩阵运算与角度解算包在 runCatching 里：异常帧只丢弃，绝不让传感器线程崩。
+            return runCatching {
+                SensorManager.getRotationMatrixFromVector(rotationMatrix, values)
+                if (!hasBase) {
+                    // 首个有效事件只记基准：此后 R_rel = R_baseᵀ · R_cur，天然是「相对中立姿态」。
+                    System.arraycopy(rotationMatrix, 0, baseRotation, 0, rotationMatrix.size)
+                    hasBase = true
+                    false
+                } else {
+                    multiplyTransposeFirst(baseRotation, rotationMatrix, relativeRotation)
+                    SensorManager.getOrientation(relativeRotation, orientation)
+                    // getOrientation 的轴定义：[0]=azimuth（绕 Z，屏幕内扭转）、
+                    // [1]=pitch（绕 X，前后俯仰）、[2]=roll（绕 Y，左右倾斜）。
+                    // 竖握时左右倾是绕 Y、前后俯仰是绕 X，所以这里取 [2] / [1]。
+                    rawRoll = orientation[2]
+                    rawPitch = orientation[1]
+                    rawRoll.isFinite() && rawPitch.isFinite()
+                }
+            }.getOrDefault(false)
+        }
+        // TYPE_GRAVITY / TYPE_ACCELEROMETER：用重力分量算与竖直方向的夹角，竖直握持时约为 0。
+        if (values.size < 3) return false
+        val gx = values[0]
+        val gy = values[1]
+        val gz = values[2]
+        // 手机接近水平、重力压在 Z 轴时 gy≈0，atan2 会把噪声放大成 ±90°，直接丢弃该帧。
+        if (abs(gy) < 1f) return false
+        val roll = atan2(gx, gy)
+        val pitch = atan2(-gz, gy)
+        // 非有限值（设备异常 / 全零向量）直接拒绝，后续滤波不会被污染。
+        if (!roll.isFinite() || !pitch.isFinite()) return false
+        if (!hasBase) {
+            baseRoll = roll
+            basePitch = pitch
+            hasBase = true
+            return false
+        }
+        rawRoll = normalizeAngle(roll - baseRoll)
+        rawPitch = normalizeAngle(pitch - basePitch)
+        return rawRoll.isFinite() && rawPitch.isFinite()
+    }
+}
+
+/** out = baseᵀ × current（3×3 行主序），即相对姿态 R_rel = R_base⁻¹ · R_cur。 */
+private fun multiplyTransposeFirst(base: FloatArray, current: FloatArray, out: FloatArray) {
+    for (row in 0 until 3) {
+        for (col in 0 until 3) {
+            var sum = 0f
+            for (k in 0 until 3) {
+                sum += base[k * 3 + row] * current[k * 3 + col]
+            }
+            out[row * 3 + col] = sum
+        }
+    }
+}
+
+/** 角度差归一化到 [-π, π]；NaN / Infinity 一律退回 0，保证滤波与映射永远拿到有限值。 */
+private fun normalizeAngle(angle: Float): Float {
+    if (!angle.isFinite()) return 0f
+    val full = (2f * PI).toFloat()
+    var a = angle
+    while (a > PI.toFloat()) a -= full
+    while (a < -PI.toFloat()) a += full
+    return if (a.isFinite()) a else 0f
 }
 
 /**

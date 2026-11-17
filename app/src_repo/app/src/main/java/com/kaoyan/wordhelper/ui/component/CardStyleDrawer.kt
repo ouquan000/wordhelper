@@ -139,6 +139,7 @@ fun CardStyleDrawer(
     onSelectStyle: (HoloCardStyle) -> Unit,
     onGlossHighChange: (Boolean) -> Unit,
     onMotionEnabledChange: (Boolean) -> Unit,
+    navDrawerOpen: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -186,6 +187,7 @@ fun CardStyleDrawer(
                 .width(30.dp)
                 .draggable(
                     orientation = Orientation.Horizontal,
+                    enabled = !navDrawerOpen,
                     state = rememberDraggableState { delta ->
                         state.dragBy(-delta / drawerWidthPx)
                     },

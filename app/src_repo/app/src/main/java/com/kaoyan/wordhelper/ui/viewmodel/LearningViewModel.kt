@@ -82,6 +82,26 @@ data class LearningCheckInUiState(
 )
 
 /**
+ * 心流进度条节奏。
+ *
+ * tier：0=迟缓（当前卡停留 >22s），1=正常，2=快一点，3=更快，4=最快/燃烧。
+ * elapsedMs：当前卡停留时长；lastAnswerDurationMs：最近一次作答耗时。
+ */
+data class LearningPace(
+    val tier: Int = 1,
+    val elapsedMs: Long = 0L,
+    val lastAnswerDurationMs: Long = 0L
+)
+
+private fun paceTierForAnswerDuration(durationMs: Long): Int = when {
+    durationMs <= 0L -> 1
+    durationMs <= 8_000L -> 4
+    durationMs <= 10_000L -> 3
+    durationMs <= 13_000L -> 2
+    else -> 1
+}
+
+/**
  * 卡背重写进度（1.4.3.1）。
  *
  * [fraction] 为 null = 服务端没说清阶段，用不确定进度条；
@@ -144,6 +164,9 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     private var pendingFailedWordId: Long? = null
     private var answeredInSession = 0
     private var currentWordPresentedAtMs = 0L
+    private val _learningPace = MutableStateFlow(LearningPace())
+    val learningPace: StateFlow<LearningPace> = _learningPace.asStateFlow()
+    private var paceBaseTier = 1
     private var recognitionAutoPronounceEventCounter = 0L
     internal var retryQueueRandomSource: RetryRandomSource = RetryRandomSource.Default
     private val _isSubmitting = MutableStateFlow(false)
@@ -420,6 +443,13 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
 
     init {
         refreshAiAvailability()
+        // 心流进度条节奏 ticker：500ms 更新当前卡停留时长；没有当前卡时保持 Tier1。
+        viewModelScope.launch {
+            while (isActive) {
+                refreshLearningPace()
+                delay(500)
+            }
+        }
         // 换词立刻把进度归零：上一条标记的 100% 不属于这张卡
         viewModelScope.launch {
             _currentWord.map { it?.id }.distinctUntilChanged().collect { wordId ->
@@ -827,6 +857,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         val book = activeBook.value ?: return
         val previousWordId = word.id
         val responseTimeMs = buildCurrentResponseTimeMs()
+        recordAnswerPace(responseTimeMs)
         val effectiveRating = resolveRecognitionRating(rating, responseTimeMs)
         val currentSessionPosition = answeredInSession
         val currentSessionTotal = _totalCount.value.coerceAtLeast(1)
@@ -886,6 +917,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         val book = activeBook.value ?: return
         val previousWordId = word.id
         val responseTimeMs = buildCurrentResponseTimeMs()
+        recordAnswerPace(responseTimeMs)
         val effectiveRating = resolveRecognitionRating(rating, responseTimeMs)
         val currentSessionPosition = answeredInSession
         val currentSessionTotal = _totalCount.value.coerceAtLeast(1)
@@ -941,6 +973,8 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     ) {
         val word = _currentWord.value ?: return
         val book = activeBook.value ?: return
+        val responseTimeMs = if (durationMillis > 0L) durationMillis else buildCurrentResponseTimeMs()
+        recordAnswerPace(responseTimeMs)
         val currentSessionPosition = answeredInSession
         val currentSessionTotal = _totalCount.value.coerceAtLeast(1)
         launchSubmit {
@@ -1374,6 +1408,15 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         }
         currentWordPresentedAtMs = if (nextWord != null) System.currentTimeMillis() else 0L
         if (oldWordId != nextWord?.id) {
+            // 切新卡/答完立即回到 Tier1 基础节奏；停留 >22s 再由 ticker 抬到 Tier0。
+            paceBaseTier = 1
+            _learningPace.value = LearningPace(
+                tier = 1,
+                elapsedMs = 0L,
+                lastAnswerDurationMs = _learningPace.value.lastAnswerDurationMs
+            )
+        }
+        if (oldWordId != nextWord?.id) {
             _cachedExampleContent.value = ""
             _cachedMemoryAidContent.value = ""
             _aiState.value = _aiState.value.copy(
@@ -1401,6 +1444,42 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         val startAt = currentWordPresentedAtMs
         if (startAt <= 0L) return 0L
         return (now - startAt).coerceAtLeast(0L)
+    }
+
+    /** ticker 用：当前卡停留 >22s 强制 Tier0，否则沿用最近一次作答耗时对应的基础档位。 */
+    private fun refreshLearningPace() {
+        val now = System.currentTimeMillis()
+        val elapsed = if (currentWordPresentedAtMs > 0L) {
+            (now - currentWordPresentedAtMs).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+        val tier = when {
+            _currentWord.value == null -> 1
+            elapsed > 22_000L -> 0
+            else -> paceBaseTier.coerceIn(1, 4)
+        }
+        val current = _learningPace.value
+        if (current.tier != tier || current.elapsedMs != elapsed) {
+            _learningPace.value = current.copy(tier = tier, elapsedMs = elapsed)
+        }
+    }
+
+    /** 作答后立即把节奏切到本次耗时对应的档位；切卡时 updateQueue 会再重置回 Tier1。 */
+    private fun recordAnswerPace(durationMs: Long) {
+        val safeDuration = durationMs.coerceAtLeast(0L)
+        val now = System.currentTimeMillis()
+        val elapsed = if (currentWordPresentedAtMs > 0L) {
+            (now - currentWordPresentedAtMs).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+        paceBaseTier = paceTierForAnswerDuration(safeDuration)
+        _learningPace.value = LearningPace(
+            tier = if (elapsed > 22_000L) 0 else paceBaseTier,
+            elapsedMs = elapsed,
+            lastAnswerDurationMs = safeDuration
+        )
     }
 
     private fun resolveRecognitionRating(

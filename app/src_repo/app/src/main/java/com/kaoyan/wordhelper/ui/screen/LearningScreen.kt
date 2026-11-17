@@ -55,7 +55,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -118,6 +117,7 @@ import com.kaoyan.wordhelper.ui.component.AnimatedStarToggle
 import com.kaoyan.wordhelper.ui.component.CardStyleDrawer
 import com.kaoyan.wordhelper.ui.component.CardStyleDrawerState
 import com.kaoyan.wordhelper.ui.component.CardStyleEntryButton
+import com.kaoyan.wordhelper.ui.component.FlowBurnProgressBar
 import com.kaoyan.wordhelper.ui.component.HoloCardStyle
 import com.kaoyan.wordhelper.ui.component.HoloCardSurface
 import com.kaoyan.wordhelper.ui.component.HoloCardTheme
@@ -147,7 +147,9 @@ import kotlin.math.abs
 fun LearningScreen(
     viewModel: LearningViewModel = viewModel(),
     initialMode: LearningMode = LearningMode.RECOGNITION,
-    onOpenDrawer: () -> Unit = {}
+    onOpenDrawer: () -> Unit = {},
+    styleDrawerState: CardStyleDrawerState = rememberCardStyleDrawerState(),
+    navDrawerOpen: Boolean = false
 ) {
     val activeBook by viewModel.activeBook.collectAsStateWithLifecycle()
     val cardBackConfig by viewModel.cardBackConfig.collectAsStateWithLifecycle()
@@ -160,6 +162,7 @@ fun LearningScreen(
     val liveApproachReview by viewModel.liveApproachReview.collectAsStateWithLifecycle()
     val currentIndex by viewModel.currentIndex.collectAsStateWithLifecycle()
     val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
+    val learningPace by viewModel.learningPace.collectAsStateWithLifecycle()
     val isInNewWords by viewModel.isInNewWords.collectAsStateWithLifecycle()
     val isNewWordsBook by viewModel.isNewWordsBook.collectAsStateWithLifecycle()
     val currentProgress by viewModel.currentProgress.collectAsStateWithLifecycle()
@@ -213,7 +216,6 @@ fun LearningScreen(
             .distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = CardUiPrefs())
     val cardStyle = HoloCardStyle.fromId(cardUiPrefs.styleId)
-    val styleDrawerState = rememberCardStyleDrawerState()
 
     var showRemoveDialog by remember { mutableStateOf(false) }
     var showReviewDialog by remember { mutableStateOf(false) }
@@ -433,10 +435,10 @@ fun LearningScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(pageBrush)
-            // 整页左滑（起手在右侧 40% 内）拉出卡片材质抽屉：不依赖右边缘系统手势排除区，
-            // 卡片中部、下半屏都能划；只在明确左移超过 touchSlop 后才消费事件，
-            // 点击、卡背竖向滚动、右滑开左侧导航抽屉都不受影响。
-            .styleDrawerLeftSwipe(styleDrawerState)
+            // 整页横向滑动控制卡片材质抽屉：关闭时从右侧 40% 起手左滑拉出，
+            // 展开后整块面板都能右滑收回；左侧导航抽屉开着时本手势让位，
+            // 保证同一时间只有一个抽屉跟手（以最后一次滑动方向为准）。
+            .styleDrawerLeftSwipe(styleDrawerState, navDrawerOpen)
     ) {
         Column(
             modifier = Modifier
@@ -658,16 +660,20 @@ fun LearningScreen(
                 }
             }
 
-            BottomLearningProgressBar(
+            FlowBurnProgressBar(
                 currentIndex = currentIndex,
                 totalCount = totalCount,
+                tier = learningPace.tier,
+                elapsedMs = learningPace.elapsedMs,
+                motionEnabled = cardUiPrefs.motionEnabled,
                 modifier = Modifier.fillMaxWidth()
             )
         }
 
-        // 右侧卡片材质抽屉：叠在整页之上，与左侧导航抽屉互相独立。
+        // 右侧卡片材质抽屉：叠在整页之上；左抽屉开着时它不接边缘手势。
         CardStyleDrawer(
             state = styleDrawerState,
+            navDrawerOpen = navDrawerOpen,
             selectedStyleId = cardUiPrefs.styleId,
             glossHigh = cardUiPrefs.glossHigh,
             motionEnabled = cardUiPrefs.motionEnabled,
@@ -801,52 +807,6 @@ private data class WordCardState(
     val isInNewWords: Boolean
 )
 
-
-@Composable
-private fun BottomLearningProgressBar(
-    currentIndex: Int,
-    totalCount: Int,
-    modifier: Modifier = Modifier
-) {
-    val rawProgress = if (totalCount > 0) currentIndex.toFloat() / totalCount else 0f
-    val progress by animateFloatAsState(
-        targetValue = rawProgress.coerceIn(0f, 1f),
-        animationSpec = tween(durationMillis = 260),
-        label = "learningBottomProgress"
-    )
-    val progressText = if (totalCount > 0) "$currentIndex/$totalCount" else "0/0"
-
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "学习进度",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = progressText,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
-        )
-    }
-}
 
 @Composable
 private fun ReviewPressureReliefBanner(
@@ -1535,19 +1495,30 @@ private fun TextStyle.scaledBy(size: CardBackSize?): TextStyle {
 }
 
 /**
- * 整页左滑拉出「卡片材质」抽屉。
+ * 整页横向滑动拉出/收回「卡片材质」抽屉。
  *
- * 起手点必须落在屏幕右侧 40% 以内；水平左移超过 touchSlop 才认领手势并开始消费事件，
- * 因此轻触翻卡、卡背竖向滚动、从左侧右滑开导航抽屉都不会被抢。
- * 认领后按手指位移实时改 progress（跟手），松手按位置/速度做弹簧吸附。
+ * 手势仲裁规则（与左侧导航抽屉共用）：
+ * - 左抽屉开着或正在关（progress > 0.01）时本手势直接让位，左滑归左抽屉关自己；
+ * - 材质抽屉关着时，只有屏幕右侧 40% 内起手、明确左移超过 touchSlop 才认领；
+ * - 材质抽屉开着时，整块面板都能右滑收回（右移超过 touchSlop 才认领）；
+ * - 认领后按手指位移实时改 progress（跟手），松手按位置/速度做弹簧吸附。
  */
-private fun Modifier.styleDrawerLeftSwipe(state: CardStyleDrawerState): Modifier = composed {
+private fun Modifier.styleDrawerLeftSwipe(
+    state: CardStyleDrawerState,
+    navDrawerOpen: Boolean
+): Modifier = composed {
     val currentState by rememberUpdatedState(state)
+    val currentNavOpen by rememberUpdatedState(navDrawerOpen)
     val scope = rememberCoroutineScope()
     pointerInput(Unit) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            if (down.position.x < size.width * 0.40f) return@awaitEachGesture
+            // 左侧导航抽屉开着/正在关时，横向拖动归导航抽屉，材质抽屉不抢。
+            if (currentNavOpen) return@awaitEachGesture
+            val startedOpen = currentState.isOpen
+            val inOpenZone = down.position.x >= size.width * 0.40f
+            // 关闭状态只在右 40% 起手能拉出；已展开时整块面板都能右滑收回。
+            if (!inOpenZone && !startedOpen) return@awaitEachGesture
             val drawerWidthPx = size.width * 0.74f
             var lastX = down.position.x
             var lastTime = down.uptimeMillis
@@ -1565,7 +1536,11 @@ private fun Modifier.styleDrawerLeftSwipe(state: CardStyleDrawerState): Modifier
                 }
                 if (!claimed) {
                     val totalDx = change.position.x - down.position.x
-                    if (totalDx < -viewConfiguration.touchSlop && !change.isConsumed) {
+                    val totalDy = change.position.y - down.position.y
+                    val horizontal = abs(totalDx) > abs(totalDy)
+                    val opening = totalDx < -viewConfiguration.touchSlop
+                    val closing = startedOpen && totalDx > viewConfiguration.touchSlop
+                    if (horizontal && (opening || closing) && !change.isConsumed) {
                         claimed = true
                     }
                 }

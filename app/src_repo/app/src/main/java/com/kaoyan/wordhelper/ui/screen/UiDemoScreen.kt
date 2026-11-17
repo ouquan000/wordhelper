@@ -1,361 +1,404 @@
 package com.kaoyan.wordhelper.ui.screen
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.kaoyan.wordhelper.ui.component.HoloCardKind
-import com.kaoyan.wordhelper.ui.component.HoloFeel
-import com.kaoyan.wordhelper.ui.component.HoloFinish
-import com.kaoyan.wordhelper.ui.component.HoloWordCard
+import androidx.compose.ui.unit.sp
+import com.kaoyan.wordhelper.ui.component.FlowBurnPalette
+import com.kaoyan.wordhelper.ui.component.FlowBurnPalettes
+import com.kaoyan.wordhelper.ui.component.FlowBurnProgressBar
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+private val DemoTierNames = listOf("迟缓", "正常", "快一点", "更快", "最快")
 
 /**
- * /ui-demo 页面（UI 动效沙盒）：HoloWordCard 的预览沙盒。
+ * /ui-demo 页面（UI 动效沙盒）：进度条流光调色实验室。
  *
- * 主题说明：工程主题（ui/theme/Theme.kt + Color.kt）中原本没有
- * 「暗黑工作室 Dark Studio」与「暖色纸质手账 Warm Paper Stationery」的 token，
- * 只有 KaoyanWordTheme 的 light/dark 两套 Material3 配色。
- * 因此本页用「局部主题」实现这两套预览皮肤：仅在本页内包裹一层
- * MaterialTheme(colorScheme = ...)，不修改全局主题、不改 MainActivity。
- * 页面背景只用 Compose 渐变/纯色（无流体着色器、无新增依赖）。
- *
- * 布局（12-layout-fix 紧凑化）：首屏必须完整看到整张卡（含正面单词）。
- * 顶部一行紧凑主题行（36dp）→ 卡片紧跟（0.76 宽、上下 8dp、不 clip 留阴影空间）
- * → 材质/手感/类型三行紧凑行（36dp/行，小标签 + 横滚胶囊）→ 底部提示。
- * 1080x2340 @ density2.75 预算 ≈614dp 内容高度，可用 ≈675dp，首屏全量可见。
+ * 旧版 3D 倾斜卡已移除；本页只保留新进度条的实时预览、速度档位、
+ * 24 套色盘锁定/自动流转，以及「模拟秒杀一词」的 Tier4 升温 + 4.2s 冷却演示。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UiDemoScreen(onBack: () -> Unit) {
-    // 状态 rememberSaveable：进程重建/旋转后保留当前选择。
-    var isDarkStudio by rememberSaveable { mutableStateOf(true) }
-    var finish by rememberSaveable { mutableStateOf(HoloFinish.ETCHED) }
-    var feel by rememberSaveable { mutableStateOf(HoloFeel.STANDARD) }
-    var cardKind by rememberSaveable { mutableStateOf(HoloCardKind.WORD) }
+    var selectedTier by rememberSaveable { mutableStateOf(1) }
+    var simulatedTier by remember { mutableStateOf<Int?>(null) }
+    var manualPalette by rememberSaveable { mutableStateOf(false) }
+    var manualIndex by rememberSaveable { mutableStateOf(0) }
+    var autoSlot by remember { mutableStateOf(0) }
+    var simulationJob by remember { mutableStateOf<Job?>(null) }
 
-    val palette = if (isDarkStudio) DarkStudioPalette else WarmPaperPalette
-
-    // 主题切换：全部颜色 ~300ms 过渡，避免生硬闪变。
-    val bgTop by animateColorAsState(palette.bgTop, tween(durationMillis = 300), label = "ui_demo_bg_top")
-    val bgBottom by animateColorAsState(palette.bgBottom, tween(durationMillis = 300), label = "ui_demo_bg_bottom")
-    val onBg by animateColorAsState(palette.onBg, tween(durationMillis = 300), label = "ui_demo_on_bg")
-    val onBgVariant by animateColorAsState(palette.onBgVariant, tween(durationMillis = 300), label = "ui_demo_on_bg_variant")
-    val accent by animateColorAsState(palette.accent, tween(durationMillis = 300), label = "ui_demo_accent")
-    val onAccent by animateColorAsState(palette.onAccent, tween(durationMillis = 300), label = "ui_demo_on_accent")
-    val chipContainer by animateColorAsState(palette.chipContainer, tween(durationMillis = 300), label = "ui_demo_chip_container")
-    val selectedContainer by animateColorAsState(palette.selectedContainer, tween(durationMillis = 300), label = "ui_demo_selected_container")
-    val onSelectedContainer by animateColorAsState(palette.onSelectedContainer, tween(durationMillis = 300), label = "ui_demo_on_selected_container")
-    val outlineColor by animateColorAsState(palette.outline, tween(durationMillis = 300), label = "ui_demo_outline")
-
-    val localScheme = if (isDarkStudio) {
-        darkColorScheme(
-            primary = accent,
-            onPrimary = onAccent,
-            background = bgTop,
-            surface = chipContainer,
-            onSurface = onBg,
-            surfaceVariant = chipContainer,
-            onSurfaceVariant = onBgVariant,
-            secondaryContainer = selectedContainer,
-            onSecondaryContainer = onSelectedContainer,
-            outline = outlineColor,
-            outlineVariant = outlineColor
-        )
-    } else {
-        lightColorScheme(
-            primary = accent,
-            onPrimary = onAccent,
-            background = bgTop,
-            surface = chipContainer,
-            onSurface = onBg,
-            surfaceVariant = chipContainer,
-            onSurfaceVariant = onBgVariant,
-            secondaryContainer = selectedContainer,
-            onSecondaryContainer = onSelectedContainer,
-            outline = outlineColor,
-            outlineVariant = outlineColor
-        )
+    val scope = rememberCoroutineScope()
+    DisposableEffect(Unit) {
+        onDispose { simulationJob?.cancel() }
     }
 
-    MaterialTheme(colorScheme = localScheme) {
-        Box(
+    val activeTier = simulatedTier ?: selectedTier
+    val activePool = FlowBurnPalettes.poolForTier(activeTier)
+    val autoPalette = activePool[autoSlot % activePool.size]
+    val displayPalette = if (manualPalette) FlowBurnPalettes.all24[manualIndex] else autoPalette
+    val displayNumber = if (manualPalette) {
+        manualIndex + 1
+    } else if (activeTier == 0) {
+        0
+    } else {
+        (activeTier - 1) * 6 + (autoSlot % 6) + 1
+    }
+    val displayTierLabel = if (manualPalette) {
+        "Tier${manualIndex / 6 + 1} 池 · 手动锁定"
+    } else if (activeTier == 0) {
+        "Tier0 专属 · 不计入 24 套"
+    } else {
+        "Tier$activeTier 池 · 14s 自动流转"
+    }
+    val paletteSlotCallback: ((Int) -> Unit)? = if (manualPalette) {
+        null
+    } else {
+        { slot -> autoSlot = slot }
+    }
+
+    fun startSimulation() {
+        simulationJob?.cancel()
+        simulationJob = scope.launch {
+            simulatedTier = 4
+            delay(420)
+            simulatedTier = 1
+            delay(4200)
+            simulatedTier = null
+            simulationJob = null
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("进度条流光调色实验室") },
+                navigationIcon = {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.testTag("ui_demo_back")
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(colors = listOf(bgTop, bgBottom)))
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Scaffold(
-                containerColor = Color.Transparent,
-                topBar = {
-                    TopAppBar(
-                        title = { Text(text = "UI 动效沙盒") },
-                        navigationIcon = {
-                            IconButton(
-                                onClick = onBack,
-                                modifier = Modifier.testTag("ui_demo_back")
-                            ) {
-                                Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "返回")
+            PreviewCard(
+                tier = activeTier,
+                palette = displayPalette,
+                paletteOverride = if (manualPalette) displayPalette else null,
+                onPaletteSlotChanged = paletteSlotCallback,
+                displayNumber = displayNumber,
+                displayTierLabel = displayTierLabel
+            )
+
+            SectionCard(
+                title = "01 · 速度档位",
+                subtitle = "点击立即切换。迟缓档 >22s 自动进入，答完/切卡回正常；≤6s 为最快档。"
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    DemoTierNames.forEachIndexed { index, name ->
+                        FilterChip(
+                            selected = activeTier == index,
+                            onClick = {
+                                simulationJob?.cancel()
+                                simulationJob = null
+                                simulatedTier = null
+                                selectedTier = index
+                            },
+                            label = {
+                                Text(
+                                    text = name,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    fontSize = 11.sp
+                                )
                             }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = Color.Transparent,
-                            titleContentColor = MaterialTheme.colorScheme.onSurface,
-                            navigationIconContentColor = MaterialTheme.colorScheme.onSurface
                         )
+                    }
+                }
+                Text(
+                    text = "当前：Tier$activeTier · ${DemoTierNames[activeTier]}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            SectionCard(
+                title = "02 · 燃速演示",
+                subtitle = "升温 420ms FastOutSlowIn；降温 4200ms LinearOutSlowIn，不跳变。"
+            ) {
+                Button(
+                    onClick = { startSimulation() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("⚡ 模拟秒杀一词", fontWeight = FontWeight.SemiBold)
+                }
+                Text(
+                    text = if (simulatedTier != null) {
+                        "高能升温中，随后 4.2s 缓慢冷却回 Tier1…"
+                    } else {
+                        "点击瞬间触发 Tier4，随后展示 4.2s 冷却回 Tier1。"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            SectionCard(
+                title = "03 · 24 套色盘",
+                subtitle = "自动模式每 14 秒在 6 套池内连续 lerp 流转；手动模式锁定单套。"
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !manualPalette,
+                        onClick = { manualPalette = false },
+                        label = { Text("14s 自动流转") }
+                    )
+                    FilterChip(
+                        selected = manualPalette,
+                        onClick = { manualPalette = true },
+                        label = { Text("手动锁定单套") }
                     )
                 }
-            ) { innerPadding ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                        .verticalScroll(rememberScrollState())
-                        .padding(start = 16.dp, end = 16.dp, top = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // ── 主题行：标签与胶囊同一行（36dp），整行可横滚 ──
+
+                if (manualPalette) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "主题",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        FilterChip(
-                            selected = isDarkStudio,
-                            onClick = {
-                                if (!isDarkStudio) {
-                                    isDarkStudio = true
-                                    // 切换主题时自动带回该主题默认材质；手动选择不受影响。
-                                    finish = HoloFinish.ETCHED
-                                }
-                            },
-                            label = { Text(text = "暗黑工作室 Dark Studio") },
-                            modifier = Modifier
-                                .testTag("ui_demo_theme_dark")
-                                .height(36.dp)
-                        )
-                        FilterChip(
-                            selected = !isDarkStudio,
-                            onClick = {
-                                if (isDarkStudio) {
-                                    isDarkStudio = false
-                                    finish = HoloFinish.PEARL
-                                }
-                            },
-                            label = { Text(text = "暖色纸质手账 Warm Paper Stationery") },
-                            modifier = Modifier
-                                .testTag("ui_demo_theme_warm")
-                                .height(36.dp)
-                        )
-                    }
-
-                    // ── 卡片：紧跟主题行。0.76 宽、440:616 比例、居中；
-                    //    容器不 clip，上下各 8dp 给核心组件卡底阴影（~24dp）留绘制空间。──
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        HoloWordCard(
-                            finish = finish,
-                            feel = feel,
-                            cardKind = cardKind,
-                            modifier = Modifier
-                                .fillMaxWidth(0.76f)
-                                .aspectRatio(440f / 616f)
-                                .testTag("ui_demo_card")
-                        )
-                    }
-
-                    // ── 材质：紧凑行（小标签 + 横滚胶囊，36dp）──
-                    UiDemoCompactRow(label = "材质") {
-                        HoloFinish.entries.forEach { item ->
-                            FilterChip(
-                                selected = item == finish,
-                                onClick = { finish = item },
-                                label = { Text(text = uiDemoFinishLabel(item)) },
-                                modifier = Modifier
-                                    .testTag("ui_demo_finish_${item.name.lowercase()}")
-                                    .height(36.dp)
-                            )
+                        OutlinedButton(
+                            onClick = { manualIndex = (manualIndex + 23) % 24 }
+                        ) {
+                            Text("上一套")
+                        }
+                        OutlinedButton(
+                            onClick = { manualIndex = (manualIndex + 1) % 24 }
+                        ) {
+                            Text("下一套")
                         }
                     }
-
-                    // ── 手感 ──
-                    UiDemoCompactRow(label = "手感") {
-                        FilterChip(
-                            selected = feel == HoloFeel.QUIET,
-                            onClick = { feel = HoloFeel.QUIET },
-                            label = { Text(text = "Quiet") },
-                            modifier = Modifier
-                                .testTag("ui_demo_feel_quiet")
-                                .height(36.dp)
-                        )
-                        FilterChip(
-                            selected = feel == HoloFeel.STANDARD,
-                            onClick = { feel = HoloFeel.STANDARD },
-                            label = { Text(text = "Standard") },
-                            modifier = Modifier
-                                .testTag("ui_demo_feel_standard")
-                                .height(36.dp)
-                        )
-                    }
-
-                    // ── 卡片类型 ──
-                    UiDemoCompactRow(label = "类型") {
-                        FilterChip(
-                            selected = cardKind == HoloCardKind.WORD,
-                            onClick = { cardKind = HoloCardKind.WORD },
-                            label = { Text(text = "单词学习主卡") },
-                            modifier = Modifier
-                                .testTag("ui_demo_kind_word")
-                                .height(36.dp)
-                        )
-                        FilterChip(
-                            selected = cardKind == HoloCardKind.CHECK_IN,
-                            onClick = { cardKind = HoloCardKind.CHECK_IN },
-                            label = { Text(text = "打卡纪念卡") },
-                            modifier = Modifier
-                                .testTag("ui_demo_kind_checkin")
-                                .height(36.dp)
-                        )
-                    }
-
-                    // 底部操作提示（bottom ≥20dp，不被底导航视觉贴边）。
-                    Text(
-                        text = "拖动倾斜 · 点击翻面 · 静置会自己呼吸",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 20.dp)
-                    )
                 }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "当前 #${displayNumber.toString().padStart(2, '0')}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = displayPalette.name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = displayTierLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    PaletteSwatches(displayPalette)
+                }
+            }
+
+            Text(
+                text = "Tier0 迟缓 >22s · Tier1 13~22s · Tier2 10~13s · Tier3 8~10s · Tier4 ≤6s；6~8s 按 Tier4 处理。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PreviewCard(
+    tier: Int,
+    palette: FlowBurnPalette,
+    paletteOverride: FlowBurnPalette?,
+    onPaletteSlotChanged: ((Int) -> Unit)?,
+    displayNumber: Int,
+    displayTierLabel: String
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "实时预览",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Tier$tier",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Text(
+                text = "实际尺寸 · 11dp · 07/20",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            FlowBurnProgressBar(
+                currentIndex = 7,
+                totalCount = 20,
+                tier = tier,
+                elapsedMs = 0L,
+                motionEnabled = true,
+                paletteOverride = paletteOverride,
+                onPaletteSlotChanged = onPaletteSlotChanged
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+
+            Text(
+                text = "放大检阅 · 40dp · 颗粒/暗纹/羽化收口",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            FlowBurnProgressBar(
+                currentIndex = 7,
+                totalCount = 20,
+                tier = tier,
+                elapsedMs = 0L,
+                motionEnabled = true,
+                barHeight = 40.dp,
+                showHeader = false,
+                paletteOverride = paletteOverride
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "#${displayNumber.toString().padStart(2, '0')} ${palette.name}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = displayTierLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
 }
 
-/** 紧凑行：固定宽度小标签 + weight(1f) 横滚胶囊区（行高由 36dp 胶囊决定）。 */
 @Composable
-private fun UiDemoCompactRow(
-    label: String,
-    content: @Composable RowScope.() -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(36.dp)
-        )
-        Row(
-            modifier = Modifier
-                .weight(1f)
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content
-        )
+private fun PaletteSwatches(palette: FlowBurnPalette) {
+    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        palette.colors.forEach { color: Color ->
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(color)
+            )
+        }
     }
 }
 
-private fun uiDemoFinishLabel(finish: HoloFinish): String = when (finish) {
-    HoloFinish.PRISM -> "Prism"
-    HoloFinish.RAINBOW -> "Rainbow"
-    HoloFinish.PEARL -> "Pearl"
-    HoloFinish.SPARKLE -> "Sparkle"
-    HoloFinish.CHROME -> "Chrome"
-    HoloFinish.ETCHED -> "Etched"
+@Composable
+private fun SectionCard(
+    title: String,
+    subtitle: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.26f)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            content()
+        }
+    }
 }
-
-/** 本页局部主题调色板（仅 /ui-demo 使用，不进 ui/theme）。 */
-private data class UiDemoPalette(
-    val bgTop: Color,
-    val bgBottom: Color,
-    val onBg: Color,
-    val onBgVariant: Color,
-    val accent: Color,
-    val onAccent: Color,
-    val chipContainer: Color,
-    val selectedContainer: Color,
-    val onSelectedContainer: Color,
-    val outline: Color
-)
-
-/** 暗黑工作室 Dark Studio：深炭黑/冷灰渐变，浅色文字；默认材质 Etched。 */
-private val DarkStudioPalette = UiDemoPalette(
-    bgTop = Color(0xFF0E1117),
-    bgBottom = Color(0xFF151A22),
-    onBg = Color(0xFFE7ECF5),
-    onBgVariant = Color(0xFF98A3B4),
-    accent = Color(0xFF8FB4FF),
-    onAccent = Color(0xFF101F3C),
-    chipContainer = Color(0xFF1A202B),
-    selectedContainer = Color(0xFF2C3A57),
-    onSelectedContainer = Color(0xFFC9D8FF),
-    outline = Color(0xFF39424F)
-)
-
-/** 暖色纸质手账 Warm Paper Stationery：暖纸色渐变，深棕文字；默认材质 Pearl。 */
-private val WarmPaperPalette = UiDemoPalette(
-    bgTop = Color(0xFFF6F0E4),
-    bgBottom = Color(0xFFEFE4D2),
-    onBg = Color(0xFF4A3925),
-    onBgVariant = Color(0xFF867356),
-    accent = Color(0xFF8A6238),
-    onAccent = Color(0xFFFFF6E8),
-    chipContainer = Color(0xFFFFFAF0),
-    selectedContainer = Color(0xFFE8D8B8),
-    onSelectedContainer = Color(0xFF5C4626),
-    outline = Color(0xFFD8C5A3)
-)
