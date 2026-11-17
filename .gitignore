@@ -77,3 +77,9 @@ _probe/
 # ── 大词包不参与代码评审（磁盘保留，不进版本管理）──
 app/src_repo/wordbook_full_from_e2c.json
 app/src_repo/wordbook_full.json
+
+# ── Android 构建/调试缓存（补漏）──────────────
+app/src_repo/app/release/
+*.hprof
+hs_err_pid*.log
+
