@@ -67,3 +67,18 @@
 - **实现、测试、评分仍分不同人**；模拟器验证由**独立代理**执行，不得由实现者自测充作验收。
 - **交付须自证**：APK 路径 + 字节数 + sha256 + versionCode/versionName + 构建时间 + 构建命令/日志摘要 + 模拟器验证记录（AVD 名称/API 级别、安装结果、通过项）；未验项如实写"未验"。
 - **旧「夜间只读范围」（2026-11-12 凌晨三线）标记为历史**：其报告与结论保留、不改写、不覆盖；本次授权只增开"构建测试包 + 隔离模拟器验证"，不追溯修改旧证据。
+
+## 5. 2026-11-17 交付铁律：编译通过即装模拟器（用户当场授权）
+
+用户原话：「**从现在开始，每次你修改完代码并确认编译无误后，必须自动执行安装命令**，把最新 Debug 包直接装进当前连接的模拟器中」。
+
+- **适用范围：实现子代理**。主脑角色约束（§0）不变，主脑仍只协调、不亲自跑构建/安装。
+- 固定命令（必须离线，禁止联网）：
+  ```powershell
+  $env:GRADLE_USER_HOME='D:\deepseek harness\work_anki_enligish\_toolchain\gradle-home'
+  cd 'D:\deepseek harness\work_anki_enligish\app\src_repo'
+  .\gradlew.bat :app:installDebug --offline
+  ```
+- 目标设备：`emulator-5554`（AVD `mf`）；adb 全路径 `D:\Android\Sdk\platform-tools\adb.exe`（不在 PATH，用全路径调用）。
+- 仍禁止：真机 `10AF941PZJ00AKH` / `10.103.216.69:5555`（按 §2，碰真机前必须先问用户）；`git commit/reset/stash`；覆盖用户 dirty 工作树。
+- **沙盒兜底**：若 adb / `installDebug` 被系统层硬拦，改跑 `.\gradlew.bat :app:assembleDebug --offline`，并在 Windows 桌面生成 `一键装包到模拟器.bat`（双击即执行上面同一条 installDebug），每次交付提醒用户双击。
