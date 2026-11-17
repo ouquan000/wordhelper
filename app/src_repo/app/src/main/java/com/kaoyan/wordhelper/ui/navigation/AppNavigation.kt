@@ -1,7 +1,10 @@
 package com.kaoyan.wordhelper.ui.navigation
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MenuBook
@@ -9,23 +12,23 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.outlined.LibraryBooks
-import androidx.compose.material3.Icon
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.testTag
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -34,9 +37,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.kaoyan.wordhelper.ui.component.AppDrawerContent
+import com.kaoyan.wordhelper.ui.component.DrawerDestination
+import com.kaoyan.wordhelper.ui.screen.AILabScreen
 import com.kaoyan.wordhelper.ui.screen.BookBuildGuideScreen
 import com.kaoyan.wordhelper.ui.screen.BookManageScreen
-import com.kaoyan.wordhelper.ui.screen.AILabScreen
 import com.kaoyan.wordhelper.ui.screen.LearningMode
 import com.kaoyan.wordhelper.ui.screen.LearningScreen
 import com.kaoyan.wordhelper.ui.screen.ProfileScreen
@@ -45,6 +50,7 @@ import com.kaoyan.wordhelper.ui.screen.StatsScreen
 import com.kaoyan.wordhelper.ui.screen.SyncStatusScreen
 import com.kaoyan.wordhelper.ui.screen.TodayNewWordsSelectScreen
 import com.kaoyan.wordhelper.ui.screen.UiDemoScreen
+import kotlinx.coroutines.launch
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     data object Learning : Screen("learning", "学习", Icons.Filled.MenuBook)
@@ -61,8 +67,10 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     }
 }
 
-private val bottomNavItems = listOf(Screen.Learning, Screen.BookManage, Screen.Profile)
-
+/**
+ * 1.4.7 改版：去掉底部导航与顶部模式条，统一用左侧抽屉承载
+ * 「模式切换」和「学习 / 词库 / 我的」三个一级入口。
+ */
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
@@ -70,117 +78,112 @@ fun AppNavigation() {
     val currentRoute = navBackStackEntry?.destination?.route
     var learningMode by rememberSaveable { mutableStateOf(LearningMode.RECOGNITION) }
 
-    Scaffold(
-        bottomBar = {
-            Surface(
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-                tonalElevation = 6.dp,
-                color = MaterialTheme.colorScheme.surface
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val drawerWidth = (LocalConfiguration.current.screenWidthDp * 0.78f).dp
+
+    val openDrawer: () -> Unit = { scope.launch { drawerState.open() } }
+
+    val navigateFromDrawer: (DrawerDestination) -> Unit = { destination ->
+        scope.launch { drawerState.close() }
+        val route = when (destination) {
+            DrawerDestination.LEARNING -> Screen.Learning.route
+            DrawerDestination.BOOKS -> Screen.BookManage.route
+            DrawerDestination.PROFILE -> Screen.Profile.route
+        }
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        // 从屏幕左边缘右滑可拉出抽屉；抽屉上左滑可关，单手可操作
+        gesturesEnabled = true,
+        scrimColor = Color.Black.copy(alpha = 0.32f),
+        drawerContent = {
+            ModalDrawerSheet(
+                modifier = Modifier.width(drawerWidth),
+                drawerShape = RectangleShape,
+                drawerContainerColor = Color.White,
+                drawerContentColor = MaterialTheme.colorScheme.onSurface,
+                // 抽屉从状态栏下方开始，系统状态栏那一行留给系统
+                windowInsets = WindowInsets(0, 0, 0, 0)
             ) {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 0.dp
-                ) {
-                    bottomNavItems.forEach { screen ->
-                        NavigationBarItem(
-                            modifier = Modifier.testTag(
-                                when (screen) {
-                                    Screen.Learning -> "tab_learning"
-                                    Screen.Search -> "tab_search"
-                                    Screen.BookManage -> "tab_book_manage"
-                                    Screen.Profile -> "tab_profile"
-                                    Screen.AILab -> "tab_ai_lab"
-                                    Screen.Stats -> "tab_stats"
-                                    Screen.BookBuildGuide -> "tab_book_build_guide"
-                                    Screen.SyncStatus -> "tab_sync_status"
-                                    Screen.UiDemo -> "tab_ui_demo"
-                                    Screen.TodayNewWordSelect -> "tab_today_new_word_select"
-                                }
-                            ),
-                            icon = { Icon(screen.icon, contentDescription = screen.label) },
-                            label = { Text(screen.label) },
-                            selected = currentRoute == screen.route,
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            onClick = {
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }
-                        )
-                    }
-                }
+                AppDrawerContent(
+                    modifier = Modifier.statusBarsPadding().navigationBarsPadding(),
+                    currentMode = learningMode,
+                    currentRoute = currentRoute,
+                    onModeChange = { learningMode = it },
+                    onNavigate = navigateFromDrawer
+                )
             }
         }
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Learning.route,
-            modifier = Modifier.padding(innerPadding)
-        ) {
-            composable(Screen.Learning.route) {
-                LearningScreen(
-                    initialMode = learningMode,
-                    onModeChange = { learningMode = it }
-                )
-            }
-            composable(Screen.Search.route) { SearchScreen() }
-            composable(Screen.BookManage.route) {
-                BookManageScreen(
-                    onStartSpelling = {
-                        learningMode = LearningMode.SPELLING
-                        navController.navigate(Screen.Learning.route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    onOpenBuildGuide = { navController.navigate(Screen.BookBuildGuide.route) },
-                    onOpenTodayNewWordSelect = { bookId ->
-                        navController.navigate(Screen.TodayNewWordSelect.createRoute(bookId))
-                    }
-                )
-            }
-            composable(Screen.Profile.route) {
-                ProfileScreen(
-                    onOpenStats = { navController.navigate(Screen.Stats.route) },
-                    onOpenAiLab = { navController.navigate(Screen.AILab.route) },
-                    onOpenSyncStatus = { navController.navigate(Screen.SyncStatus.route) },
-                    onOpenUiDemo = { navController.navigate(Screen.UiDemo.route) }
-                )
-            }
-            composable(Screen.UiDemo.route) {
-                UiDemoScreen(onBack = { navController.popBackStack() })
-            }
-            composable(Screen.SyncStatus.route) {
-                SyncStatusScreen(onBack = { navController.popBackStack() })
-            }
-            composable(Screen.AILab.route) {
-                AILabScreen(onBack = { navController.popBackStack() })
-            }
-            composable(Screen.Stats.route) {
-                StatsScreen(onBack = { navController.popBackStack() })
-            }
-            composable(Screen.BookBuildGuide.route) {
-                BookBuildGuideScreen(onBack = { navController.popBackStack() })
-            }
-            composable(
-                route = Screen.TodayNewWordSelect.route,
-                arguments = listOf(navArgument("bookId") { type = NavType.LongType })
+    ) {
+        Scaffold { innerPadding ->
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Learning.route,
+                modifier = Modifier.padding(innerPadding)
             ) {
-                TodayNewWordsSelectScreen(onBack = { navController.popBackStack() })
+                composable(Screen.Learning.route) {
+                    LearningScreen(
+                        initialMode = learningMode,
+                        onOpenDrawer = openDrawer
+                    )
+                }
+                composable(Screen.Search.route) { SearchScreen() }
+                composable(Screen.BookManage.route) {
+                    BookManageScreen(
+                        onOpenDrawer = openDrawer,
+                        onStartSpelling = {
+                            learningMode = LearningMode.SPELLING
+                            navController.navigate(Screen.Learning.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        onOpenBuildGuide = { navController.navigate(Screen.BookBuildGuide.route) },
+                        onOpenTodayNewWordSelect = { bookId ->
+                            navController.navigate(Screen.TodayNewWordSelect.createRoute(bookId))
+                        }
+                    )
+                }
+                composable(Screen.Profile.route) {
+                    ProfileScreen(
+                        onOpenDrawer = openDrawer,
+                        onOpenStats = { navController.navigate(Screen.Stats.route) },
+                        onOpenAiLab = { navController.navigate(Screen.AILab.route) },
+                        onOpenSyncStatus = { navController.navigate(Screen.SyncStatus.route) },
+                        onOpenUiDemo = { navController.navigate(Screen.UiDemo.route) }
+                    )
+                }
+                composable(Screen.UiDemo.route) {
+                    UiDemoScreen(onBack = { navController.popBackStack() })
+                }
+                composable(Screen.SyncStatus.route) {
+                    SyncStatusScreen(onBack = { navController.popBackStack() })
+                }
+                composable(Screen.AILab.route) {
+                    AILabScreen(onBack = { navController.popBackStack() })
+                }
+                composable(Screen.Stats.route) {
+                    StatsScreen(onBack = { navController.popBackStack() })
+                }
+                composable(Screen.BookBuildGuide.route) {
+                    BookBuildGuideScreen(onBack = { navController.popBackStack() })
+                }
+                composable(
+                    route = Screen.TodayNewWordSelect.route,
+                    arguments = listOf(navArgument("bookId") { type = NavType.LongType })
+                ) {
+                    TodayNewWordsSelectScreen(onBack = { navController.popBackStack() })
+                }
             }
         }
     }

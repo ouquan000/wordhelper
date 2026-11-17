@@ -75,7 +75,7 @@ class AILabFlowTest {
     }
 
     private fun openAiLab() {
-        composeRule.onNodeWithTag("tab_profile").performClick()
+        composeRule.navigateViaDrawer("drawer_nav_profile")
         composeRule.onNodeWithTag("profile_list")
             .performScrollToNode(hasTestTag("profile_open_ai_lab"))
         composeRule.waitUntil(timeoutMillis = 5_000) {

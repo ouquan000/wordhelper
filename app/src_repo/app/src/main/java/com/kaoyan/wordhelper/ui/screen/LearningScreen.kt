@@ -6,8 +6,6 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -39,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -46,7 +45,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AlertDialog
@@ -66,8 +64,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
@@ -85,7 +81,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -127,6 +122,7 @@ import com.kaoyan.wordhelper.ui.theme.FuzzyYellow
 import com.kaoyan.wordhelper.ui.theme.KnownGreen
 import com.kaoyan.wordhelper.ui.viewmodel.LearningCheckInUiState
 import com.kaoyan.wordhelper.ui.viewmodel.LearningViewModel
+import com.kaoyan.wordhelper.ui.component.AppMenuButton
 import com.kaoyan.wordhelper.util.PronunciationPlayer
 import com.kaoyan.wordhelper.util.rememberPronunciationPlayer
 import com.kaoyan.wordhelper.util.DateUtils
@@ -145,7 +141,7 @@ import kotlin.math.roundToInt
 fun LearningScreen(
     viewModel: LearningViewModel = viewModel(),
     initialMode: LearningMode = LearningMode.RECOGNITION,
-    onModeChange: (LearningMode) -> Unit = {}
+    onOpenDrawer: () -> Unit = {}
 ) {
     val activeBook by viewModel.activeBook.collectAsStateWithLifecycle()
     val cardBackConfig by viewModel.cardBackConfig.collectAsStateWithLifecycle()
@@ -479,18 +475,19 @@ fun LearningScreen(
                 // 1.4.3：卡背输入框唤起键盘时，整页让到键盘上方，
                 // 否则「重写思路」按钮会被键盘盖住，点不到（edge-to-edge 默认不会让）。
                 .imePadding()
+                .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            CollapsibleModeSwitcher(
-                mode = learningMode,
-                onModeChange = {
-                    learningMode = it
-                    onModeChange(it)
-                }
-            )
+            // 1.4.7：模式切换与一级导航都搬进左侧抽屉，这里只留菜单入口
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AppMenuButton(onClick = onOpenDrawer)
+            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             if (canRelieveReviewPressure) {
                 ReviewPressureReliefBanner(
@@ -1499,119 +1496,6 @@ private fun WordCard(
     }
 }
 
-/** 1.4.6.2：模式切换默认收起，只占一行；点开才出现两个 Tab。 */
-@Composable
-private fun CollapsibleModeSwitcher(
-    mode: LearningMode,
-    onModeChange: (LearningMode) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    val arrowRotation by animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(200),
-        label = "modeArrowRotation"
-    )
-    val modeTitle = if (mode == LearningMode.RECOGNITION) "认词模式" else "拼写模式"
-
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-    ) {
-        Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .testTag("learning_mode_toggle")
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = modeTitle,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = if (expanded) "收起" else "切换",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (expanded) "收起模式" else "展开模式",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .size(20.dp)
-                        .rotate(arrowRotation)
-                )
-            }
-
-            AnimatedVisibility(
-                visible = expanded,
-                enter = expandVertically(
-                    animationSpec = tween(200),
-                    expandFrom = Alignment.Top
-                ) + fadeIn(tween(150)),
-                exit = shrinkVertically(
-                    animationSpec = tween(180),
-                    shrinkTowards = Alignment.Top
-                ) + fadeOut(tween(120))
-            ) {
-                TabRow(
-                    selectedTabIndex = mode.ordinal,
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0f),
-                    divider = {},
-                    indicator = {}
-                ) {
-                    Tab(
-                        selected = mode == LearningMode.RECOGNITION,
-                        onClick = {
-                            onModeChange(LearningMode.RECOGNITION)
-                            expanded = false
-                        },
-                        selectedContentColor = MaterialTheme.colorScheme.primary,
-                        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.testTag("learning_mode_recognition"),
-                        text = {
-                            Text(
-                                text = "认词模式",
-                                fontWeight = if (mode == LearningMode.RECOGNITION) {
-                                    FontWeight.SemiBold
-                                } else {
-                                    FontWeight.Normal
-                                }
-                            )
-                        }
-                    )
-                    Tab(
-                        selected = mode == LearningMode.SPELLING,
-                        onClick = {
-                            onModeChange(LearningMode.SPELLING)
-                            expanded = false
-                        },
-                        selectedContentColor = MaterialTheme.colorScheme.primary,
-                        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.testTag("learning_mode_spelling"),
-                        text = {
-                            Text(
-                                text = "拼写模式",
-                                fontWeight = if (mode == LearningMode.SPELLING) {
-                                    FontWeight.SemiBold
-                                } else {
-                                    FontWeight.Normal
-                                }
-                            )
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
 
 /**
  * 卡背内容区（1.4.2）：块顺序 / 显隐 / 标题文案 / 颜色 / 字号全部来自 [CardBackConfig]。

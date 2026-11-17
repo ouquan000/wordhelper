@@ -1,4 +1,7 @@
-﻿package com.kaoyan.wordhelper
+package com.kaoyan.wordhelper
+
+import com.kaoyan.wordhelper.ui.navigateViaDrawer
+import com.kaoyan.wordhelper.ui.switchLearningMode
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -37,7 +40,7 @@ class M12AcceptanceTest {
     fun spellingFlowShowsWrongAnswerFeedback() {
         composeTestRule.waitForLearningWordCard()
 
-        composeTestRule.onNodeWithTag("learning_mode_spelling").performClick()
+        composeTestRule.switchLearningMode("learning_mode_spelling")
         composeTestRule.onNodeWithTag("spelling_input").assertIsDisplayed()
         composeTestRule.onNodeWithTag("spelling_input").performTextInput("zzzz")
         composeTestRule.onNodeWithTag("spelling_submit").performClick()
@@ -429,7 +432,7 @@ class M12AcceptanceTest {
 
     @Test
     fun profileStatsEntryOpensStatsScreen() {
-        composeTestRule.onNodeWithTag("tab_profile").performClick()
+        composeTestRule.navigateViaDrawer("drawer_nav_profile")
         composeTestRule.onNodeWithTag("profile_open_stats").performScrollTo().performClick()
 
         composeTestRule.waitUntil(timeoutMillis = 8_000) {
@@ -456,18 +459,18 @@ class M12AcceptanceTest {
         composeTestRule.onNodeWithTag("search_input").performTextInput("abandon")
         composeTestRule.onNodeWithText("abandon", substring = true).assertIsDisplayed()
 
-        composeTestRule.onNodeWithTag("tab_book_manage").performClick()
+        composeTestRule.navigateViaDrawer("drawer_nav_books")
         composeTestRule.waitUntil(timeoutMillis = 3_000) {
             composeTestRule.onAllNodesWithText("已掌握率", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
 
-        composeTestRule.onNodeWithTag("tab_profile").performClick()
+        composeTestRule.navigateViaDrawer("drawer_nav_profile")
         composeTestRule.waitUntil(timeoutMillis = 3_000) {
             composeTestRule.onAllNodesWithTag("profile_open_stats").fetchSemanticsNodes().isNotEmpty()
         }
         composeTestRule.onNodeWithTag("profile_open_stats").performScrollTo().assertIsDisplayed()
 
-        composeTestRule.onNodeWithTag("tab_learning").performClick()
+        composeTestRule.navigateViaDrawer("drawer_nav_learning")
         composeTestRule.waitForLearningWordCard()
     }
 }

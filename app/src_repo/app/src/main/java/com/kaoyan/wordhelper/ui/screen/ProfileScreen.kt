@@ -54,6 +54,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kaoyan.wordhelper.data.model.MethodCount
+import com.kaoyan.wordhelper.ui.component.AppMenuButton
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kaoyan.wordhelper.BuildConfig
@@ -80,7 +81,8 @@ fun ProfileScreen(
     onOpenStats: () -> Unit = {},
     onOpenAiLab: () -> Unit = {},
     onOpenSyncStatus: () -> Unit = {},
-    onOpenUiDemo: () -> Unit = {}
+    onOpenUiDemo: () -> Unit = {},
+    onOpenDrawer: () -> Unit = {}
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val showBuiltinFullBooks by viewModel.showBuiltinFullBooks.collectAsStateWithLifecycle()
@@ -179,6 +181,9 @@ fun ProfileScreen(
         topBar = {
             TopAppBar(
                 title = { Text(text = "我的") },
+                navigationIcon = {
+                    AppMenuButton(onClick = onOpenDrawer)
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface

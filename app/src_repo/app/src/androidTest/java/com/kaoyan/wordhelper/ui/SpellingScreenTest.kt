@@ -27,7 +27,7 @@ class SpellingScreenTest {
 
     @Test
     fun spellingScreenRendersInDarkTheme() {
-        composeRule.onNodeWithTag("tab_learning").performClick()
+        composeRule.navigateViaDrawer("drawer_nav_learning")
         composeRule.openSpellingMode()
         composeRule.onNodeWithTag("spelling_input").assertIsDisplayed()
         composeRule.onNodeWithTag("spelling_submit").assertIsDisplayed()
@@ -38,7 +38,7 @@ private fun ComposeTestRule.openSpellingMode() {
     waitUntil(timeoutMillis = 8_000) {
         onAllNodesWithTag("learning_word_card").fetchSemanticsNodes().isNotEmpty()
     }
-    onNodeWithTag("learning_mode_spelling").performClick()
+    switchLearningMode("learning_mode_spelling")
     waitUntil(timeoutMillis = 8_000) {
         onAllNodesWithTag("spelling_input").fetchSemanticsNodes().isNotEmpty()
     }

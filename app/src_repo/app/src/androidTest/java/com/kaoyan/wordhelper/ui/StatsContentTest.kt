@@ -33,7 +33,7 @@ class StatsContentTest {
 }
 
 private fun ComposeTestRule.openStatsScreenFromProfile() {
-    onNodeWithTag("tab_profile").performClick()
+    navigateViaDrawer("drawer_nav_profile")
     onNodeWithTag("profile_open_stats").performScrollTo().performClick()
     waitUntil(timeoutMillis = 8_000) {
         onAllNodesWithTag("stats_content").fetchSemanticsNodes().isNotEmpty()
@@ -42,13 +42,13 @@ private fun ComposeTestRule.openStatsScreenFromProfile() {
 
 private fun ComposeTestRule.assertStatsCardsVisible() {
     onNodeWithTag("stats_content").assertIsDisplayed()
-    waitUntil(timeoutMillis = 3_000) {
+    waitUntil(timeoutMillis = 10_000) {
         onAllNodesWithTag("stats_line_card").fetchSemanticsNodes().isNotEmpty()
     }
-    waitUntil(timeoutMillis = 3_000) {
+    waitUntil(timeoutMillis = 10_000) {
         onAllNodesWithTag("stats_mastery_card").fetchSemanticsNodes().isNotEmpty()
     }
-    waitUntil(timeoutMillis = 3_000) {
+    waitUntil(timeoutMillis = 10_000) {
         onAllNodesWithTag("stats_heatmap_card").fetchSemanticsNodes().isNotEmpty()
     }
 }

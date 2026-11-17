@@ -72,6 +72,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kaoyan.wordhelper.data.entity.Book
 import com.kaoyan.wordhelper.ui.component.MasteryDonutChart
 import com.kaoyan.wordhelper.ui.component.MasteryLegend
+import com.kaoyan.wordhelper.ui.component.AppMenuButton
 import com.kaoyan.wordhelper.ui.viewmodel.BookManageViewModel
 import com.kaoyan.wordhelper.ui.viewmodel.BookUiModel
 import com.kaoyan.wordhelper.ui.viewmodel.EarlyReviewCandidate
@@ -85,7 +86,8 @@ fun BookManageScreen(
     viewModel: BookManageViewModel = viewModel(),
     onStartSpelling: () -> Unit = {},
     onOpenBuildGuide: () -> Unit = {},
-    onOpenTodayNewWordSelect: (Long) -> Unit = {}
+    onOpenTodayNewWordSelect: (Long) -> Unit = {},
+    onOpenDrawer: () -> Unit = {}
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
     val importPreview by viewModel.importPreview.collectAsStateWithLifecycle()
@@ -262,6 +264,9 @@ fun BookManageScreen(
         topBar = {
             TopAppBar(
                 title = { Text(text = "我的词库") },
+                navigationIcon = {
+                    AppMenuButton(onClick = onOpenDrawer)
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
