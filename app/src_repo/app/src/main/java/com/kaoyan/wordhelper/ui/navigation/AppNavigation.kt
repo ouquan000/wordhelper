@@ -2,9 +2,9 @@ package com.kaoyan.wordhelper.ui.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MenuBook
@@ -40,8 +41,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
@@ -102,6 +104,7 @@ fun AppNavigation() {
     val scope = rememberCoroutineScope()
     val drawerWidth = (LocalConfiguration.current.screenWidthDp * 0.78f).dp
     val drawerWidthPx = with(LocalDensity.current) { drawerWidth.toPx() }
+    val drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)
     // 0f = 全关，1f = 全开。拖动时直接改这个值，所以抽屉是跟手的。
     val drawerProgress = remember { Animatable(0f) }
 
@@ -112,10 +115,21 @@ fun AppNavigation() {
     val canDragDrawer = currentRoute in drawerSwipeRoutes
 
     val openDrawer: () -> Unit = {
-        scope.launch { drawerProgress.animateTo(1f, tween(260, easing = FastOutSlowInEasing)) }
+        // 高阻尼弹簧：给一点初始速度，手感是「快甩快弹、慢拖缓停」
+        scope.launch {
+            drawerProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(dampingRatio = 0.92f, stiffness = 420f)
+            )
+        }
     }
     val closeDrawer: () -> Unit = {
-        scope.launch { drawerProgress.animateTo(0f, tween(220, easing = FastOutSlowInEasing)) }
+        scope.launch {
+            drawerProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = spring(dampingRatio = 0.92f, stiffness = 420f)
+            )
+        }
     }
 
     // 只在「开/关」真正翻转时重组，拖动过程中不逐帧重组
@@ -155,11 +169,10 @@ fun AppNavigation() {
                         else -> 0f
                     }
                     drawerProgress.animateTo(
-                        target,
-                        tween(
-                            durationMillis = if (target == 1f) 260 else 220,
-                            easing = FastOutSlowInEasing
-                        )
+                        targetValue = target,
+                        animationSpec = spring(dampingRatio = 0.92f, stiffness = 420f),
+                        // 手指速度是 px/s，归一化到 0..1 的抽屉进度单位，甩动惯性才跟手
+                        initialVelocity = velocity / drawerWidthPx
                     )
                 }
             )
@@ -173,7 +186,18 @@ fun AppNavigation() {
                 .height(200.dp)
                 .systemGestureExclusion()
         )
-        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+        Scaffold(
+            modifier = Modifier
+                .fillMaxSize()
+                // 底层主屏景深微退：在绘制阶段读 progress，拖动时只重绘、不重组
+                .graphicsLayer {
+                    val progress = drawerProgress.value
+                    val depthScale = 1f - 0.032f * progress
+                    scaleX = depthScale
+                    scaleY = depthScale
+                    transformOrigin = TransformOrigin.Center
+                }
+        ) { innerPadding ->
             Box(modifier = Modifier.fillMaxSize()) {
                 NavHost(
                     navController = navController,
@@ -244,8 +268,8 @@ fun AppNavigation() {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { alpha = drawerProgress.value }
-                .background(Color.Black.copy(alpha = 0.32f))
+                .graphicsLayer { alpha = 0.36f * drawerProgress.value }
+                .background(Color(0xFF0F172A))
                 .then(
                     if (drawerOpen) {
                         Modifier.clickable(
@@ -268,10 +292,18 @@ fun AppNavigation() {
                 .graphicsLayer { translationX = -size.width * (1f - drawerProgress.value) }
         ) {
             ModalDrawerSheet(
-                modifier = Modifier.fillMaxSize(),
-                drawerShape = RectangleShape,
-                drawerContainerColor = Color.White,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .shadow(12.dp, drawerShape)
+                    .border(
+                        width = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
+                        shape = drawerShape
+                    ),
+                drawerShape = drawerShape,
+                drawerContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                 drawerContentColor = MaterialTheme.colorScheme.onSurface,
+                drawerTonalElevation = 2.dp,
                 // 抽屉从状态栏下方开始，系统状态栏那一行留给系统
                 windowInsets = WindowInsets(0, 0, 0, 0)
             ) {
@@ -280,7 +312,8 @@ fun AppNavigation() {
                     currentMode = learningMode,
                     currentRoute = currentRoute,
                     onModeChange = { learningMode = it },
-                    onNavigate = navigateFromDrawer
+                    onNavigate = navigateFromDrawer,
+                    drawerProgress = { drawerProgress.value }
                 )
             }
         }

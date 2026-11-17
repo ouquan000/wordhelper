@@ -1,14 +1,20 @@
 package com.kaoyan.wordhelper.ui.component
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,11 +43,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -119,30 +127,49 @@ fun AppDrawerContent(
     currentRoute: String?,
     onModeChange: (LearningMode) -> Unit,
     onNavigate: (DrawerDestination) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // 抽屉开合进度：0f = 全关，1f = 全开。默认 1f，兼容不传的旧调用方
+    drawerProgress: () -> Float = { 1f }
 ) {
     var modeExpanded by rememberSaveable { mutableStateOf(false) }
     val arrowRotation by animateFloatAsState(
         targetValue = if (modeExpanded) 180f else 0f,
-        animationSpec = tween(200),
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = 450f),
         label = "drawerModeArrow"
     )
+    // 模式展开 / 收起共用同一条强调减速曲线
+    val modeEasing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 
     Column(
         modifier = modifier
             .fillMaxHeight()
+            // 抽屉内容相对抽屉本体做微视差（少位移 14dp）+ 淡入，随开合进度连续变化
+            .graphicsLayer {
+                val progress = drawerProgress()
+                translationX = -(1f - progress) * 14.dp.toPx()
+                alpha = 0.45f + 0.55f * progress
+            }
             .padding(horizontal = 10.dp)
             .padding(bottom = 12.dp)
     ) {
         // 模式状态栏：只显示当前模式，点它才展开
+        val modeBarInteraction = remember { MutableInteractionSource() }
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(86.dp)
-                .clickable { modeExpanded = !modeExpanded }
+                .height(58.dp)
+                .pressScaleModifier(modeBarInteraction)
+                .clickable(
+                    interactionSource = modeBarInteraction,
+                    indication = LocalIndication.current
+                ) { modeExpanded = !modeExpanded }
                 .testTag("learning_mode_toggle"),
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+            border = BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
+            )
         ) {
             Row(
                 modifier = Modifier
@@ -171,10 +198,14 @@ fun AppDrawerContent(
         // 两个模式选项：比抽屉窄、往右缩进
         AnimatedVisibility(
             visible = modeExpanded,
-            enter = expandVertically(animationSpec = tween(280), expandFrom = Alignment.Top) +
-                fadeIn(tween(240)),
-            exit = shrinkVertically(animationSpec = tween(380), shrinkTowards = Alignment.Top) +
-                fadeOut(tween(300))
+            enter = expandVertically(
+                animationSpec = tween(260, easing = modeEasing),
+                expandFrom = Alignment.Top
+            ) + fadeIn(tween(260, easing = modeEasing)),
+            exit = shrinkVertically(
+                animationSpec = tween(200, easing = modeEasing),
+                shrinkTowards = Alignment.Top
+            ) + fadeOut(tween(200, easing = modeEasing))
         ) {
             Column(
                 modifier = Modifier
@@ -223,6 +254,21 @@ fun AppDrawerContent(
     }
 }
 
+/** 按下缩到 0.97f、松手弹簧回弹 1f 的通用按压手感。 */
+@Composable
+private fun Modifier.pressScaleModifier(interactionSource: MutableInteractionSource): Modifier {
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 700f),
+        label = "drawerPressScale"
+    )
+    return this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
+}
+
 @Composable
 private fun ModeOptionRow(
     text: String,
@@ -230,13 +276,19 @@ private fun ModeOptionRow(
     testTag: String,
     onClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Surface(
         modifier = Modifier
-            .width(210.dp)
-            .height(65.dp)
-            .clickable(onClick = onClick)
+            .width(200.dp)
+            .height(48.dp)
+            .pressScaleModifier(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick
+            )
             .testTag(testTag),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
         } else {
@@ -286,11 +338,45 @@ private fun DrawerNavRow(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    // 选中态胶囊底色与文字 / 图标颜色都做 200ms 平滑过渡
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+        } else {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+        },
+        animationSpec = tween(200),
+        label = "drawerNavContainer"
+    )
+    val labelColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        },
+        animationSpec = tween(200),
+        label = "drawerNavLabel"
+    )
+    val iconColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = tween(200),
+        label = "drawerNavIcon"
+    )
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(86.dp)
-            .clickable(onClick = onClick)
+            .height(56.dp)
+            .pressScaleModifier(interactionSource)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick
+            )
             .testTag(
                 when (destination) {
                     DrawerDestination.LEARNING -> "drawer_nav_learning"
@@ -298,12 +384,8 @@ private fun DrawerNavRow(
                     DrawerDestination.PROFILE -> "drawer_nav_profile"
                 }
             ),
-        shape = RoundedCornerShape(18.dp),
-        color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-        } else {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0f)
-        }
+        shape = RoundedCornerShape(16.dp),
+        color = containerColor
     ) {
         Row(
             modifier = Modifier
@@ -314,11 +396,7 @@ private fun DrawerNavRow(
             Icon(
                 imageVector = destination.icon,
                 contentDescription = destination.label,
-                tint = if (selected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
+                tint = iconColor,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(14.dp))
@@ -326,11 +404,7 @@ private fun DrawerNavRow(
                 text = destination.label,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                }
+                color = labelColor
             )
             Box(modifier = Modifier.weight(1f))
         }
