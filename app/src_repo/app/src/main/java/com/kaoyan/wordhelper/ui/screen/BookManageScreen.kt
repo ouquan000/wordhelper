@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -49,8 +50,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,7 +71,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kaoyan.wordhelper.data.entity.Book
 import com.kaoyan.wordhelper.ui.component.MasteryDonutChart
 import com.kaoyan.wordhelper.ui.component.MasteryLegend
-import com.kaoyan.wordhelper.ui.component.AppMenuButton
+import com.kaoyan.wordhelper.ui.component.AppPageHeader
 import com.kaoyan.wordhelper.ui.viewmodel.BookManageViewModel
 import com.kaoyan.wordhelper.ui.viewmodel.BookUiModel
 import com.kaoyan.wordhelper.ui.viewmodel.EarlyReviewCandidate
@@ -261,28 +260,8 @@ fun BookManageScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(text = "我的词库") },
-                navigationIcon = {
-                    AppMenuButton(onClick = onOpenDrawer)
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                actions = {
-                    TextButton(onClick = onOpenBuildGuide) {
-                        Text(text = "教程")
-                    }
-                    TextButton(onClick = {
-                        importLauncher.launch(arrayOf("text/plain", "text/csv", "text/*", "application/*"))
-                    }) {
-                        Text(text = "导入")
-                    }
-                }
-            )
-        },
+        // 状态栏内边距由外层 AppNavigation 统一处理，这里不再吃第二遍
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             FloatingActionButton(onClick = {
                 importLauncher.launch(arrayOf("text/plain", "text/csv", "text/*", "application/*"))
@@ -312,6 +291,20 @@ fun BookManageScreen(
                 .background(pageBrush)
                 .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
+            AppPageHeader(
+                title = "我的词库",
+                onOpenDrawer = onOpenDrawer,
+                modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
+            ) {
+                TextButton(onClick = onOpenBuildGuide) {
+                    Text(text = "教程")
+                }
+                TextButton(onClick = {
+                    importLauncher.launch(arrayOf("text/plain", "text/csv", "text/*", "application/*"))
+                }) {
+                    Text(text = "导入")
+                }
+            }
             AnimatedVisibility(
                 visible = contentVisible,
                 enter = fadeIn(animationSpec = tween(260)) +
@@ -723,3 +716,4 @@ private fun EarlyReviewCandidateItem(
         }
     }
 }
+

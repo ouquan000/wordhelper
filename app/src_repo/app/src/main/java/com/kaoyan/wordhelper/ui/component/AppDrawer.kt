@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -79,6 +80,35 @@ fun AppMenuButton(
 }
 
 /**
+ * 三个一级页共用的页头：菜单按钮 + 标题 + 右侧动作。
+ * 和学习页用同一套内边距，保证三页的「三条横线」落在同一个位置。
+ */
+@Composable
+fun AppPageHeader(
+    title: String,
+    onOpenDrawer: () -> Unit,
+    modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AppMenuButton(onClick = onOpenDrawer)
+        Spacer(modifier = Modifier.width(2.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        actions()
+    }
+}
+
+/**
  * 抽屉内容（1.4.7 改版）：
  * 顶部是模式状态栏，点开才向下拉出「认词模式 / 拼写模式」两个选项；
  * 三个一级入口紧跟模式栏下方，展开时一起被顶下去。
@@ -141,10 +171,10 @@ fun AppDrawerContent(
         // 两个模式选项：比抽屉窄、往右缩进
         AnimatedVisibility(
             visible = modeExpanded,
-            enter = expandVertically(animationSpec = tween(180), expandFrom = Alignment.Top) +
-                fadeIn(tween(150)),
-            exit = shrinkVertically(animationSpec = tween(150), shrinkTowards = Alignment.Top) +
-                fadeOut(tween(120))
+            enter = expandVertically(animationSpec = tween(280), expandFrom = Alignment.Top) +
+                fadeIn(tween(240)),
+            exit = shrinkVertically(animationSpec = tween(380), shrinkTowards = Alignment.Top) +
+                fadeOut(tween(300))
         ) {
             Column(
                 modifier = Modifier
@@ -306,3 +336,5 @@ private fun DrawerNavRow(
         }
     }
 }
+
+

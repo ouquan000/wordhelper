@@ -13,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,8 +39,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,7 +54,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kaoyan.wordhelper.data.model.MethodCount
-import com.kaoyan.wordhelper.ui.component.AppMenuButton
+import com.kaoyan.wordhelper.ui.component.AppPageHeader
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kaoyan.wordhelper.BuildConfig
@@ -178,28 +178,28 @@ fun ProfileScreen(
     )
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(text = "我的") },
-                navigationIcon = {
-                    AppMenuButton(onClick = onOpenDrawer)
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        }
+        // 状态栏内边距由外层 AppNavigation 统一处理，这里不再吃第二遍
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { innerPadding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(pageBrush)
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .testTag("profile_list"),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            AppPageHeader(
+                title = "我的",
+                onOpenDrawer = onOpenDrawer,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+                    .testTag("profile_list"),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(bottom = 12.dp)
+            ) {
             // UI 动效沙盒临时入口（feat/frontend-ui）：放在第一个 item，StatsCard 之前。
             item {
                 Card(
@@ -333,6 +333,7 @@ fun ProfileScreen(
                 ) {
                     AboutCard()
                 }
+            }
             }
         }
     }
@@ -911,3 +912,4 @@ private fun AboutCard() {
         }
     }
 }
+
