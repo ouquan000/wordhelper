@@ -81,13 +81,6 @@ data class LearningCheckInUiState(
     val todayCheckInTimeText: String = ""
 )
 
-data class SwipeSnackbarEvent(
-    val id: Long,
-    val message: String,
-    val actionLabel: String? = null,
-    val undoToken: Long? = null
-)
-
 /**
  * 卡背重写进度（1.4.3.1）。
  *
@@ -98,15 +91,6 @@ data class RewriteProgressUi(
     val fraction: Float?,
     val failed: Boolean = false,
     val offline: Boolean = false
-)
-
-private data class TooEasyUndoPayload(
-    val wordId: Long,
-    /** 1.4.6：进度按书独立，撤销只能回滚当时那本书。 */
-    val bookId: Long,
-    val snapshots: List<Progress>,
-    /** 1.4.7.2 W2：这张卡是不是「重写插回、还没背完」的欠卡；撤销要把它放回欠卡集合。 */
-    val wasPendingRewrite: Boolean = false
 )
 
 private data class QueueLoadParams(
@@ -156,9 +140,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     private var waitingRewritePollJob: Job? = null
     private val _waitingRewriteCount = MutableStateFlow(0)
     private var activeQueue: List<Word> = emptyList()
-    private val pendingTooEasyUndo = mutableMapOf<Long, TooEasyUndoPayload>()
-    private var swipeSnackbarIdCounter = 0L
-    private var undoTokenCounter = 0L
     private var queueBookId: Long? = null
     private var pendingFailedWordId: Long? = null
     private var answeredInSession = 0
@@ -179,8 +160,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     val cachedMemoryAidContent: StateFlow<String> = _cachedMemoryAidContent.asStateFlow()
     private val _memoryAidSuggestionWordId = MutableStateFlow<Long?>(null)
     val memoryAidSuggestionWordId: StateFlow<Long?> = _memoryAidSuggestionWordId.asStateFlow()
-    private val _swipeSnackbarEvent = MutableStateFlow<SwipeSnackbarEvent?>(null)
-    val swipeSnackbarEvent: StateFlow<SwipeSnackbarEvent?> = _swipeSnackbarEvent.asStateFlow()
     private val _recognitionAutoPronounceEvents = MutableSharedFlow<Long>(extraBufferCapacity = 1)
     val recognitionAutoPronounceEvents: SharedFlow<Long> = _recognitionAutoPronounceEvents.asSharedFlow()
     private val learningWeekRange = DateUtils.learningDateRange(days = 7)
@@ -188,9 +167,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     private val learningWeekStatsFlow = repository.getDailyStatsAggregated(learningWeekRange.first, learningWeekRange.second)
     private val learningHeatmapStatsFlow = repository.getDailyStatsAggregated(learningHeatmapRange.first, learningHeatmapRange.second)
 
-    val showSwipeGuide: StateFlow<Boolean> = settingsRepository.settingsFlow
-        .map { !it.swipeGestureGuideShown }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     val books: StateFlow<List<Book>> = combine(
         repository.getAllBooks(),
@@ -825,7 +801,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         immediateRetryQueue.clear()
         sessionSkippedWordIds.clear()
         clearWaitingRewrites()
-        pendingTooEasyUndo.clear()
         queueBookId = null
         pendingFailedWordId = null
         answeredInSession = 0
@@ -1038,114 +1013,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun onSwipeTooEasy() {
-        val word = _currentWord.value ?: return
-        val book = activeBook.value ?: return
-        launchSubmit {
-            pendingFailedWordId = null
-            _memoryAidSuggestionWordId.value = null
-            removeFromImmediateQueue(word.id)
-            removeSessionSkippedWord(word.id)
-            val snapshots = withContext(Dispatchers.IO) {
-                repository.getProgressSnapshotsForWord(word.id, book.id)
-            }
-            val marked = withContext(Dispatchers.IO) {
-                repository.markWordAsTooEasy(word.id, book.id)
-            }
-            if (!marked) {
-                emitSwipeSnackbar("标记失败，请重试")
-                return@launchSubmit
-            }
-            markAnswered()
-            // 1.4.7.2 W2：用户主动判定「太简单」= 实际作答（SRS 已推进 30 天），可以结清欠卡；
-            // 撤销时要把它放回欠卡集合，避免撤销后完成页误判。
-            val wasPendingRewrite = pendingReinsertSlots.containsKey(word.id)
-            withContext(Dispatchers.IO) {
-                rewriteRepository.clearNeedsReinsert(word.id, book.id)
-            }
-            forgetPendingReinsert(word.id)
-            val undoToken = registerTooEasyUndo(word.id, book.id, snapshots, wasPendingRewrite)
-            emitSwipeSnackbar(
-                message = "已标记为太简单，30天后复习",
-                actionLabel = "撤销",
-                undoToken = undoToken
-            )
-            loadQueueForBook(book, newWordsLimit.value, shuffleNewWordsEnabled.value, plannedNewWordsEnabled.value)
-        }
-    }
-
-    fun onSwipeAddToNotebook() {
-        val word = _currentWord.value ?: return
-        val book = activeBook.value ?: return
-        launchSubmit {
-            pendingFailedWordId = null
-            _memoryAidSuggestionWordId.value = null
-            removeFromImmediateQueue(word.id)
-            removeSessionSkippedWord(word.id)
-            val inserted = withContext(Dispatchers.IO) {
-                repository.addToNewWords(word.id, AddToNewWordsSource.GESTURE)
-            }
-            // 1.4.7.2 W2：重写欠卡不能靠「滑进生词本」绕过——词已进生词本，但卡还留在
-            // 当前位（不计一次作答、不跳过、不换卡），必须真的作答才结清。
-            val isPendingRewrite = pendingReinsertSlots.containsKey(word.id)
-            if (!isPendingRewrite) {
-                skipWordInSession(word.id)
-                markAnswered()
-            }
-            emitSwipeSnackbar(
-                message = when {
-                    isPendingRewrite -> "已加入生词本；这张重写卡背完今天才算完成"
-                    inserted -> "已加入生词本"
-                    else -> "已在生词本中"
-                }
-            )
-            if (!isPendingRewrite) {
-                loadQueueForBook(book, newWordsLimit.value, shuffleNewWordsEnabled.value, plannedNewWordsEnabled.value)
-            }
-        }
-    }
-
-    fun undoSwipeTooEasy(undoToken: Long) {
-        val payload = pendingTooEasyUndo[undoToken] ?: return
-        launchSubmit {
-            withContext(Dispatchers.IO) {
-                repository.restoreProgressSnapshots(
-                    wordId = payload.wordId,
-                    bookId = payload.bookId,
-                    snapshots = payload.snapshots,
-                    rollbackGestureEasy = true
-                )
-                // 撤销「太简单」= 这次作答作废，把重写欠卡放回集合，否则今天会被误判成完成。
-                if (payload.wasPendingRewrite) {
-                    rewriteRepository.markNeedsReinsert(payload.wordId, payload.bookId)
-                }
-            }
-            pendingTooEasyUndo.remove(undoToken)
-            answeredInSession = (answeredInSession - 1).coerceAtLeast(0)
-            val book = activeBook.value
-            if (book != null) {
-                loadQueueForBook(book, newWordsLimit.value, shuffleNewWordsEnabled.value, plannedNewWordsEnabled.value)
-            }
-            emitSwipeSnackbar("已撤销“太简单”")
-        }
-    }
-
-    fun dismissSwipeUndo(undoToken: Long) {
-        pendingTooEasyUndo.remove(undoToken)
-    }
-
-    fun consumeSwipeSnackbarEvent(eventId: Long) {
-        if (_swipeSnackbarEvent.value?.id == eventId) {
-            _swipeSnackbarEvent.value = null
-        }
-    }
-
-    fun dismissSwipeGuide() {
-        viewModelScope.launch {
-            settingsRepository.updateSwipeGestureGuideShown(true)
-        }
-    }
-
     fun refreshQueue() {
         val book = activeBook.value ?: return
         viewModelScope.launch {
@@ -1349,7 +1216,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             immediateRetryQueue.clear()
             sessionSkippedWordIds.clear()
             clearWaitingRewrites()
-            pendingTooEasyUndo.clear()
             queueBookId = null
             pendingFailedWordId = null
             answeredInSession = 0
@@ -1363,7 +1229,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             immediateRetryQueue.clear()
             sessionSkippedWordIds.clear()
             clearWaitingRewrites()
-            pendingTooEasyUndo.clear()
             queueBookId = book.id
             pendingFailedWordId = null
             answeredInSession = 0
@@ -1733,37 +1598,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
 
     private fun removeSessionSkippedWord(wordId: Long) {
         sessionSkippedWordIds.remove(wordId)
-    }
-
-    private fun emitSwipeSnackbar(
-        message: String,
-        actionLabel: String? = null,
-        undoToken: Long? = null
-    ) {
-        swipeSnackbarIdCounter += 1
-        _swipeSnackbarEvent.value = SwipeSnackbarEvent(
-            id = swipeSnackbarIdCounter,
-            message = message,
-            actionLabel = actionLabel,
-            undoToken = undoToken
-        )
-    }
-
-    private fun registerTooEasyUndo(
-        wordId: Long,
-        bookId: Long,
-        snapshots: List<Progress>,
-        wasPendingRewrite: Boolean
-    ): Long {
-        undoTokenCounter += 1
-        val token = undoTokenCounter
-        pendingTooEasyUndo[token] = TooEasyUndoPayload(
-            wordId = wordId,
-            bookId = bookId,
-            snapshots = snapshots,
-            wasPendingRewrite = wasPendingRewrite
-        )
-        return token
     }
 
     private fun launchSubmit(block: suspend () -> Unit) {

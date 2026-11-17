@@ -21,7 +21,6 @@ private const val DEFAULT_NEW_WORDS_LIMIT = 20
 private const val DEFAULT_FONT_SCALE = 1.0f
 private const val DEFAULT_REVIEW_PRESSURE_RELIEF_ENABLED = true
 private const val DEFAULT_REVIEW_PRESSURE_DAILY_CAP = 120
-private const val DEFAULT_SWIPE_GESTURE_GUIDE_SHOWN = false
 private const val DEFAULT_ALGORITHM_V4_ENABLED = false
 private const val DEFAULT_PRONUNCIATION_ENABLED = false
 private const val DEFAULT_PRONUNCIATION_SOURCE = 0
@@ -47,7 +46,6 @@ data class UserSettings(
     val darkMode: DarkMode = DarkMode.FOLLOW_SYSTEM,
     val reviewPressureReliefEnabled: Boolean = DEFAULT_REVIEW_PRESSURE_RELIEF_ENABLED,
     val reviewPressureDailyCap: Int = DEFAULT_REVIEW_PRESSURE_DAILY_CAP,
-    val swipeGestureGuideShown: Boolean = DEFAULT_SWIPE_GESTURE_GUIDE_SHOWN,
     val algorithmV4Enabled: Boolean = DEFAULT_ALGORITHM_V4_ENABLED,
     val pronunciationEnabled: Boolean = DEFAULT_PRONUNCIATION_ENABLED,
     val pronunciationSource: PronunciationSource = PronunciationSource.FREE_DICTIONARY,
@@ -146,7 +144,6 @@ class SettingsRepository(private val context: Context) {
                 ?: DEFAULT_REVIEW_PRESSURE_RELIEF_ENABLED,
             reviewPressureDailyCap = (prefs[KEY_REVIEW_PRESSURE_DAILY_CAP] ?: DEFAULT_REVIEW_PRESSURE_DAILY_CAP)
                 .coerceIn(10, 500),
-            swipeGestureGuideShown = prefs[KEY_SWIPE_GESTURE_GUIDE_SHOWN] ?: DEFAULT_SWIPE_GESTURE_GUIDE_SHOWN,
             algorithmV4Enabled = prefs[KEY_ALGORITHM_V4_ENABLED] ?: DEFAULT_ALGORITHM_V4_ENABLED,
             pronunciationEnabled = prefs[KEY_PRONUNCIATION_ENABLED] ?: DEFAULT_PRONUNCIATION_ENABLED,
             pronunciationSource = PronunciationSource.fromValue(
@@ -196,10 +193,6 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updateReviewPressureDailyCap(cap: Int) {
         dataStore.edit { prefs -> prefs[KEY_REVIEW_PRESSURE_DAILY_CAP] = cap.coerceIn(10, 500) }
-    }
-
-    suspend fun updateSwipeGestureGuideShown(shown: Boolean) {
-        dataStore.edit { prefs -> prefs[KEY_SWIPE_GESTURE_GUIDE_SHOWN] = shown }
     }
 
     suspend fun updateAlgorithmV4Enabled(enabled: Boolean) {
@@ -455,7 +448,6 @@ class SettingsRepository(private val context: Context) {
         private val KEY_REVIEW_PRESSURE_RELIEF_ENABLED =
             booleanPreferencesKey("review_pressure_relief_enabled")
         private val KEY_REVIEW_PRESSURE_DAILY_CAP = intPreferencesKey("review_pressure_daily_cap")
-        private val KEY_SWIPE_GESTURE_GUIDE_SHOWN = booleanPreferencesKey("swipe_gesture_guide_shown")
         private val KEY_ALGORITHM_V4_ENABLED = booleanPreferencesKey("algorithm_v4_enabled")
         private val KEY_PRONUNCIATION_ENABLED = booleanPreferencesKey("pronunciation_enabled")
         private val KEY_PRONUNCIATION_SOURCE = intPreferencesKey("pronunciation_source")

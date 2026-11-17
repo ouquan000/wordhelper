@@ -421,42 +421,6 @@ class WordRepository(private val database: AppDatabase) {
         return result
     }
 
-    /**
-     * 撤销「太简单」手势时要恢复的那一行。
-     * 进度按书独立之后，一个词在一本书里只有一行，所以最多一条。
-     */
-    suspend fun getProgressSnapshotsForWord(wordId: Long, bookId: Long): List<Progress> {
-        if (bookId <= 0L) return emptyList()
-        val row = progressDao.getProgress(wordId, bookId) ?: return emptyList()
-        return listOf(row)
-    }
-
-    suspend fun restoreProgressSnapshots(
-        wordId: Long,
-        bookId: Long,
-        snapshots: List<Progress>,
-        rollbackGestureEasy: Boolean = false
-    ) {
-        database.withTransaction {
-            if (bookId <= 0L) return@withTransaction
-            // 只回滚当前书这一行：别的书有它们自己的进度，不能跟着一起动。
-            progressDao.deleteByWordAndBook(wordId, bookId)
-            snapshots.forEach { snapshot ->
-                progressDao.insert(
-                    snapshot.copy(
-                        id = 0,
-                        wordId = wordId,
-                        bookId = bookId
-                    )
-                )
-            }
-            if (rollbackGestureEasy) {
-                updateDailyStatsInternal(gestureEasyDelta = -1)
-            }
-            invalidateForecastCacheInternal()
-        }
-    }
-
     fun getLearnedCount(bookId: Long): Flow<Int> = progressDao.getLearnedCount(bookId)
 
     fun getMasteredCount(bookId: Long): Flow<Int> = progressDao.getMasteredCount(bookId)
@@ -941,50 +905,6 @@ class WordRepository(private val database: AppDatabase) {
             }
             inserted
         }
-    }
-
-    suspend fun markWordAsTooEasy(wordId: Long, bookId: Long): Boolean {
-        if (bookId <= 0L) return false
-        // 先拿事务的返回值，再决定要不要入队：什么都没写时不能推一条空记录。
-        val marked = database.withTransaction {
-            val existing = progressDao.getProgress(wordId, bookId)
-            val now = System.currentTimeMillis()
-            // "太简单" is a user override (hard intervention), not a standard SM-2 transition.
-            val nextReviewTime = Sm2Scheduler.nextReviewTimeByDays(30, now)
-
-            // 1.4.6：只动当前这本书。别的书有它们自己的进度，不跟着变「已掌握」。
-            val updated = Progress(
-                id = existing?.id ?: 0L,
-                wordId = wordId,
-                bookId = bookId,
-                status = Progress.STATUS_MASTERED,
-                repetitions = maxOf(existing?.repetitions ?: 0, 1),
-                intervalDays = 30,
-                nextReviewTime = nextReviewTime,
-                easeFactor = existing?.easeFactor ?: 2.5f,
-                reviewCount = existing?.reviewCount ?: 0,
-                spellCorrectCount = existing?.spellCorrectCount ?: 0,
-                spellWrongCount = existing?.spellWrongCount ?: 0,
-                markedEasyCount = (existing?.markedEasyCount ?: 0) + 1,
-                lastEasyTime = now
-            )
-            if (existing != null) {
-                progressDao.update(updated)
-            } else {
-                progressDao.insert(updated)
-            }
-            earlyReviewDao.deleteByWordAndBook(wordId, bookId)
-
-            updateDailyStatsInternal(gestureEasyDelta = 1)
-            invalidateForecastCacheInternal()
-            true
-        }
-        if (marked) {
-            // 这条路径写库时不填 last_review_time（实体默认 0），入队时由 SyncRepository 用动作时间兜底，
-            // 否则在「最新 lrt 赢」的口径下它永远推不倒对面。
-            enqueueProgressSync(wordId, bookId)
-        }
-        return marked
     }
 
     suspend fun removeFromNewWords(wordId: Long) {

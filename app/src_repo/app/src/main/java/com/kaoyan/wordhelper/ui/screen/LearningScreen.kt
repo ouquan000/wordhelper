@@ -6,7 +6,6 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -23,7 +22,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -59,10 +57,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -89,7 +83,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -97,7 +90,6 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
@@ -126,15 +118,12 @@ import com.kaoyan.wordhelper.ui.component.AppMenuButton
 import com.kaoyan.wordhelper.util.PronunciationPlayer
 import com.kaoyan.wordhelper.util.rememberPronunciationPlayer
 import com.kaoyan.wordhelper.util.DateUtils
-import com.kaoyan.wordhelper.util.GestureHandler
 import com.kaoyan.wordhelper.util.Sm2Scheduler
-import com.kaoyan.wordhelper.util.SwipeAction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -170,8 +159,6 @@ fun LearningScreen(
     val cachedMemoryAidContent by viewModel.cachedMemoryAidContent.collectAsStateWithLifecycle()
     val memoryAidSuggestionWordId by viewModel.memoryAidSuggestionWordId.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
-    val swipeSnackbarEvent by viewModel.swipeSnackbarEvent.collectAsStateWithLifecycle()
-    val showSwipeGuide by viewModel.showSwipeGuide.collectAsStateWithLifecycle()
     val checkInState by viewModel.checkInState.collectAsStateWithLifecycle()
     val waitingRewriteCount by viewModel.waitingRewriteCount.collectAsStateWithLifecycle()
     val rewriteMark by viewModel.currentRewriteMark.collectAsStateWithLifecycle()
@@ -201,7 +188,6 @@ fun LearningScreen(
     val appContext = remember(context) { context.applicationContext as KaoyanWordApp }
     val pronunciationPlayer: PronunciationPlayer = rememberPronunciationPlayer()
     val uiScope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
 
     var showRemoveDialog by remember { mutableStateOf(false) }
     var showReviewDialog by remember { mutableStateOf(false) }
@@ -211,7 +197,6 @@ fun LearningScreen(
     var lastRating by remember { mutableStateOf<StudyRating?>(null) }
     var pronouncingWordId by remember { mutableStateOf<Long?>(null) }
     var learningMode by rememberSaveable { mutableStateOf(initialMode) }
-    var hideSwipeGuideInSession by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(currentWord?.id) {
         showReviewDialog = false
@@ -260,37 +245,6 @@ fun LearningScreen(
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             viewModel.clearMessage()
         }
-    }
-
-    LaunchedEffect(swipeSnackbarEvent?.id) {
-        val event = swipeSnackbarEvent ?: return@LaunchedEffect
-        val result = if (event.undoToken != null) {
-            val dismissJob = launch {
-                delay(3_000)
-                snackbarHostState.currentSnackbarData?.dismiss()
-            }
-            val snackbarResult = snackbarHostState.showSnackbar(
-                message = event.message,
-                actionLabel = event.actionLabel,
-                duration = SnackbarDuration.Indefinite
-            )
-            dismissJob.cancel()
-            snackbarResult
-        } else {
-            snackbarHostState.showSnackbar(
-                message = event.message,
-                actionLabel = event.actionLabel,
-                duration = SnackbarDuration.Short
-            )
-        }
-        if (event.undoToken != null) {
-            if (result == SnackbarResult.ActionPerformed) {
-                viewModel.undoSwipeTooEasy(event.undoToken)
-            } else {
-                viewModel.dismissSwipeUndo(event.undoToken)
-            }
-        }
-        viewModel.consumeSwipeSnackbarEvent(event.id)
     }
 
     fun handleAnswer(rating: StudyRating, removeFromNewWords: Boolean = false) {
@@ -378,21 +332,6 @@ fun LearningScreen(
                 TextButton(onClick = { showAiGuideDialog = false }) {
                     Text(text = "知道了", modifier = Modifier.testTag("learning_ai_guide_confirm"))
                 }
-            }
-        )
-    }
-
-    if (
-        showSwipeGuide &&
-        !hideSwipeGuideInSession &&
-        learningMode == LearningMode.RECOGNITION &&
-        currentWord != null
-    ) {
-        SwipeGestureCoachMarkDialog(
-            onDismiss = { hideSwipeGuideInSession = true },
-            onNeverShowAgain = {
-                hideSwipeGuideInSession = true
-                viewModel.dismissSwipeGuide()
             }
         )
     }
@@ -550,15 +489,12 @@ fun LearningScreen(
                                     contentKey = { it.word.id },
                                     label = "wordCardTransition"
                                 ) { state ->
-                                    SwipeableWordCard(
-                                        enabled = !isAnswering,
-                                        onSwipeTooEasy = viewModel::onSwipeTooEasy,
-                                        onSwipeAddToNotebook = viewModel::onSwipeAddToNotebook,
+                                    Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .fillMaxHeight()
                                             .testTag("learning_word_card")
-                                    ) { swipeModifier ->
+                                    ) {
                                         WordCard(
                                             // 词对象可能是旧快照，卡背正文与方法标签都以库里的实时值为准
                                             word = state.word.copy(
@@ -613,7 +549,7 @@ fun LearningScreen(
                                                     )
                                                 }
                                             },
-                                            modifier = swipeModifier.fillMaxHeight()
+                                            modifier = Modifier.fillMaxHeight()
                                         )
                                     }
                                 }
@@ -682,20 +618,12 @@ fun LearningScreen(
             )
         }
 
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(16.dp)
-        )
     }
 }
 
 private const val SM2_DESCRIPTION =
     "SM-2 调度说明：不认识会在会话内重试，模糊保守推进，认识按记忆因子增长间隔。"
 private val RECOGNITION_SECTION_SPACING = 10.dp
-private const val SWIPE_TRIGGER_RATIO = 0.3f
-private const val SWIPE_ACTIVE_ZONE_RATIO = 0.8f
 
 /**
  * H：当天词背完、但今天发起过的重写卡还没被实际背掉时，不显示「完成」，显示这张等待卡。
@@ -803,217 +731,6 @@ private data class WordCardState(
     val isInNewWords: Boolean
 )
 
-private enum class SwipeDirection {
-    LEFT,
-    RIGHT,
-    NONE
-}
-
-@Composable
-private fun SwipeableWordCard(
-    enabled: Boolean,
-    onSwipeTooEasy: () -> Unit,
-    onSwipeAddToNotebook: () -> Unit,
-    modifier: Modifier = Modifier,
-    content: @Composable (Modifier) -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    val haptics = LocalHapticFeedback.current
-    var offsetX by remember { mutableStateOf(0f) }
-    var allowDrag by remember { mutableStateOf(false) }
-    var thresholdHapticTriggered by remember { mutableStateOf(false) }
-
-    BoxWithConstraints(modifier = modifier) {
-        val density = LocalDensity.current
-        val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
-        val threshold = GestureHandler.triggerThreshold(widthPx, SWIPE_TRIGGER_RATIO)
-        val edgeReserved = GestureHandler.edgeReservedWidth(widthPx, SWIPE_ACTIVE_ZONE_RATIO)
-        val swipeProgress = (abs(offsetX) / threshold).coerceIn(0f, 1f)
-
-        SwipeBackgroundIndicator(
-            offsetX = offsetX,
-            progress = swipeProgress,
-            modifier = Modifier.fillMaxSize()
-        )
-
-        Box(
-            modifier = Modifier
-                .offset { IntOffset(offsetX.roundToInt(), 0) }
-                .pointerInput(enabled, widthPx) {
-                    if (!enabled) return@pointerInput
-                    detectHorizontalDragGestures(
-                        onDragStart = { startOffset ->
-                            allowDrag = GestureHandler.isStartInActiveZone(
-                                startX = startOffset.x,
-                                widthPx = widthPx,
-                                activeZoneRatio = SWIPE_ACTIVE_ZONE_RATIO
-                            )
-                            thresholdHapticTriggered = false
-                        },
-                        onHorizontalDrag = { change, dragAmount ->
-                            if (!allowDrag) return@detectHorizontalDragGestures
-                            change.consume()
-                            offsetX = (offsetX + dragAmount).coerceIn(-widthPx, widthPx)
-                            if (!thresholdHapticTriggered && abs(offsetX) >= threshold) {
-                                thresholdHapticTriggered = true
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            }
-                        },
-                        onDragEnd = {
-                            val finalOffset = offsetX
-                            allowDrag = false
-                            thresholdHapticTriggered = false
-                            when (GestureHandler.resolveSwipeAction(finalOffset, threshold)) {
-                                SwipeAction.TOO_EASY -> {
-                                    offsetX = 0f
-                                    onSwipeTooEasy()
-                                }
-
-                                SwipeAction.ADD_TO_NOTEBOOK -> {
-                                    offsetX = 0f
-                                    onSwipeAddToNotebook()
-                                }
-
-                                SwipeAction.NONE -> {
-                                    scope.launch {
-                                        animate(finalOffset, 0f) { value, _ ->
-                                            offsetX = value
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        onDragCancel = {
-                            allowDrag = false
-                            thresholdHapticTriggered = false
-                            val finalOffset = offsetX
-                            scope.launch {
-                                animate(finalOffset, 0f) { value, _ ->
-                                    offsetX = value
-                                }
-                            }
-                        }
-                    )
-                }
-        ) {
-            content(Modifier.fillMaxWidth())
-        }
-    }
-}
-
-@Composable
-private fun SwipeBackgroundIndicator(
-    offsetX: Float,
-    progress: Float,
-    modifier: Modifier = Modifier
-) {
-    val direction = when {
-        offsetX < 0f -> SwipeDirection.LEFT
-        offsetX > 0f -> SwipeDirection.RIGHT
-        else -> SwipeDirection.NONE
-    }
-    val backgroundColor = when (direction) {
-        SwipeDirection.LEFT -> KnownGreen.copy(alpha = 0.08f + 0.22f * progress)
-        SwipeDirection.RIGHT -> FuzzyYellow.copy(alpha = 0.10f + 0.24f * progress)
-        SwipeDirection.NONE -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.10f)
-    }
-
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
-        color = backgroundColor
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 18.dp),
-            contentAlignment = when (direction) {
-                SwipeDirection.LEFT -> Alignment.CenterStart
-                SwipeDirection.RIGHT -> Alignment.CenterEnd
-                SwipeDirection.NONE -> Alignment.Center
-            }
-        ) {
-            when (direction) {
-                SwipeDirection.LEFT -> {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_swipe_left),
-                            contentDescription = null,
-                            tint = KnownGreen.copy(alpha = 0.4f + 0.6f * progress)
-                        )
-                        Text(
-                            text = "太简单（30天）",
-                            color = KnownGreen.copy(alpha = 0.5f + 0.5f * progress),
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-
-                SwipeDirection.RIGHT -> {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_swipe_right),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f + 0.5f * progress)
-                        )
-                        Text(
-                            text = "加入生词本",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f + 0.5f * progress),
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-
-                SwipeDirection.NONE -> {
-                    Text(
-                        text = "左滑太简单 · 右滑加入生词本",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SwipeGestureCoachMarkDialog(
-    onDismiss: () -> Unit,
-    onNeverShowAgain: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(text = "手势快捷操作") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text = "左滑超过 30%：标记“太简单”，30 天后复习。")
-                Text(text = "右滑超过 30%：快速加入生词本，并切换到下一词。")
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    text = "知道了",
-                    modifier = Modifier.testTag("learning_swipe_guide_confirm")
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onNeverShowAgain) {
-                Text(
-                    text = "不再提示",
-                    modifier = Modifier.testTag("learning_swipe_guide_never_again")
-                )
-            }
-        }
-    )
-}
 
 @Composable
 private fun BottomLearningProgressBar(

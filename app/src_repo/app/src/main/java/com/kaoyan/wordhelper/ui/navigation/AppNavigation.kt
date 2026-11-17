@@ -1,6 +1,12 @@
 package com.kaoyan.wordhelper.ui.navigation
 
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.remember
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -81,6 +87,14 @@ fun AppNavigation() {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val drawerWidth = (LocalConfiguration.current.screenWidthDp * 0.78f).dp
+    val density = LocalDensity.current
+    val swipeOpenThresholdPx = with(density) {
+        (LocalConfiguration.current.screenWidthDp * 0.18f).dp.toPx()
+    }
+    // 只在三个主页面响应「任意位置右滑打开抽屉」，二级页不掺和
+    val drawerSwipeRoutes = remember {
+        setOf(Screen.Learning.route, Screen.BookManage.route, Screen.Profile.route)
+    }
 
     val openDrawer: () -> Unit = { scope.launch { drawerState.open() } }
 
@@ -123,66 +137,92 @@ fun AppNavigation() {
         }
     ) {
         Scaffold { innerPadding ->
-            NavHost(
-                navController = navController,
-                startDestination = Screen.Learning.route,
-                modifier = Modifier.padding(innerPadding)
-            ) {
-                composable(Screen.Learning.route) {
-                    LearningScreen(
-                        initialMode = learningMode,
-                        onOpenDrawer = openDrawer
-                    )
-                }
-                composable(Screen.Search.route) { SearchScreen() }
-                composable(Screen.BookManage.route) {
-                    BookManageScreen(
-                        onOpenDrawer = openDrawer,
-                        onStartSpelling = {
-                            learningMode = LearningMode.SPELLING
-                            navController.navigate(Screen.Learning.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (currentRoute in drawerSwipeRoutes && drawerState.isClosed) {
+                            Modifier.pointerInput(currentRoute) {
+                                var dragged = 0f
+                                detectHorizontalDragGestures(
+                                    onDragStart = { dragged = 0f },
+                                    onDragCancel = { dragged = 0f },
+                                    onDragEnd = { dragged = 0f },
+                                    onHorizontalDrag = { _, dragAmount ->
+                                        dragged = if (dragAmount > 0f) dragged + dragAmount else 0f
+                                        if (dragged >= swipeOpenThresholdPx) {
+                                            dragged = 0f
+                                            scope.launch { drawerState.open() }
+                                        }
+                                    }
+                                )
                             }
-                        },
-                        onOpenBuildGuide = { navController.navigate(Screen.BookBuildGuide.route) },
-                        onOpenTodayNewWordSelect = { bookId ->
-                            navController.navigate(Screen.TodayNewWordSelect.createRoute(bookId))
+                        } else {
+                            Modifier
                         }
                     )
-                }
-                composable(Screen.Profile.route) {
-                    ProfileScreen(
-                        onOpenDrawer = openDrawer,
-                        onOpenStats = { navController.navigate(Screen.Stats.route) },
-                        onOpenAiLab = { navController.navigate(Screen.AILab.route) },
-                        onOpenSyncStatus = { navController.navigate(Screen.SyncStatus.route) },
-                        onOpenUiDemo = { navController.navigate(Screen.UiDemo.route) }
-                    )
-                }
-                composable(Screen.UiDemo.route) {
-                    UiDemoScreen(onBack = { navController.popBackStack() })
-                }
-                composable(Screen.SyncStatus.route) {
-                    SyncStatusScreen(onBack = { navController.popBackStack() })
-                }
-                composable(Screen.AILab.route) {
-                    AILabScreen(onBack = { navController.popBackStack() })
-                }
-                composable(Screen.Stats.route) {
-                    StatsScreen(onBack = { navController.popBackStack() })
-                }
-                composable(Screen.BookBuildGuide.route) {
-                    BookBuildGuideScreen(onBack = { navController.popBackStack() })
-                }
-                composable(
-                    route = Screen.TodayNewWordSelect.route,
-                    arguments = listOf(navArgument("bookId") { type = NavType.LongType })
+            ) {
+                NavHost(
+                    navController = navController,
+                    startDestination = Screen.Learning.route,
+                    modifier = Modifier.padding(innerPadding)
                 ) {
-                    TodayNewWordsSelectScreen(onBack = { navController.popBackStack() })
+                    composable(Screen.Learning.route) {
+                        LearningScreen(
+                            initialMode = learningMode,
+                            onOpenDrawer = openDrawer
+                        )
+                    }
+                    composable(Screen.Search.route) { SearchScreen() }
+                    composable(Screen.BookManage.route) {
+                        BookManageScreen(
+                            onOpenDrawer = openDrawer,
+                            onStartSpelling = {
+                                learningMode = LearningMode.SPELLING
+                                navController.navigate(Screen.Learning.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            onOpenBuildGuide = { navController.navigate(Screen.BookBuildGuide.route) },
+                            onOpenTodayNewWordSelect = { bookId ->
+                                navController.navigate(Screen.TodayNewWordSelect.createRoute(bookId))
+                            }
+                        )
+                    }
+                    composable(Screen.Profile.route) {
+                        ProfileScreen(
+                            onOpenDrawer = openDrawer,
+                            onOpenStats = { navController.navigate(Screen.Stats.route) },
+                            onOpenAiLab = { navController.navigate(Screen.AILab.route) },
+                            onOpenSyncStatus = { navController.navigate(Screen.SyncStatus.route) },
+                            onOpenUiDemo = { navController.navigate(Screen.UiDemo.route) }
+                        )
+                    }
+                    composable(Screen.UiDemo.route) {
+                        UiDemoScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(Screen.SyncStatus.route) {
+                        SyncStatusScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(Screen.AILab.route) {
+                        AILabScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(Screen.Stats.route) {
+                        StatsScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(Screen.BookBuildGuide.route) {
+                        BookBuildGuideScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(
+                        route = Screen.TodayNewWordSelect.route,
+                        arguments = listOf(navArgument("bookId") { type = NavType.LongType })
+                    ) {
+                        TodayNewWordsSelectScreen(onBack = { navController.popBackStack() })
+                    }
                 }
             }
         }

@@ -81,7 +81,7 @@ fun AppMenuButton(
 /**
  * 抽屉内容（1.4.7 改版）：
  * 顶部是模式状态栏，点开才向下拉出「认词模式 / 拼写模式」两个选项；
- * 三个一级入口贴底部排，单手拇指够得着。
+ * 三个一级入口紧跟模式栏下方，展开时一起被顶下去。
  */
 @Composable
 fun AppDrawerContent(
@@ -174,7 +174,7 @@ fun AppDrawerContent(
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(18.dp))
 
         // 三个一级入口贴底部，当前所在项高亮
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
