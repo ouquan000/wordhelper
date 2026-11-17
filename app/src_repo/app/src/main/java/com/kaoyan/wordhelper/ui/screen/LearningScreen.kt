@@ -18,6 +18,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -71,11 +72,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -109,6 +115,14 @@ import com.kaoyan.wordhelper.data.model.CardBackConfig
 import com.kaoyan.wordhelper.data.model.CardBackSize
 import com.kaoyan.wordhelper.data.model.StudyRating
 import com.kaoyan.wordhelper.ui.component.AnimatedStarToggle
+import com.kaoyan.wordhelper.ui.component.CardStyleDrawer
+import com.kaoyan.wordhelper.ui.component.CardStyleEntryButton
+import com.kaoyan.wordhelper.ui.component.HoloCardStyle
+import com.kaoyan.wordhelper.ui.component.HoloCardSurface
+import com.kaoyan.wordhelper.ui.component.HoloCardTheme
+import com.kaoyan.wordhelper.ui.component.LocalHoloCardPalette
+import com.kaoyan.wordhelper.ui.component.rememberCardStyleDrawerState
+import com.kaoyan.wordhelper.ui.component.rememberHoloLightState
 import com.kaoyan.wordhelper.ui.theme.AlertRed
 import com.kaoyan.wordhelper.ui.theme.FuzzyYellow
 import com.kaoyan.wordhelper.ui.theme.KnownGreen
@@ -121,6 +135,8 @@ import com.kaoyan.wordhelper.util.DateUtils
 import com.kaoyan.wordhelper.util.Sm2Scheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -188,6 +204,15 @@ fun LearningScreen(
     val appContext = remember(context) { context.applicationContext as KaoyanWordApp }
     val pronunciationPlayer: PronunciationPlayer = rememberPronunciationPlayer()
     val uiScope = rememberCoroutineScope()
+
+    // 卡片材质三件套：单独订阅，避免整页跟着 settingsFlow 里其它字段一起重组。
+    val cardUiPrefs by remember(appContext) {
+        appContext.settingsRepository.settingsFlow
+            .map { CardUiPrefs(it.cardStyleId, it.cardGlossHigh, it.cardMotionEnabled) }
+            .distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = CardUiPrefs())
+    val cardStyle = HoloCardStyle.fromId(cardUiPrefs.styleId)
+    val styleDrawerState = rememberCardStyleDrawerState()
 
     var showRemoveDialog by remember { mutableStateOf(false) }
     var showReviewDialog by remember { mutableStateOf(false) }
@@ -411,6 +436,13 @@ fun LearningScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // 右侧材质抽屉展开时，主屏同步微缩到 0.975；读值在 layer lambda 里，只重绘不重组。
+                .graphicsLayer {
+                    val drawer = styleDrawerState.progress
+                    scaleX = 1f - 0.025f * drawer
+                    scaleY = 1f - 0.025f * drawer
+                    transformOrigin = TransformOrigin.Center
+                }
                 // 1.4.3：卡背输入框唤起键盘时，整页让到键盘上方，
                 // 否则「重写思路」按钮会被键盘盖住，点不到（edge-to-edge 默认不会让）。
                 .imePadding()
@@ -424,6 +456,13 @@ fun LearningScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 AppMenuButton(onClick = onOpenDrawer)
+                Spacer(modifier = Modifier.weight(1f))
+                // 右上角入口与左侧菜单按钮同一水平线、同样 48dp 热区。
+                CardStyleEntryButton(
+                    style = cardStyle,
+                    onClick = { styleDrawerState.open(uiScope) },
+                    modifier = Modifier.testTag("learning_card_style_button")
+                )
             }
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -549,6 +588,9 @@ fun LearningScreen(
                                                     )
                                                 }
                                             },
+                                            cardStyle = cardStyle,
+                                            glossHigh = cardUiPrefs.glossHigh,
+                                            motionEnabled = cardUiPrefs.motionEnabled,
                                             modifier = Modifier.fillMaxHeight()
                                         )
                                     }
@@ -618,12 +660,35 @@ fun LearningScreen(
             )
         }
 
+        // 右侧卡片材质抽屉：叠在整页之上，与左侧导航抽屉互相独立。
+        CardStyleDrawer(
+            state = styleDrawerState,
+            selectedStyleId = cardUiPrefs.styleId,
+            glossHigh = cardUiPrefs.glossHigh,
+            motionEnabled = cardUiPrefs.motionEnabled,
+            onSelectStyle = { style ->
+                uiScope.launch { appContext.settingsRepository.updateCardStyleId(style.id) }
+            },
+            onGlossHighChange = { high ->
+                uiScope.launch { appContext.settingsRepository.updateCardGlossHigh(high) }
+            },
+            onMotionEnabledChange = { enabled ->
+                uiScope.launch { appContext.settingsRepository.updateCardMotionEnabled(enabled) }
+            }
+        )
     }
 }
 
 private const val SM2_DESCRIPTION =
     "SM-2 调度说明：不认识会在会话内重试，模糊保守推进，认识按记忆因子增长间隔。"
 private val RECOGNITION_SECTION_SPACING = 10.dp
+
+/** 卡片材质的三个持久化开关，单独收敛成一个不可变快照，避免整页跟着 settingsFlow 抖。 */
+private data class CardUiPrefs(
+    val styleId: String = "pearl",
+    val glossHigh: Boolean = true,
+    val motionEnabled: Boolean = true
+)
 
 /**
  * H：当天词背完、但今天发起过的重写卡还没被实际背掉时，不显示「完成」，显示这张等待卡。
@@ -959,6 +1024,12 @@ private fun WordCard(
     /** 未复核的原因；点角标时展开它。空 = 只有角标没有说明。 */
     unverifiedReason: String? = null,
     backActions: (@Composable (Boolean) -> Unit)? = null,
+    /** 卡片材质（7 款之一），由设置里的 cardStyleId 决定。 */
+    cardStyle: HoloCardStyle = HoloCardStyle.PEARL,
+    /** true = 璀璨炫光，false = 柔和护眼。 */
+    glossHigh: Boolean = true,
+    /** true = 呼吸游走 + 指尖追光；false = 静止省电。 */
+    motionEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var isFlipped by remember(word.id) { mutableStateOf(false) }
@@ -1030,30 +1101,49 @@ private fun WordCard(
     val showFront by remember { derivedStateOf { rotation.value <= 90f } }
     val backVisible = !showFront
 
-    val frontBrush = Brush.verticalGradient(
-        colors = listOf(
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f),
-            MaterialTheme.colorScheme.surface
-        )
-    )
-    val backBrush = Brush.verticalGradient(
-        colors = listOf(
-            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.58f),
-            MaterialTheme.colorScheme.surface
-        )
-    )
-
+    val holoLight = rememberHoloLightState(motionEnabled)
     val tapMaxDragPx = with(density) { 4.dp.toPx() }
-
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.26f)
-        ),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    // 浅色金属/珠光款：给大单词与音标做雕刻凹陷（深色款用亮字，不加，避免糊边）。
+    val engraveShadow = if (
+        cardStyle == HoloCardStyle.CLASSIC ||
+        cardStyle == HoloCardStyle.PEARL ||
+        cardStyle == HoloCardStyle.CHROME
     ) {
+        with(density) {
+            Shadow(
+                color = Color.Black.copy(alpha = 0.30f),
+                offset = Offset(0f, 1.4.dp.toPx()),
+                blurRadius = 1.1.dp.toPx()
+            )
+        }
+    } else {
+        null
+    }
+
+    HoloCardTheme(cardStyle) {
+        HoloCardSurface(
+            style = cardStyle,
+            light = holoLight,
+            isBack = backVisible,
+            glossHigh = glossHigh,
+            modifier = modifier.pointerInput(motionEnabled) {
+                // Initial 阶段只读坐标、不消费：点击翻面、卡背滚动与重写区全部照旧。
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull() ?: continue
+                        if (change.pressed) {
+                            holoLight.pointerAt(
+                                change.position.x / size.width.coerceAtLeast(1),
+                                change.position.y / size.height.coerceAtLeast(1)
+                            )
+                        } else if (event.changes.none { it.pressed }) {
+                            holoLight.pointerUp()
+                        }
+                    }
+                }
+            }
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1062,7 +1152,6 @@ private fun WordCard(
                     isFlipped = !isFlipped
                     onFlipChanged(isFlipped)
                 }
-                .background(if (showFront) frontBrush else backBrush)
                 .padding(horizontal = 20.dp, vertical = 20.dp)
                 .heightIn(min = 260.dp)
         ) {
@@ -1138,16 +1227,18 @@ private fun WordCard(
                                 .fillMaxWidth()
                                 .padding(horizontal = 2.dp),
                             textAlign = TextAlign.Center,
-                            maxLines = wordMaxLines
+                            maxLines = wordMaxLines,
+                            engraveShadow = engraveShadow
                         )
                         if (word.phonetic.isNotBlank()) {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)
                             ) {
                                 Text(
                                     text = word.phonetic,
-                                    style = MaterialTheme.typography.titleMedium,
+                                    style = MaterialTheme.typography.titleMedium.copy(shadow = engraveShadow),
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
@@ -1210,6 +1301,7 @@ private fun WordCard(
             // 1.4.3.2：操作区已挪进卡背滚动内容（CardBackBlocks 的 backActions），
             // 这里不再固定贴底，避免正文被切走两百多像素。
         }
+        }
     }
 }
 
@@ -1234,16 +1326,24 @@ private fun CardBackBlocks(
     unverifiedReason: String? = null,
     backActions: (@Composable (Boolean) -> Unit)? = null
 ) {
+    val palette = LocalHoloCardPalette.current
+    val panelShape = RoundedCornerShape(18.dp)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 12.dp)
+            .fillMaxHeight()
+            .padding(horizontal = 4.dp, vertical = 8.dp)
             .graphicsLayer {
                 rotationY = 180f
                 // 不可见时只把 alpha 归零：它在树里但既不画、也不吃触摸。
                 alpha = if (interactive) 1f else 0f
             }
-            .verticalScroll(scrollState, enabled = interactive),
+            // 自适应磨砂卡片底：透出全息底色，同时压住长释义/例句的对比度。
+            .clip(panelShape)
+            .background(palette.frostedPanel)
+            .border(0.5.dp, palette.panelBorder, panelShape)
+            .verticalScroll(scrollState, enabled = interactive)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(config.spacingDp.dp)
     ) {
         config.renderableBlocks.forEach { block ->
@@ -1654,7 +1754,9 @@ private fun AdaptiveWordText(
     fallbackStyles: List<TextStyle>,
     maxLines: Int,
     modifier: Modifier = Modifier,
-    textAlign: TextAlign = TextAlign.Start
+    textAlign: TextAlign = TextAlign.Start,
+    /** 金属冲压凹陷：深色微阴影 + 1dp 底部高光偏移。 */
+    engraveShadow: Shadow? = null
 ) {
     BoxWithConstraints(modifier = modifier) {
         val density = LocalDensity.current
@@ -1683,14 +1785,29 @@ private fun AdaptiveWordText(
             } ?: styleCandidates.lastOrNull() ?: preferredStyle
         }
 
-        Text(
-            text = text,
-            modifier = Modifier.fillMaxWidth(),
-            style = finalStyle,
-            textAlign = textAlign,
-            maxLines = maxLines,
-            overflow = TextOverflow.Ellipsis
-        )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            if (engraveShadow != null) {
+                // 底部 1dp 白色高光边：和上面的深色微阴影一起做出金属冲压的凹陷感。
+                Text(
+                    text = text,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(y = 1.dp),
+                    style = finalStyle.copy(color = Color.White.copy(alpha = 0.55f), shadow = null),
+                    textAlign = textAlign,
+                    maxLines = maxLines,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = text,
+                modifier = Modifier.fillMaxWidth(),
+                style = if (engraveShadow != null) finalStyle.copy(shadow = engraveShadow) else finalStyle,
+                textAlign = textAlign,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -1710,7 +1827,7 @@ private fun ReviewTimeTag(
         modifier = modifier
             .testTag("learning_review_tag")
             .clickable(onClick = onClick),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.68f),
+        color = MaterialTheme.colorScheme.primaryContainer,
         shape = RoundedCornerShape(18.dp),
         tonalElevation = 1.dp
     ) {

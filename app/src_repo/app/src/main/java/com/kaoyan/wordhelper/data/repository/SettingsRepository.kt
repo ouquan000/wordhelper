@@ -28,6 +28,10 @@ private const val DEFAULT_RECOGNITION_AUTO_PRONOUNCE_ENABLED = false
 private const val DEFAULT_NEW_WORDS_SHUFFLE_ENABLED = false
 private const val DEFAULT_ML_ADAPTIVE_ENABLED = false
 private const val DEFAULT_PLANNED_NEW_WORDS_ENABLED = false
+private const val DEFAULT_CARD_STYLE_ID = "pearl"
+private const val DEFAULT_CARD_GLOSS_HIGH = true
+private const val DEFAULT_CARD_MOTION_ENABLED = true
+private val CARD_STYLE_IDS = setOf("classic", "prism", "rainbow", "pearl", "sparkle", "chrome", "etched")
 private const val DEFAULT_CARD_BACK_URL = ""
 private const val DEFAULT_CARD_BACK_TOKEN = ""
 private const val DEFAULT_CARD_BACK_LAST_GOOD_URL = ""
@@ -53,6 +57,12 @@ data class UserSettings(
     val newWordsShuffleEnabled: Boolean = DEFAULT_NEW_WORDS_SHUFFLE_ENABLED,
     val mlAdaptiveEnabled: Boolean = DEFAULT_ML_ADAPTIVE_ENABLED,
     val plannedNewWordsEnabled: Boolean = DEFAULT_PLANNED_NEW_WORDS_ENABLED,
+    /** 学习主卡片材质：classic / prism / rainbow / pearl / sparkle / chrome / etched。 */
+    val cardStyleId: String = DEFAULT_CARD_STYLE_ID,
+    /** true = 璀璨炫光（1.0x），false = 柔和护眼（0.55x）。 */
+    val cardGlossHigh: Boolean = DEFAULT_CARD_GLOSS_HIGH,
+    /** true = 自动呼吸 + 指尖追光；false = 锁定光源、静止省电。 */
+    val cardMotionEnabled: Boolean = DEFAULT_CARD_MOTION_ENABLED,
     /** 卡背结构地址；空 = 没配，刷新时提示去设置里填。 */
     val cardBackUrl: String = DEFAULT_CARD_BACK_URL,
     /** 电脑端启动时打印的口令；空 = 没填，非本机访问会被 401。 */
@@ -158,6 +168,10 @@ class SettingsRepository(private val context: Context) {
                 prefs[KEY_ML_ADAPTIVE_ENABLED] ?: DEFAULT_ML_ADAPTIVE_ENABLED,
             plannedNewWordsEnabled =
                 prefs[KEY_PLANNED_NEW_WORDS_ENABLED] ?: DEFAULT_PLANNED_NEW_WORDS_ENABLED,
+            cardStyleId = (prefs[KEY_CARD_STYLE_ID] ?: DEFAULT_CARD_STYLE_ID)
+                .takeIf { it in CARD_STYLE_IDS } ?: DEFAULT_CARD_STYLE_ID,
+            cardGlossHigh = prefs[KEY_CARD_GLOSS_HIGH] ?: DEFAULT_CARD_GLOSS_HIGH,
+            cardMotionEnabled = prefs[KEY_CARD_MOTION_ENABLED] ?: DEFAULT_CARD_MOTION_ENABLED,
             cardBackUrl = prefs[KEY_CARD_BACK_URL] ?: DEFAULT_CARD_BACK_URL,
             cardBackToken = prefs[KEY_CARD_BACK_TOKEN] ?: DEFAULT_CARD_BACK_TOKEN,
             cardBackLastGoodUrl = prefs[KEY_CARD_BACK_LAST_GOOD_URL] ?: DEFAULT_CARD_BACK_LAST_GOOD_URL,
@@ -221,6 +235,20 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updatePlannedNewWordsEnabled(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[KEY_PLANNED_NEW_WORDS_ENABLED] = enabled }
+    }
+
+    /** 卡片材质写入；未知 id 落回 pearl，避免脏数据把卡片画成空白。 */
+    suspend fun updateCardStyleId(styleId: String) {
+        val safe = styleId.takeIf { it in CARD_STYLE_IDS } ?: DEFAULT_CARD_STYLE_ID
+        dataStore.edit { prefs -> prefs[KEY_CARD_STYLE_ID] = safe }
+    }
+
+    suspend fun updateCardGlossHigh(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_CARD_GLOSS_HIGH] = enabled }
+    }
+
+    suspend fun updateCardMotionEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_CARD_MOTION_ENABLED] = enabled }
     }
 
     /**
@@ -456,6 +484,9 @@ class SettingsRepository(private val context: Context) {
         private val KEY_NEW_WORDS_SHUFFLE_ENABLED = booleanPreferencesKey("new_words_shuffle_enabled")
         private val KEY_ML_ADAPTIVE_ENABLED = booleanPreferencesKey("ml_adaptive_enabled")
         private val KEY_PLANNED_NEW_WORDS_ENABLED = booleanPreferencesKey("planned_new_words_enabled")
+        private val KEY_CARD_STYLE_ID = stringPreferencesKey("card_style_id")
+        private val KEY_CARD_GLOSS_HIGH = booleanPreferencesKey("card_gloss_high")
+        private val KEY_CARD_MOTION_ENABLED = booleanPreferencesKey("card_motion_enabled")
         private val KEY_CARD_BACK_URL = stringPreferencesKey("card_back_url")
         private val KEY_CARD_BACK_TOKEN = stringPreferencesKey("card_back_token")
         private val KEY_CARD_BACK_LAST_GOOD_URL = stringPreferencesKey("card_back_last_good_url")
