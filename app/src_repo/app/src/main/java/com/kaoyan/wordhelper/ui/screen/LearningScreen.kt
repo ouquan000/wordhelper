@@ -116,6 +116,7 @@ import com.kaoyan.wordhelper.data.model.CardBackSize
 import com.kaoyan.wordhelper.data.model.StudyRating
 import com.kaoyan.wordhelper.ui.component.AnimatedStarToggle
 import com.kaoyan.wordhelper.ui.component.CardStyleDrawer
+import com.kaoyan.wordhelper.ui.component.CardStyleDrawerState
 import com.kaoyan.wordhelper.ui.component.CardStyleEntryButton
 import com.kaoyan.wordhelper.ui.component.HoloCardStyle
 import com.kaoyan.wordhelper.ui.component.HoloCardSurface
@@ -432,6 +433,10 @@ fun LearningScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(pageBrush)
+            // 整页左滑（起手在右侧 40% 内）拉出卡片材质抽屉：不依赖右边缘系统手势排除区，
+            // 卡片中部、下半屏都能划；只在明确左移超过 touchSlop 后才消费事件，
+            // 点击、卡背竖向滚动、右滑开左侧导航抽屉都不受影响。
+            .styleDrawerLeftSwipe(styleDrawerState)
     ) {
         Column(
             modifier = Modifier
@@ -1530,6 +1535,53 @@ private fun TextStyle.scaledBy(size: CardBackSize?): TextStyle {
 }
 
 /**
+ * 整页左滑拉出「卡片材质」抽屉。
+ *
+ * 起手点必须落在屏幕右侧 40% 以内；水平左移超过 touchSlop 才认领手势并开始消费事件，
+ * 因此轻触翻卡、卡背竖向滚动、从左侧右滑开导航抽屉都不会被抢。
+ * 认领后按手指位移实时改 progress（跟手），松手按位置/速度做弹簧吸附。
+ */
+private fun Modifier.styleDrawerLeftSwipe(state: CardStyleDrawerState): Modifier = composed {
+    val currentState by rememberUpdatedState(state)
+    val scope = rememberCoroutineScope()
+    pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            if (down.position.x < size.width * 0.40f) return@awaitEachGesture
+            val drawerWidthPx = size.width * 0.74f
+            var lastX = down.position.x
+            var lastTime = down.uptimeMillis
+            var claimed = false
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) {
+                    if (claimed) {
+                        val dt = (change.uptimeMillis - lastTime).coerceAtLeast(1L)
+                        val velocity = (change.position.x - lastX) / dt * 1000f
+                        scope.launch { currentState.settle(-velocity / drawerWidthPx) }
+                    }
+                    break
+                }
+                if (!claimed) {
+                    val totalDx = change.position.x - down.position.x
+                    if (totalDx < -viewConfiguration.touchSlop && !change.isConsumed) {
+                        claimed = true
+                    }
+                }
+                if (claimed) {
+                    change.consume()
+                    val dx = change.position.x - lastX
+                    currentState.dragBy(-dx / drawerWidthPx)
+                }
+                lastX = change.position.x
+                lastTime = change.uptimeMillis
+            }
+        }
+    }
+}
+
+/**
  * 卡片「轻触翻面」手势，替代原来的 Card(onClick)。
  *
  * 不用 Card(onClick)/clickable 的原因：
@@ -1546,8 +1598,7 @@ private fun TextStyle.scaledBy(size: CardBackSize?): TextStyle {
 private fun Modifier.cardFlipTap(
     tapMaxDragPx: Float,
     onClick: () -> Unit
-): Modifier = composed {
-    val currentOnClick by rememberUpdatedState(onClick)
+): Modifier = composed {    val currentOnClick by rememberUpdatedState(onClick)
     pointerInput(tapMaxDragPx) {
         awaitEachGesture {
             // Initial 阶段拿按下：此时还没有内部手势消费事件，滚动惯性也拦不住。
