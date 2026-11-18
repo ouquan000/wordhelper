@@ -42,7 +42,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -52,10 +51,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlin.math.PI
 import kotlin.math.ceil
-import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.max
-import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -206,18 +204,24 @@ object FlowBurnPalettes {
 /**
  * 心流燃烧颗粒渐变进度条。
  *
- * 纯 Compose Canvas：线性渐变 + 4 个漂移径向色团 + 缓存噪点纹理 + 缓存暗纹 Path。
- * 进度填充只裁在当前进度区域内，前端是液态羽化收口，不是圆球滑块。
+ * 纯 Compose Canvas：线性渐变 + 4 个只沿 X 轴单向奔涌的径向色团 + 1:1 平铺噪点 +
+ * 18~28 颗圆形星尘。进度填充只裁在当前进度区域内，前端是液态羽化收口，不是圆球滑块。
  *
- * @param currentIndex 当前进度（沿用 LearningScreen 的 1-based 语义）
+ * 填充比例与右侧计数严格同源：都直接来自 [currentIndex]/[totalCount]。
+ * totalCount <= 30 时整条进度就是 currentIndex/totalCount；只有 totalCount > 30
+ * 才切换成 30 词一小格的循环视觉，避免 200+ 词时填充条一直贴满。
+ *
+ * @param currentIndex 当前进度（沿用 LearningScreen 的 1-based 语义，与右侧计数同源）
  * @param totalCount 总数
  * @param tier 0=迟缓/超时回冷，1=正常，2=快一点，3=更快，4=最快/燃烧
  * @param elapsedMs 当前卡已停留毫秒（Tier0 由 ViewModel 判定）
  * @param motionEnabled false 或系统 Animator duration scale=0 时退化为静止颗粒条
- * @param barHeight 进度条自身高度，默认 11dp；沙盒可放大到 40dp
+ * @param barHeight 进度条自身高度，默认 18dp；沙盒可放大到 40dp
  * @param showHeader 是否显示「学习进度」与右侧等宽计数器
  * @param paletteOverride 非空时锁定这套色盘（沙盒手动预览用）
  * @param onPaletteSlotChanged 自动流转时每 14 秒回报当前池内色盘序号（0-based）
+ * @param sprintSize >0 时每满一格触发一次 30 词高光脉冲（填充循环固定按 30 词）
+ * @param heat 连续心流热力 0..1，与卡片共用；升温 420ms、降温 4200ms
  */
 @Composable
 fun FlowBurnProgressBar(
@@ -230,7 +234,9 @@ fun FlowBurnProgressBar(
     barHeight: Dp = 11.dp,
     showHeader: Boolean = true,
     paletteOverride: FlowBurnPalette? = null,
-    onPaletteSlotChanged: ((Int) -> Unit)? = null
+    onPaletteSlotChanged: ((Int) -> Unit)? = null,
+    sprintSize: Int = 0,
+    heat: Float = 0f
 ) {
     val safeTier = tier.coerceIn(0, 4)
     val context = LocalContext.current
@@ -260,6 +266,23 @@ fun FlowBurnProgressBar(
             tween<Float>(durationMillis = 4200, easing = LinearOutSlowInEasing)
         }
         tierAnim.animateTo(target, spec)
+    }
+
+    val heatAnim = remember { Animatable(heat.coerceIn(0f, 1f)) }
+    LaunchedEffect(heat, animate) {
+        val target = heat.coerceIn(0f, 1f)
+        if (!animate) {
+            heatAnim.snapTo(target)
+            return@LaunchedEffect
+        }
+        val from = heatAnim.value
+        if (from == target) return@LaunchedEffect
+        val spec = if (target > from) {
+            tween<Float>(durationMillis = 420, easing = FastOutSlowInEasing)
+        } else {
+            tween<Float>(durationMillis = 4200, easing = LinearOutSlowInEasing)
+        }
+        heatAnim.animateTo(target, spec)
     }
 
     val clock = remember { FlowBurnClock() }
@@ -293,29 +316,56 @@ fun FlowBurnProgressBar(
         }
     }
 
-    val rawProgress = if (totalCount > 0) {
-        currentIndex.toFloat() / totalCount.toFloat()
-    } else {
-        0f
-    }
-    val progress by animateFloatAsState(
-        targetValue = rawProgress.coerceIn(0f, 1f),
-        animationSpec = tween(durationMillis = if (animate) 620 else 0),
+    // 填充比例必须和右侧计数用同一组实时状态：currentIndex 是 1-based，
+    // 右侧计数就是 currentIndex/totalCount，这里直接照抄这条公式。
+    // 只有单词数超过一小循环（30）时才切换到 30 词循环视觉；<=30 时永远整条进度。
+    val targetProgress = flowProgressTarget(currentIndex, totalCount)
+
+    // 点击评分后目标值立刻更新，240ms 内填充长度与计数对齐；
+    // 从上一循环回零也走 240ms，不做旧的 620ms 慢半拍 / 满格 snap。
+    val progressAnim by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = if (animate) {
+            tween(durationMillis = 240, easing = FastOutSlowInEasing)
+        } else {
+            tween(durationMillis = 0)
+        },
         label = "flowBurnProgress"
     )
+
+    // 每满一个小循环（30 词）打一次 360ms 高光脉冲；只叠加亮度/描边，不碰真实进度。
+    val sprintPulse = remember { Animatable(0f) }
+    val safeSprintSize = sprintSize.coerceAtLeast(0)
+    val completedSprints = if (safeSprintSize > 0 && totalCount > FLOW_SPRINT_WORDS) {
+        currentIndex / FLOW_SPRINT_WORDS
+    } else {
+        0
+    }
+    LaunchedEffect(completedSprints, safeSprintSize, animate) {
+        if (completedSprints <= 0 || !animate) {
+            sprintPulse.snapTo(0f)
+            return@LaunchedEffect
+        }
+        sprintPulse.snapTo(1f)
+        sprintPulse.animateTo(0f, tween(durationMillis = 360, easing = LinearOutSlowInEasing))
+    }
 
     val counterText = buildString {
         append(currentIndex.coerceIn(0, max(totalCount, 0)).toString().padStart(2, '0'))
         append('/')
         append(max(totalCount, 0).toString().padStart(2, '0'))
     }
-    val haloPad = if (barHeight >= 24.dp) 6.dp else 3.dp
+    // 18dp 轨道要留出同色系外发光的呼吸空间；24dp 沙盒模式再放宽。
+    val haloPad = when {
+        barHeight >= 24.dp -> 9.dp
+        barHeight >= 16.dp -> 7.dp
+        else -> 3.dp
+    }
     val noise = remember { createFlowNoiseBitmap() }
     val noiseBrush = remember(noise) {
         ShaderBrush(ImageShader(noise, TileMode.Repeated, TileMode.Repeated))
     }
     val fillPath = remember { Path() }
-    val textureCache = remember { FlowTextureCache() }
 
     Column(
         modifier = modifier,
@@ -351,22 +401,34 @@ fun FlowBurnProgressBar(
             val top = haloPad.toPx()
             if (w <= 0f || h <= 0f) return@Canvas
 
+            val progress = progressAnim
             val progressWidth = (w * progress).coerceIn(0f, w)
+            val heatLevel = if (animate) heatAnim.value else heat.coerceIn(0f, 1f)
+            val pulse = if (animate) sprintPulse.value else 0f
             val animatedTier = if (animate) tierAnim.value else safeTier.toFloat()
             val tierLow = floor(animatedTier).toInt().coerceIn(0, 4)
             val tierHigh = ceil(animatedTier).toInt().coerceIn(0, 4)
             val tierMix = (animatedTier - tierLow).coerceIn(0f, 1f)
-            val speed = lerpFloat(flowSpeedForTier(tierLow), flowSpeedForTier(tierHigh), tierMix)
+            // 推进速度：tier/heat 越高，X 轴流量越快；亮度始终克制。
+            val speedDpPerSecond = lerpFloat(flowSpeedForTier(tierLow), flowSpeedForTier(tierHigh), tierMix) *
+                (1f + 0.45f * heatLevel)
             val brightness = lerpFloat(flowBrightnessForTier(tierLow), flowBrightnessForTier(tierHigh), tierMix)
-            val intensity = lerpFloat(flowSparkIntensityForTier(tierLow), flowSparkIntensityForTier(tierHigh), tierMix)
-            val driftTime = if (animate) clock.seconds * speed else 0f
+            val intensity = (lerpFloat(
+                flowSparkIntensityForTier(tierLow),
+                flowSparkIntensityForTier(tierHigh),
+                tierMix
+            ) + 0.30f * heatLevel).coerceIn(0f, 1f)
+            val flowSeconds = if (animate) clock.seconds else 0f
+            // 单调递增的 X 偏移：循环取模由各元素自己做，绝不出现负向/左右往复。
+            val flowOffsetX = flowSeconds * speedDpPerSecond * density
             val breath = if (animate && animatedTier < 0.5f) {
                 0.5f + 0.5f * sin(clock.seconds * (2f * PI.toFloat() / 28f))
             } else {
                 0.5f
             }
             val breathBrightness = if (animatedTier < 0.5f) 0.94f + 0.06f * breath else 1f
-            val finalBrightness = (brightness * breathBrightness).coerceIn(0f, 1f)
+            val finalBrightness = (brightness * breathBrightness *
+                (1f + 0.10f * heatLevel + 0.22f * pulse)).coerceIn(0f, 1f)
 
             val cycleRaw = if (animate) clock.seconds / FLOW_PALETTE_CYCLE_SECONDS else 0f
             val cycleSlot = floor(cycleRaw).toInt()
@@ -377,7 +439,22 @@ fun FlowBurnProgressBar(
             val trackColor = Color(0xFF161D31).copy(alpha = 0.85f)
             val radius = h / 2f
 
-            // 底槽：深色胶囊 + 0.5dp 内侧淡白高光。
+            // 同色系外发光：多层扩张描边叠出柔光，暗色背景上勾清整条胶囊轮廓。
+            val glowColor = colors.first()
+            for (layer in 3 downTo 1) {
+                val grow = layer * 1.7.dp.toPx()
+                val glowAlpha = (0.055f + 0.035f * heatLevel + 0.075f * pulse) *
+                    ((4 - layer) / 3f)
+                drawRoundRect(
+                    color = glowColor.copy(alpha = glowAlpha.coerceIn(0f, 0.24f)),
+                    topLeft = Offset(-grow, top - grow),
+                    size = Size(w + grow * 2f, h + grow * 2f),
+                    cornerRadius = CornerRadius(radius + grow),
+                    style = Stroke(width = (1.4f + layer * 0.8f).dp.toPx())
+                )
+            }
+
+            // 底槽：深色胶囊 + 1dp 淡白渐变微光描边。
             drawRoundRect(
                 color = trackColor,
                 topLeft = Offset(0f, top),
@@ -385,15 +462,24 @@ fun FlowBurnProgressBar(
                 cornerRadius = CornerRadius(radius)
             )
             drawRoundRect(
-                color = Color.White.copy(alpha = 0.14f),
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.32f),
+                        Color.White.copy(alpha = 0.10f),
+                        Color.White.copy(alpha = 0.24f)
+                    ),
+                    start = Offset(0f, top),
+                    end = Offset(w, top + h)
+                ),
                 topLeft = Offset(0f, top),
                 size = Size(w, h),
                 cornerRadius = CornerRadius(radius),
-                style = Stroke(width = 0.5.dp.toPx())
+                style = Stroke(width = 1.dp.toPx())
             )
 
             if (progressWidth > 0.5f) {
-                val feather = h * (0.55f + 0.85f * intensity)
+                // 羽化只做“边缘柔化”，长度控制在半条高度内，避免把已填充段吃成视觉缺口。
+                val feather = h * (0.34f + 0.22f * intensity)
                 buildFillPath(fillPath, progressWidth, top, h, feather)
 
                 clipPath(fillPath) {
@@ -409,18 +495,22 @@ fun FlowBurnProgressBar(
                         cornerRadius = CornerRadius(radius)
                     )
 
-                    // 4 个大半径径向柔光色团：利萨如轨迹缓慢漂移 + 微缩放。
+                    // 4 个弥散色团：固定垂直高度（0.42h / 0.58h 微量错位），只沿 +X 单向奔涌。
+                    // 每个色团独立取模循环，没有任何 Y 轴上下摇摆或左右往复。
                     for (i in 0 until 4) {
-                        val phase = driftTime * (0.31f + i * 0.037f) + i * 1.73f
-                        val cx = progressWidth * (0.10f + 0.80f * (0.5f + 0.5f * sin(phase * 0.9f + i * 1.1f)))
-                        val cy = top + h * (0.5f + 0.38f * cos(phase * 1.27f + i * 2.05f))
-                        val blobRadius = h * (1.85f + 0.35f * sin(phase * 0.71f + i * 1.4f))
+                        val blobRadius = h * (1.65f + 0.20f * i + 0.55f * intensity)
+                        val blobSpan = progressWidth + blobRadius * 2f
+                        if (blobSpan <= 0f) continue
+                        val rawTravel = flowOffsetX * (0.55f + i * 0.11f) + blobSpan * (i * 0.27f)
+                        val travel = ((rawTravel % blobSpan) + blobSpan) % blobSpan
+                        val cx = travel - blobRadius
+                        val cy = top + h * (if (i % 2 == 0) 0.42f else 0.58f)
                         val blobColor = colors[(i + 1) % colors.size]
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    blobColor.copy(alpha = 0.44f),
-                                    blobColor.copy(alpha = 0.16f),
+                                    blobColor.copy(alpha = 0.40f),
+                                    blobColor.copy(alpha = 0.14f),
                                     Color.Transparent
                                 ),
                                 center = Offset(cx, cy),
@@ -431,44 +521,22 @@ fun FlowBurnProgressBar(
                         )
                     }
 
-                    // 0.8dp 暗纹：缓存 Path，只做画布平移，不每帧重建。
-                    if (textureCache.width != w || textureCache.height != h) {
-                        buildFlowTexture(textureCache, w, h)
-                    }
-                    val flowOffset = if (animate) (driftTime * 14.dp.toPx()) % w else 0f
-                    val waveColor = Color.White.copy(alpha = 0.25f)
-                    withTransform({ translate(-flowOffset, top) }) {
-                        drawPath(
-                            path = textureCache.waves,
-                            color = waveColor,
-                            style = Stroke(width = 0.8.dp.toPx())
-                        )
-                        drawPath(path = textureCache.dots, color = Color.White.copy(alpha = 0.17f))
-                    }
-                    withTransform({ translate(w - flowOffset, top) }) {
-                        drawPath(
-                            path = textureCache.waves,
-                            color = waveColor,
-                            style = Stroke(width = 0.8.dp.toPx())
-                        )
-                        drawPath(path = textureCache.dots, color = Color.White.copy(alpha = 0.17f))
-                    }
-
-                    // 128×128 灰度噪点平铺，Overlay 0.36；bitmap 只生成一次。
+                    // 128×128 灰度噪点按 1:1 物理像素平铺（TileMode.Repeated），Overlay 0.28。
+                    // 不做 drawImage 拉伸，保证是均匀磨砂胶片颗粒而不是横向条纹。
                     drawRect(
                         brush = noiseBrush,
                         topLeft = Offset(0f, top),
                         size = Size(progressWidth, h),
-                        alpha = 0.36f,
+                        alpha = 0.28f,
                         blendMode = BlendMode.Overlay
                     )
 
-                    // 前端羽化：让暗纹/噪点向进度末端自然褪掉。
-                    val fadeStart = (progressWidth - feather * 2.3f).coerceAtLeast(0f)
+                    // 前端羽化：让噪点/颗粒向进度末端自然褪掉。
+                    val fadeStart = (progressWidth - feather * 1.25f).coerceAtLeast(0f)
                     if (progressWidth - fadeStart > 0.5f) {
                         drawRect(
                             brush = Brush.horizontalGradient(
-                                colors = listOf(Color.Transparent, trackColor.copy(alpha = 0.94f)),
+                                colors = listOf(Color.Transparent, trackColor.copy(alpha = 0.62f)),
                                 startX = fadeStart,
                                 endX = progressWidth
                             ),
@@ -498,23 +566,45 @@ fun FlowBurnProgressBar(
                         center = Offset(tipX, tipY)
                     )
 
-                    // 拖尾星尘：Tier3 轻度、Tier4 密集，向进度末端后方释放。
-                    val sparkCount = (intensity * 56f).toInt().coerceIn(0, FLOW_SPARKS.size)
-                    if (sparkCount > 0 && progressWidth > h) {
-                        val trailLength = min(progressWidth, h * (2.4f + 3.4f * intensity))
-                        val sparkColor = if (intensity > 0.6f) Color.White else colors.first()
-                        for (index in 0 until sparkCount) {
-                            val seed = FLOW_SPARKS[index]
-                            val life = ((driftTime * seed.speed + seed.phase) % 1f + 1f) % 1f
-                            val x = progressWidth - life * trailLength - feather * 0.18f
-                            if (x <= 0f) continue
+                    // 圆形星尘：18~28 颗独立生命周期，半径 1~2.4dp，径向柔光 + 实心核心。
+                    // 只随 flowOffsetX 向右飘散、原地呼吸闪烁淡出，y 固定不漂移。
+                    if (progressWidth > h * 0.6f) {
+                        val particleCount = (18 + (intensity * 10f).toInt()).coerceIn(18, 28)
+                        val travelSpan = (progressWidth + h * 0.8f).coerceAtLeast(h * 2f)
+                        val tierGlowScale = if (animatedTier < 0.5f) 0.55f else 1f
+                        val sparkColor = if (intensity > 0.55f) Color.White else colors.first()
+                        for (index in 0 until particleCount) {
+                            val seed = FLOW_STARDUST[index]
+                            val rawLife = flowOffsetX * seed.speed / travelSpan + seed.phase
+                            val life = rawLife - floor(rawLife)
+                            val fade = sin(life * PI.toFloat()).pow(1.35f).coerceIn(0f, 1f)
+                            val twinkle = 0.62f + 0.38f * sin(flowSeconds * seed.flicker + seed.phase * 6.283f)
+                            val alpha = (seed.alpha * (0.22f + 0.78f * intensity) * tierGlowScale *
+                                fade * twinkle).coerceIn(0f, 0.9f)
+                            if (alpha <= 0.015f) continue
+                            val x = life * travelSpan - h * 0.2f
+                            if (x < -h || x > progressWidth + h) continue
                             val y = top + h * (0.16f + 0.68f * seed.y)
-                            val alpha = ((1f - life) * seed.alpha * intensity).coerceIn(0f, 0.9f)
-                            if (alpha <= 0.02f) continue
+                            val dotRadius = (1f + 1.4f * seed.size).dp.toPx()
+                            val glowRadius = dotRadius * (2.6f + 1.2f * seed.size)
+                            val center = Offset(x, y)
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        sparkColor.copy(alpha = alpha * 0.55f),
+                                        sparkColor.copy(alpha = alpha * 0.18f),
+                                        Color.Transparent
+                                    ),
+                                    center = center,
+                                    radius = glowRadius
+                                ),
+                                radius = glowRadius,
+                                center = center
+                            )
                             drawCircle(
                                 color = sparkColor.copy(alpha = alpha),
-                                radius = (seed.size * h * 0.045f).coerceAtLeast(0.4f),
-                                center = Offset(x, y)
+                                radius = dotRadius,
+                                center = center
                             )
                         }
                     }
@@ -535,6 +625,31 @@ fun FlowBurnProgressBar(
                         )
                     }
                 }
+                // 满一个小循环（30 词）的高光脉冲：前端径向绽放 + 全胶囊白描边，360ms 衰减。
+                // 不用横向扫光，避免整条横线/拉丝的观感。
+                if (pulse > 0.01f) {
+                    val bloomCenter = Offset(progressWidth.coerceIn(0f, w), top + h * 0.5f)
+                    val bloomRadius = h * (2.0f + 1.4f * pulse)
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.24f * pulse),
+                                Color.Transparent
+                            ),
+                            center = bloomCenter,
+                            radius = bloomRadius
+                        ),
+                        radius = bloomRadius,
+                        center = bloomCenter
+                    )
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.42f * pulse),
+                        topLeft = Offset(0f, top),
+                        size = Size(w, h),
+                        cornerRadius = CornerRadius(radius),
+                        style = Stroke(width = 1.2.dp.toPx())
+                    )
+                }
             }
         }
     }
@@ -542,34 +657,49 @@ fun FlowBurnProgressBar(
 
 private const val FLOW_PALETTE_CYCLE_SECONDS = 14f
 
+/** 填充循环的单词格：超过 30 词才启用，避免长会话进度条长期贴满。 */
+private const val FLOW_SPRINT_WORDS = 30
+
 private class FlowBurnClock {
     var seconds by mutableFloatStateOf(0f)
 }
 
-private class FlowTextureCache {
-    var width = -1f
-    var height = -1f
-    val waves = Path()
-    val dots = Path()
+/**
+ * 填充比例的唯一来源：与右侧计数 currentIndex/totalCount 完全同源。
+ *
+ * - currentIndex <= 0 或 totalCount <= 0 → 0
+ * - totalCount <= 30 → currentIndex/totalCount（如 18/20 = 0.90）
+ * - totalCount > 30  → 30 词一小格的循环视觉 (((index-1) % 30) + 1) / 30
+ */
+private fun flowProgressTarget(currentIndex: Int, totalCount: Int): Float {
+    if (currentIndex <= 0 || totalCount <= 0) return 0f
+    if (totalCount <= FLOW_SPRINT_WORDS) {
+        return (currentIndex.toFloat() / totalCount.toFloat()).coerceIn(0f, 1f)
+    }
+    return ((((currentIndex - 1) % FLOW_SPRINT_WORDS) + 1).toFloat() / FLOW_SPRINT_WORDS.toFloat())
+        .coerceIn(0f, 1f)
 }
 
-private data class FlowSparkSeed(
+/** 圆形星尘种子：y 固定、只随 X 偏移向右飘散；相位/尺寸/闪烁速度错落。 */
+private data class FlowStardustSeed(
     val phase: Float,
     val y: Float,
     val size: Float,
     val speed: Float,
-    val alpha: Float
+    val alpha: Float,
+    val flicker: Float
 )
 
-private val FLOW_SPARKS: List<FlowSparkSeed> = run {
+private val FLOW_STARDUST: List<FlowStardustSeed> = run {
     val random = Random(20261117)
-    List(72) {
-        FlowSparkSeed(
+    List(28) {
+        FlowStardustSeed(
             phase = random.nextFloat(),
             y = random.nextFloat(),
-            size = 0.45f + random.nextFloat() * 0.95f,
-            speed = 0.32f + random.nextFloat() * 0.78f,
-            alpha = 0.34f + random.nextFloat() * 0.66f
+            size = random.nextFloat(),
+            speed = 0.55f + random.nextFloat() * 0.65f,
+            alpha = 0.42f + random.nextFloat() * 0.58f,
+            flicker = 1.1f + random.nextFloat() * 1.9f
         )
     }
 }
@@ -587,12 +717,13 @@ private fun createFlowNoiseBitmap(): ImageBitmap {
     return bitmap.asImageBitmap()
 }
 
+/** 色团/星尘的推进速度（dp/秒）：tier0 几乎静止，tier4 明显奔涌。 */
 private fun flowSpeedForTier(tier: Int): Float = when (tier) {
-    0 -> 0.10f
-    1 -> 1f
-    2 -> 1.6f
-    3 -> 2.6f
-    else -> 4.2f
+    0 -> 10f
+    1 -> 46f
+    2 -> 74f
+    3 -> 110f
+    else -> 150f
 }
 
 private fun flowBrightnessForTier(tier: Int): Float = if (tier == 0) 0.72f else 1f
@@ -699,44 +830,4 @@ private fun buildFillPath(path: Path, width: Float, top: Float, height: Float, f
         forceMoveTo = false
     )
     path.close()
-}
-
-private fun buildFlowTexture(cache: FlowTextureCache, width: Float, height: Float) {
-    cache.width = width
-    cache.height = height
-    cache.waves.reset()
-    cache.dots.reset()
-
-    val rows = (height / 6.5f).toInt().coerceIn(2, 8)
-    val rowHeight = height / rows.toFloat()
-    val amplitude = rowHeight * 0.26f
-    val step = max(6f, width / 56f)
-    for (row in 0 until rows) {
-        val baseY = rowHeight * (row + 0.5f)
-        var x = 0f
-        var first = true
-        while (x <= width + step) {
-            val y = baseY + sin(x / width.coerceAtLeast(1f) * (2f * PI.toFloat()) * 2.3f + row * 1.37f) * amplitude
-            if (first) {
-                cache.waves.moveTo(x, y)
-                first = false
-            } else {
-                cache.waves.lineTo(x, y)
-            }
-            x += step
-        }
-    }
-
-    val dotGap = max(9f, width / 70f)
-    var rowIndex = 0
-    var y = rowHeight * 0.32f
-    while (y < height) {
-        var x = (rowIndex % 2) * dotGap * 0.5f
-        while (x < width) {
-            cache.dots.addOval(Rect(x, y, x + 1.35f, y + 1.35f))
-            x += dotGap
-        }
-        y += rowHeight * 0.62f
-        rowIndex += 1
-    }
 }

@@ -5,6 +5,10 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -42,6 +46,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -50,10 +55,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
-import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -248,25 +251,27 @@ fun HoloCardTheme(style: HoloCardStyle, content: @Composable () -> Unit) {
     }
 }
 
-/** 姿态最大有效倾角（弧度，约 28.6°），超出按满偏移处理。 */
-private const val SENSOR_MAX_TILT_RAD = 0.5f
+/** 灵敏度：相对基准倾斜 ±22°（sin 22° ≈ 0.375）即打满整段光程。 */
+private const val SENSOR_FULL_TILT_SIN = 0.375f
 
-/** 光源映射跨度：以 0.5 为中心 ±0.35，恰好落在 0.15..0.85。 */
-private const val SENSOR_LIGHT_SPAN = 0.35f
-private const val SENSOR_LIGHT_MIN = 0.15f
-private const val SENSOR_LIGHT_MAX = 0.85f
+/** 光源映射跨度：以 0.5 为中心 ±0.42，恰好落在 0.08..0.92。 */
+private const val SENSOR_LIGHT_SPAN = 0.42f
+private const val SENSOR_LIGHT_MIN = 0.08f
+private const val SENSOR_LIGHT_MAX = 0.92f
 
-/** 一阶低通系数：SENSOR_DELAY_GAME（≈50Hz）下约 0.2s 收敛，足够压手抖又不拖沓。 */
-private const val SENSOR_LOW_PASS_ALPHA = 0.12f
+/** 一阶低通系数：SENSOR_DELAY_GAME（≈50Hz）下约 0.1s 收敛，压手抖但不拖泥带水。 */
+private const val SENSOR_LOW_PASS_ALPHA = 0.28f
 
-/** 李萨如呼吸叠加到传感器基准上的比例：只做微动，不抢姿态主体。 */
-private const val SENSOR_BREATH_RATIO = 0.18f
+/** 静止时的呼吸微动比例：只让光斑轻轻「活」着，绝不抢倾斜主体。 */
+private const val SENSOR_BREATH_RATIO = 0.04f
 
 /**
  * 虚拟光源。卡片本身永远水平（rotationX = 0），所有「流光」都来自这里。
  *
- * - cardMotionEnabled = true：李萨如呼吸（12.4s / 10.3s）叠加姿态传感器微倾，指针按下后改为追光；
+ * - cardMotionEnabled = true：设备重力矢量相对基准的偏移驱动光源，叠加极微弱呼吸微动；
  * - cardMotionEnabled = false：锁定 (0.34, 0.22)，不注册传感器、也不启动帧循环。
+ *
+ * 姿态一律用「重力矢量投影」表达，不再解算欧拉角，因此竖屏 / 斜握 / 躺卧都不会出现万向节死锁。
  */
 @Stable
 class HoloLightState {
@@ -277,35 +282,20 @@ class HoloLightState {
 
     internal var motionEnabled = true
         private set
-    private var pointerActive = false
-    private var pointerX = 0.34f
-    private var pointerY = 0.22f
     private var velocityX = 0f
     private var velocityY = 0f
     private var time = 0f
 
-    /** 相对中立姿态的倾角（弧度）：roll 管左右、pitch 管前后。 */
-    private var tiltRoll = 0f
-    private var tiltPitch = 0f
+    /** 相对基准姿态的重力分量偏移（单位重力，约 -1..1）：gx 管左右、gy 管前后。 */
+    private var gravityDeltaX = 0f
+    private var gravityDeltaY = 0f
 
-    /** 是否已有有效姿态；没有时退回纯李萨如呼吸，保证老设备观感不变。 */
+    /** 是否已有有效姿态；没有时退回极微弱呼吸，保证老设备观感不变。 */
     private var hasTilt = false
-
-    fun pointerAt(nx: Float, ny: Float) {
-        if (!motionEnabled) return
-        pointerActive = true
-        pointerX = nx.coerceIn(0f, 1f)
-        pointerY = ny.coerceIn(0f, 1f)
-    }
-
-    fun pointerUp() {
-        pointerActive = false
-    }
 
     internal fun setMotionEnabled(enabled: Boolean) {
         motionEnabled = enabled
         if (!enabled) {
-            pointerActive = false
             clearTilt()
             lightX.floatValue = 0.34f
             lightY.floatValue = 0.22f
@@ -318,48 +308,41 @@ class HoloLightState {
 
     /**
      * 传感器回调入口（已在回调侧做过低通滤波）。
-     * 这里只登记「基准倾角」，真正的位置变化仍然交给 [step] 里的弹簧，避免跳变。
+     * 这里只登记「相对基准的重力偏移」，真正的位置变化仍然交给 [step] 里的弹簧，避免跳变。
      */
-    internal fun onSensorTilt(roll: Float, pitch: Float) {
-        tiltRoll = roll.coerceIn(-SENSOR_MAX_TILT_RAD, SENSOR_MAX_TILT_RAD)
-        tiltPitch = pitch.coerceIn(-SENSOR_MAX_TILT_RAD, SENSOR_MAX_TILT_RAD)
+    internal fun onGravityDelta(dx: Float, dy: Float) {
+        gravityDeltaX = dx.coerceIn(-1f, 1f)
+        gravityDeltaY = dy.coerceIn(-1f, 1f)
         hasTilt = true
     }
 
-    /** 注销监听 / 关闭动效 / 重置基准时清空姿态，避免残留倾角把光源钉在一边。 */
+    /** 注销监听 / 关闭动效 / 重置基准时清空姿态，避免残留偏移把光源钉在一边。 */
     internal fun clearTilt() {
-        tiltRoll = 0f
-        tiltPitch = 0f
+        gravityDeltaX = 0f
+        gravityDeltaY = 0f
         hasTilt = false
     }
 
     internal fun step(dt: Float) {
         time += dt
-        val hoverTarget = if (pointerActive) 1f else 0f
-        val ease = 1f - exp(-7f * dt)
-        hover.floatValue += (hoverTarget - hover.floatValue) * ease
-
+        // 呼吸：极低幅度、两个互质周期，避免机械感，但肉眼几乎只是「光在呼吸」。
         val lissX = 0.25f * sin(2f * PI.toFloat() * time / 12.4f)
         val lissY = 0.235f * sin(2f * PI.toFloat() * time / 10.3f + 1.1f)
 
         val targetX: Float
         val targetY: Float
-        if (pointerActive) {
-            // 指针按下优先级最高，直接追光。
-            targetX = pointerX
-            targetY = pointerY
-        } else if (hasTilt) {
-            // 传感器姿态作为基准 target，李萨如只按小比例叠加呼吸微动；整体夹在 0.15..0.85。
-            val baseX = 0.5f + (tiltRoll / SENSOR_MAX_TILT_RAD).coerceIn(-1f, 1f) * SENSOR_LIGHT_SPAN
-            val baseY = 0.5f + (tiltPitch / SENSOR_MAX_TILT_RAD).coerceIn(-1f, 1f) * SENSOR_LIGHT_SPAN
+        if (hasTilt) {
+            // 重力偏移 → 归一化倾斜量 → 0.5 为中心的 ±0.42 光程，再叠极小呼吸。
+            val baseX = 0.5f + (gravityDeltaX / SENSOR_FULL_TILT_SIN).coerceIn(-1f, 1f) * SENSOR_LIGHT_SPAN
+            val baseY = 0.5f + (gravityDeltaY / SENSOR_FULL_TILT_SIN).coerceIn(-1f, 1f) * SENSOR_LIGHT_SPAN
             targetX = (baseX + lissX * SENSOR_BREATH_RATIO).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
             targetY = (baseY + lissY * SENSOR_BREATH_RATIO).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
         } else {
-            // 没有可用姿态传感器：保持原有李萨如自动呼吸（x 0.25..0.75，y 0.18..0.65）。
-            targetX = 0.5f + lissX
-            targetY = 0.415f + lissY
+            // 没有可用姿态传感器：光斑停在中央做极微弱呼吸，不再大幅度李萨如巡游。
+            targetX = (0.5f + lissX * SENSOR_BREATH_RATIO).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
+            targetY = (0.5f + lissY * SENSOR_BREATH_RATIO).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
         }
-        // 无过冲阻尼弹簧：stiffness 160，damping 25.3（≈ 2√160）。
+        // 无过冲阻尼弹簧：stiffness 160，damping 25.3（≈ 2√160），几乎不额外滞后。
         velocityX += (160f * (targetX - lightX.floatValue) - 25.3f * velocityX) * dt
         lightX.floatValue = (lightX.floatValue + velocityX * dt).coerceIn(0f, 1f)
         velocityY += (160f * (targetY - lightY.floatValue) - 25.3f * velocityY) * dt
@@ -386,14 +369,14 @@ fun rememberHoloLightState(motionEnabled: Boolean): HoloLightState {
         }
     }
 
-    // 姿态传感器：只有开启卡片动效时才注册；跟随宿主生命周期，离开前台即注销，回来重新学习基准。
+    // 重力传感器：只有开启卡片动效时才注册；跟随宿主生命周期，离开前台即注销，回来重新学习基准。
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(motionEnabled, context, lifecycleOwner) {
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         val sensor = sensorManager?.let(::pickTiltSensor)
         if (!motionEnabled || sensorManager == null || sensor == null) {
-            // 关闭动效 / 没有传感器服务 / 设备缺这三种传感器：静默降级为纯呼吸，不注册任何监听。
+            // 关闭动效 / 没有传感器服务 / 设备缺这两种传感器：静默降级为极微弱呼吸，不注册任何监听。
             state.clearTilt()
             return@DisposableEffect onDispose { }
         }
@@ -412,7 +395,7 @@ fun rememberHoloLightState(motionEnabled: Boolean): HoloLightState {
         }
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                // 回到前台：重新注册并重置姿态基准，避免暂停期间累积的角度漂移。
+                // 回到前台：重新注册并重置重力基准，避免暂停期间累积的偏移。
                 Lifecycle.Event.ON_RESUME -> register()
                 // 退到后台：立刻注销，省电且不让后台数据继续推光源。
                 Lifecycle.Event.ON_PAUSE -> {
@@ -438,19 +421,19 @@ fun rememberHoloLightState(motionEnabled: Boolean): HoloLightState {
     return state
 }
 
-/** 按优先级挑选姿态传感器：游戏旋转矢量 → 重力计 → 加速度计，全部缺失时返回 null。 */
+/** 按优先级挑选重力传感器：重力计 → 游戏旋转矢量，全部缺失时返回 null。 */
 private fun pickTiltSensor(manager: SensorManager): Sensor? =
-    manager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
-        ?: manager.getDefaultSensor(Sensor.TYPE_GRAVITY)
-        ?: manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    manager.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        ?: manager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
 
 /**
- * 姿态监听器：把手机相对「中立姿态」的 roll/pitch 交给 [HoloLightState.onSensorTilt]。
+ * 重力监听器：把设备坐标系下的重力矢量相对基准的偏移交给 [HoloLightState.onGravityDelta]。
  *
- * - 恢复注册后的首个有效事件只记基准（baseline），之后才输出相对角度；
- * - 角度差归一化到 [-π, π]，避免 ±180° 翻转；
- * - 一阶低通 alpha = 0.12（SENSOR_DELAY_GAME ≈ 50Hz）；
- * - values 长度不足、姿态矩阵不可用等异常输入一律静默丢弃，绝不抛异常。
+ * - 首选 TYPE_GRAVITY；缺失时退到 TYPE_GAME_ROTATION_VECTOR，取旋转矩阵第三行 [R6,R7,R8]
+ *   （即世界竖直方向在设备坐标系中的投影，等价于单位重力）；
+ * - 恢复注册后的首个有效事件只记基准（gx0, gy0），之后输出 dx = gx-gx0、dy = gy-gy0；
+ * - 一阶低通 alpha = 0.28（SENSOR_DELAY_GAME ≈ 50Hz）；
+ * - values 长度不足、矩阵不可用、全零向量等异常输入一律静默丢弃，绝不抛异常。
  */
 private class HoloTiltSensorListener(
     private val sensorType: Int,
@@ -458,22 +441,19 @@ private class HoloTiltSensorListener(
 ) : SensorEventListener {
 
     private val rotationMatrix = FloatArray(9)
-    private val baseRotation = FloatArray(9)
-    private val relativeRotation = FloatArray(9)
-    private val orientation = FloatArray(3)
     private var hasBase = false
-    private var baseRoll = 0f
-    private var basePitch = 0f
+    private var baseGx = 0f
+    private var baseGy = 0f
     private var hasFiltered = false
-    private var filteredRoll = 0f
-    private var filteredPitch = 0f
+    private var filteredDx = 0f
+    private var filteredDy = 0f
 
-    /** 重置姿态基准：重新注册 / 回到前台时调用，把当前姿态认成新的中立位。 */
+    /** 重置重力基准：重新注册 / 回到前台时调用，把当前姿态认成新的中立位。 */
     fun resetBaseline() {
         hasBase = false
         hasFiltered = false
-        filteredRoll = 0f
-        filteredPitch = 0f
+        filteredDx = 0f
+        filteredDy = 0f
         state.clearTilt()
     }
 
@@ -483,92 +463,59 @@ private class HoloTiltSensorListener(
         val e = event ?: return
         if (e.sensor?.type != sensorType) return
         val values = e.values ?: return
-        if (!readTilt(values)) return
+        if (!readGravityDelta(values)) return
         if (!hasFiltered) {
             // 首帧直接对齐，避免从 0 缓慢爬升造成「回前台先偏一下」。
-            filteredRoll = rawRoll
-            filteredPitch = rawPitch
+            filteredDx = rawDx
+            filteredDy = rawDy
             hasFiltered = true
         } else {
-            filteredRoll += (rawRoll - filteredRoll) * SENSOR_LOW_PASS_ALPHA
-            filteredPitch += (rawPitch - filteredPitch) * SENSOR_LOW_PASS_ALPHA
+            filteredDx += (rawDx - filteredDx) * SENSOR_LOW_PASS_ALPHA
+            filteredDy += (rawDy - filteredDy) * SENSOR_LOW_PASS_ALPHA
         }
-        state.onSensorTilt(filteredRoll, filteredPitch)
+        state.onGravityDelta(filteredDx, filteredDy)
     }
 
-    private var rawRoll = 0f
-    private var rawPitch = 0f
+    private var rawDx = 0f
+    private var rawDy = 0f
 
-    /** 读取当前相对倾角到 [rawRoll] / [rawPitch]；返回 false 表示本帧不可用（含基准帧 / 坏帧）。 */
-    @Suppress("DEPRECATION")
-    private fun readTilt(values: FloatArray): Boolean {
-        if (sensorType == Sensor.TYPE_GAME_ROTATION_VECTOR) {
-            // 旋转矢量至少 3 个分量（x, y, z）。
-            if (values.size < 3) return false
-            // 矩阵运算与角度解算包在 runCatching 里：异常帧只丢弃，绝不让传感器线程崩。
-            return runCatching {
-                SensorManager.getRotationMatrixFromVector(rotationMatrix, values)
-                if (!hasBase) {
-                    // 首个有效事件只记基准：此后 R_rel = R_baseᵀ · R_cur，天然是「相对中立姿态」。
-                    System.arraycopy(rotationMatrix, 0, baseRotation, 0, rotationMatrix.size)
-                    hasBase = true
-                    false
-                } else {
-                    multiplyTransposeFirst(baseRotation, rotationMatrix, relativeRotation)
-                    SensorManager.getOrientation(relativeRotation, orientation)
-                    // getOrientation 的轴定义：[0]=azimuth（绕 Z，屏幕内扭转）、
-                    // [1]=pitch（绕 X，前后俯仰）、[2]=roll（绕 Y，左右倾斜）。
-                    // 竖握时左右倾是绕 Y、前后俯仰是绕 X，所以这里取 [2] / [1]。
-                    rawRoll = orientation[2]
-                    rawPitch = orientation[1]
-                    rawRoll.isFinite() && rawPitch.isFinite()
-                }
-            }.getOrDefault(false)
-        }
-        // TYPE_GRAVITY / TYPE_ACCELEROMETER：用重力分量算与竖直方向的夹角，竖直握持时约为 0。
+    /** 读取相对基准的重力偏移到 [rawDx]/[rawDy]；返回 false 表示本帧不可用（含基准帧 / 坏帧）。 */
+    private fun readGravityDelta(values: FloatArray): Boolean {
         if (values.size < 3) return false
-        val gx = values[0]
-        val gy = values[1]
-        val gz = values[2]
-        // 手机接近水平、重力压在 Z 轴时 gy≈0，atan2 会把噪声放大成 ±90°，直接丢弃该帧。
-        if (abs(gy) < 1f) return false
-        val roll = atan2(gx, gy)
-        val pitch = atan2(-gz, gy)
-        // 非有限值（设备异常 / 全零向量）直接拒绝，后续滤波不会被污染。
-        if (!roll.isFinite() || !pitch.isFinite()) return false
+        val gx: Float
+        val gy: Float
+        if (sensorType == Sensor.TYPE_GAME_ROTATION_VECTOR) {
+            val ok = runCatching {
+                SensorManager.getRotationMatrixFromVector(rotationMatrix, values)
+            }.isSuccess
+            if (!ok) return false
+            // R 是 device→world 的旋转：世界 Z 轴（竖直）在设备系的投影 = 第三行 R[6..8]。
+            // 直接用它当单位重力，天然没有欧拉角、也没有万向节死锁。
+            gx = rotationMatrix[6]
+            gy = rotationMatrix[7]
+        } else {
+            var ax = values[0]
+            var ay = values[1]
+            val az = values[2]
+            val norm = sqrt(ax * ax + ay * ay + az * az)
+            // 全零 / 接近失重：归一化会放大噪声，直接丢帧。
+            if (!norm.isFinite() || norm < 1e-3f) return false
+            ax /= norm
+            ay /= norm
+            gx = ax
+            gy = ay
+        }
+        if (!gx.isFinite() || !gy.isFinite()) return false
         if (!hasBase) {
-            baseRoll = roll
-            basePitch = pitch
+            baseGx = gx
+            baseGy = gy
             hasBase = true
             return false
         }
-        rawRoll = normalizeAngle(roll - baseRoll)
-        rawPitch = normalizeAngle(pitch - basePitch)
-        return rawRoll.isFinite() && rawPitch.isFinite()
+        rawDx = (gx - baseGx).coerceIn(-1f, 1f)
+        rawDy = (gy - baseGy).coerceIn(-1f, 1f)
+        return true
     }
-}
-
-/** out = baseᵀ × current（3×3 行主序），即相对姿态 R_rel = R_base⁻¹ · R_cur。 */
-private fun multiplyTransposeFirst(base: FloatArray, current: FloatArray, out: FloatArray) {
-    for (row in 0 until 3) {
-        for (col in 0 until 3) {
-            var sum = 0f
-            for (k in 0 until 3) {
-                sum += base[k * 3 + row] * current[k * 3 + col]
-            }
-            out[row * 3 + col] = sum
-        }
-    }
-}
-
-/** 角度差归一化到 [-π, π]；NaN / Infinity 一律退回 0，保证滤波与映射永远拿到有限值。 */
-private fun normalizeAngle(angle: Float): Float {
-    if (!angle.isFinite()) return 0f
-    val full = (2f * PI).toFloat()
-    var a = angle
-    while (a > PI.toFloat()) a -= full
-    while (a < -PI.toFloat()) a += full
-    return if (a.isFinite()) a else 0f
 }
 
 /**
@@ -583,6 +530,9 @@ fun HoloCardSurface(
     glossHigh: Boolean,
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(28.dp),
+    /** 心流档位 0..4 与连续热力 0..1：驱动外框微光晕、流光与暖色氛围。 */
+    paceTier: Int = 1,
+    paceHeat: Float = 0f,
     content: @Composable BoxScope.() -> Unit = {},
 ) {
     val palette = rememberHoloPalette(style)
@@ -590,7 +540,57 @@ fun HoloCardSurface(
     val gloss = if (glossHigh) 1f else 0.55f
     val baseColor = if (palette.dark) Color(0xFF10142B) else palette.frontBottom
 
+    // 卡面与进度条共用同一套 420ms 升温 / 4200ms 降温节奏。
+    val paceTierAnim = remember { Animatable(paceTier.coerceIn(0, 4).toFloat()) }
+    LaunchedEffect(paceTier, light.motionEnabled) {
+        val target = paceTier.coerceIn(0, 4).toFloat()
+        if (!light.motionEnabled) {
+            paceTierAnim.snapTo(target)
+            return@LaunchedEffect
+        }
+        val from = paceTierAnim.value
+        if (from == target) return@LaunchedEffect
+        val spec = if (target > from) {
+            tween<Float>(durationMillis = 420, easing = FastOutSlowInEasing)
+        } else {
+            tween<Float>(durationMillis = 4200, easing = LinearOutSlowInEasing)
+        }
+        paceTierAnim.animateTo(target, spec)
+    }
+    val paceHeatAnim = remember { Animatable(paceHeat.coerceIn(0f, 1f)) }
+    LaunchedEffect(paceHeat, light.motionEnabled) {
+        val target = paceHeat.coerceIn(0f, 1f)
+        if (!light.motionEnabled) {
+            paceHeatAnim.snapTo(target)
+            return@LaunchedEffect
+        }
+        val from = paceHeatAnim.value
+        if (from == target) return@LaunchedEffect
+        val spec = if (target > from) {
+            tween<Float>(durationMillis = 420, easing = FastOutSlowInEasing)
+        } else {
+            tween<Float>(durationMillis = 4200, easing = LinearOutSlowInEasing)
+        }
+        paceHeatAnim.animateTo(target, spec)
+    }
+
     Box(modifier = modifier) {
+        // 心流暖色外发光：随 tier/heat 抬升，卡背自动收敛到约 35%，只做氛围不抢文字。
+        Box(
+            Modifier
+                .matchParentSize()
+                .graphicsLayer {
+                    val pace = (
+                        paceTierAnim.value / 4f * 0.42f +
+                            paceHeatAnim.value * 0.58f
+                        ).coerceIn(0f, 1f) * if (isBack) 0.62f else 1f
+                    this.shape = shape
+                    clip = false
+                    shadowElevation = (8f + 16f * pace) * density
+                    ambientShadowColor = Color(0xFFFFB066).copy(alpha = 0.20f + 0.16f * pace)
+                    spotShadowColor = Color(0xFFFFB066).copy(alpha = 0.24f + 0.20f * pace)
+                }
+        )
         // 双层弥散阴影：底层大范围环境软投影 alpha .14，近景接触投影 alpha .08。
         // 读 breath 在 graphicsLayer 里，只重绘不重组；呼吸带来 1~2dp 的纵深变化。
         Box(
@@ -615,6 +615,25 @@ fun HoloCardSurface(
                     spotShadowColor = Color.Black.copy(alpha = 0.08f)
                 }
         )
+        // 卡面环境溢光：略大于卡片轮廓的柔光，颜色由本款材质的 accent/frontTop 混合，
+        // 常态约 0.14、心流高燃约 0.21。放在三层阴影与卡面之间，只在卡外缘发光，
+        // 不裁切也不遮挡卡面任何内容。
+        Canvas(
+            Modifier
+                .matchParentSize()
+                .graphicsLayer { clip = false }
+        ) {
+            drawAmbientSpill(
+                palette = palette,
+                lightX = light.lightX.floatValue,
+                lightY = light.lightY.floatValue,
+                pace = (
+                    paceTierAnim.value / 4f * 0.42f +
+                        paceHeatAnim.value * 0.58f
+                    ).coerceIn(0f, 1f) * if (isBack) 0.62f else 1f,
+                isBack = isBack,
+            )
+        }
         // 注意：这一层不能用 matchParentSize —— 全 matchParentSize 的 Box 量出来是 0 宽，
         // 内容会被压成一条缝。让它由 content 决定尺寸，Canvas 再 matchParentSize 铺满。
         Box(
@@ -641,8 +660,24 @@ fun HoloCardSurface(
                         h = h,
                         corner = corner,
                         dots = dots,
+                        pace = (
+                            paceTierAnim.value / 4f * 0.42f +
+                                paceHeatAnim.value * 0.58f
+                            ).coerceIn(0f, 1f) * if (isBack) 0.62f else 1f,
                     )
                 }
+            }
+            // 卡背：材质之上、内容之下铺一层与卡片同圆角的全幅均匀暗化。
+            // 只做整体压暗（让浅色卡背文字站得住、全息流光仍透出来），
+            // 不再画任何内嵌小矩形/内衬/描边——那就是用户报的「黑框」。
+            // 空 Box 不吃触摸，点击翻面、滚动、重写区照旧落在 content() 里。
+            if (isBack) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .clip(shape)
+                        .background(Color(0xFF0A0F1D).copy(alpha = 0.36f))
+                )
             }
             content()
         }
@@ -664,6 +699,7 @@ private fun DrawScope.drawHoloMaterial(
     h: Float,
     corner: Float,
     dots: List<HoloDot>,
+    pace: Float = 0f,
 ) {
     val lx = lightX * w
     val ly = lightY * h
@@ -673,7 +709,47 @@ private fun DrawScope.drawHoloMaterial(
     drawHoloBase(style, palette, lx, ly, w, h, scale, diagonal)
     drawHoloFoil(style, lx, ly, hover, gloss, w, h, scale, diagonal, dots)
     drawHoloGlare(style, lx, ly, hover, gloss, w, h, diagonal)
-    drawHoloRim(palette, lx, ly, hover, w, h, corner, scale)
+    drawHoloPaceAmbience(palette, lx, ly, pace, w, h)
+    drawHoloRim(palette, lx, ly, hover, w, h, corner, scale, pace)
+}
+
+/**
+ * 心流氛围：底部暖色漫反射 + 跟随光源的一抹暖金。只叠低透明度颜色，
+ * 不改变底层材质本身，所以深色不脏、浅色不黄。
+ */
+private fun DrawScope.drawHoloPaceAmbience(
+    palette: HoloCardPalette,
+    lx: Float,
+    ly: Float,
+    pace: Float,
+    w: Float,
+    h: Float,
+) {
+    val strength = pace.coerceIn(0f, 1f)
+    if (strength <= 0.01f) return
+    val warm = if (palette.dark) Color(0xFFFFA95E) else Color(0xFFFFC98A)
+    drawRect(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                warm.copy(alpha = 0.13f * strength),
+                Color.Transparent
+            ),
+            center = Offset(w * 0.5f, h * 1.04f),
+            radius = max(w, h) * 0.92f
+        )
+    )
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                Color(0xFFFFE3B8).copy(alpha = 0.10f * strength),
+                Color.Transparent
+            ),
+            center = Offset(lx, ly),
+            radius = w * 0.55f
+        ),
+        radius = w * 0.55f,
+        center = Offset(lx, ly)
+    )
 }
 
 private fun DrawScope.drawHoloBase(
@@ -1158,8 +1234,50 @@ private fun DrawScope.drawHoloGlare(
     }
 }
 
-private fun DrawScope.drawHoloRim(
+/**
+ * 卡面环境溢光：三层由宽到窄的圆角描边叠出羽化外晕，重心跟随光源。
+ * 常态 alpha 0.14，心流高燃最高 0.21；卡背自动收敛到约 62%。
+ */
+private fun DrawScope.drawAmbientSpill(
     palette: HoloCardPalette,
+    lightX: Float,
+    lightY: Float,
+    pace: Float,
+    isBack: Boolean,
+) {
+    val w = size.width
+    val h = size.height
+    if (w <= 0f || h <= 0f) return
+    val heat = pace.coerceIn(0f, 1f) * if (isBack) 0.62f else 1f
+    val alpha = (0.14f + 0.07f * heat).coerceIn(0f, 0.21f)
+    // 颜色来自当前皮肤，而不是写死一层白/蓝。
+    val tint = lerp(palette.accent, palette.frontTop, 0.45f)
+    val lx = lightX.coerceIn(0f, 1f) * w
+    val ly = lightY.coerceIn(0f, 1f) * h
+    val expand = 3.dp.toPx()
+    val corner = 28.dp.toPx()
+    val radius = 1.15f * sqrt(w * w + h * h)
+    val strokeWidths = floatArrayOf(22f, 13f, 6f)
+    strokeWidths.forEachIndexed { index, widthDp ->
+        val falloff = 1f - index * 0.22f
+        drawRoundRect(
+            brush = Brush.radialGradient(
+                0f to tint.copy(alpha = alpha * falloff),
+                0.50f to tint.copy(alpha = alpha * falloff * 0.62f),
+                0.82f to tint.copy(alpha = alpha * falloff * 0.25f),
+                1f to Color.Transparent,
+                center = Offset(lx, ly),
+                radius = radius,
+            ),
+            topLeft = Offset(-expand, -expand),
+            size = Size(w + expand * 2f, h + expand * 2f),
+            cornerRadius = CornerRadius(corner + expand, corner + expand),
+            style = Stroke(widthDp.dp.toPx()),
+        )
+    }
+}
+
+private fun DrawScope.drawHoloRim(    palette: HoloCardPalette,
     lx: Float,
     ly: Float,
     hover: Float,
@@ -1167,8 +1285,10 @@ private fun DrawScope.drawHoloRim(
     h: Float,
     corner: Float,
     scale: Float,
+    pace: Float = 0f,
 ) {
-    val op = (0.55f + hover * 0.45f) * if (palette.dark) 1f else 0.85f
+    val op = (0.55f + hover * 0.45f + 0.30f * pace.coerceIn(0f, 1f)) *
+        if (palette.dark) 1f else 0.85f
     val stroke = 1.5f * scale
     val inset = stroke / 2f
     drawRoundRect(
@@ -1190,6 +1310,22 @@ private fun DrawScope.drawHoloRim(
         size = Size(w - stroke, h - stroke),
         cornerRadius = CornerRadius(corner, corner),
         style = Stroke(stroke),
+    )
+    // 1dp 外缘高光：accent 染色 + 重心随 light.lightX/lightY 游走，不是固定白边。
+    val rimStroke = 1.dp.toPx()
+    drawRoundRect(
+        brush = Brush.radialGradient(
+            0f to Color.White.copy(alpha = 0.38f * op),
+            0.30f to palette.accent.copy(alpha = 0.30f * op),
+            0.72f to palette.accent.copy(alpha = 0.10f * op),
+            1f to Color.Transparent,
+            center = Offset(lx, ly),
+            radius = 0.60f * sqrt(w * w + h * h),
+        ),
+        topLeft = Offset(rimStroke / 2f, rimStroke / 2f),
+        size = Size(w - rimStroke, h - rimStroke),
+        cornerRadius = CornerRadius(corner, corner),
+        style = Stroke(rimStroke),
     )
     // 距边缘 14dp 的极细流光内框
     val frameInset = 14.dp.toPx()

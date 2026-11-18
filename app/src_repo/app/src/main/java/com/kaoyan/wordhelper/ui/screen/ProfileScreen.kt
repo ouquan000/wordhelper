@@ -44,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +59,7 @@ import com.kaoyan.wordhelper.ui.component.AppPageHeader
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kaoyan.wordhelper.BuildConfig
+import com.kaoyan.wordhelper.KaoyanWordApp
 import com.kaoyan.wordhelper.data.repository.DarkMode
 import com.kaoyan.wordhelper.data.repository.SyncStatusStore
 import com.kaoyan.wordhelper.ui.component.HeatmapGrid
@@ -71,6 +73,7 @@ import com.kaoyan.wordhelper.ui.viewmodel.ProfileViewModel
 import com.kaoyan.wordhelper.ui.viewmodel.ProfileStats
 import com.kaoyan.wordhelper.ui.viewmodel.StatsScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -101,6 +104,11 @@ fun ProfileScreen(
     val syncStatus by SyncStatusStore.state.collectAsStateWithLifecycle()
     val syncMessage by viewModel.syncMessage.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    // 1.4.7.4：全局全屏沉浸开关直接写 SettingsRepository，settingsFlow 会让整棵 UI 立即跟着变。
+    val uiScope = rememberCoroutineScope()
+    val settingsRepository = remember(context) {
+        (context.applicationContext as KaoyanWordApp).settingsRepository
+    }
     var statsVisible by remember { mutableStateOf(false) }
     var dataVisible by remember { mutableStateOf(false) }
     var settingsVisible by remember { mutableStateOf(false) }
@@ -302,6 +310,7 @@ fun ProfileScreen(
                         showBuiltinFullBooks = showBuiltinFullBooks,
                         cardBackUrl = settings.cardBackUrl,
                         cardBackLanAuto = settings.cardBackLanAuto,
+                        immersiveFullscreenEnabled = settings.immersiveFullscreenEnabled,
                         rewritePendingCount = rewritePendingCount,
                         onNewWordsLimitChange = viewModel::updateNewWordsLimit,
                         onFontScaleChange = viewModel::updateFontScale,
@@ -309,7 +318,12 @@ fun ProfileScreen(
                         onPlannedNewWordsEnabledChange = viewModel::updatePlannedNewWordsEnabled,
                         onShowBuiltinFullBooksChange = viewModel::updateShowBuiltinFullBooks,
                         onCardBackUrlChange = viewModel::updateCardBackUrl,
-                        onCardBackLanAutoChange = viewModel::updateCardBackLanAuto
+                        onCardBackLanAutoChange = viewModel::updateCardBackLanAuto,
+                        onImmersiveFullscreenEnabledChange = { enabled ->
+                            uiScope.launch {
+                                settingsRepository.updateImmersiveFullscreenEnabled(enabled)
+                            }
+                        }
                     )
                 }
             }
@@ -673,6 +687,7 @@ private fun SettingsCard(
     showBuiltinFullBooks: Boolean,
     cardBackUrl: String,
     cardBackLanAuto: Boolean,
+    immersiveFullscreenEnabled: Boolean,
     rewritePendingCount: Int,
     onNewWordsLimitChange: (Int) -> Unit,
     onFontScaleChange: (Float) -> Unit,
@@ -680,7 +695,8 @@ private fun SettingsCard(
     onPlannedNewWordsEnabledChange: (Boolean) -> Unit,
     onShowBuiltinFullBooksChange: (Boolean) -> Unit,
     onCardBackUrlChange: (String) -> Unit,
-    onCardBackLanAutoChange: (Boolean) -> Unit
+    onCardBackLanAutoChange: (Boolean) -> Unit,
+    onImmersiveFullscreenEnabledChange: (Boolean) -> Unit
 ) {
     // 电脑端给的是「地址#口令」一整行，这里只让用户粘一次，解析在 SettingsRepository 里做。
     var cardBackUrlInput by remember(cardBackUrl) { mutableStateOf(cardBackUrl) }
@@ -780,6 +796,22 @@ private fun SettingsCard(
                 text = "开启后同一 WiFi 下会先找这台电脑的局域网地址，失败再走域名。" +
                     "仅建议在可信的家庭 WiFi 使用：同一网段的主动攻击无法被明文 HTTP 完全防住；" +
                     "在咖啡馆/公司等公共网络请保持关闭。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            SettingRow(
+                title = "全局全屏沉浸",
+                options = listOf(false, true),
+                optionLabels = listOf("关闭", "开启"),
+                optionTags = listOf(
+                    "settings_immersive_fullscreen_off",
+                    "settings_immersive_fullscreen_on"
+                ),
+                selected = immersiveFullscreenEnabled,
+                onSelect = onImmersiveFullscreenEnabledChange
+            )
+            Text(
+                text = "开启后学习 / 词库 / 我的三页统一隐藏系统状态栏，切换页面不再弹出；顶部下滑可临时呼出。关闭则恢复系统状态栏。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

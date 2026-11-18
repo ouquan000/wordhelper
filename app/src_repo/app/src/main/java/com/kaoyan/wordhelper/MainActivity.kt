@@ -71,7 +71,9 @@ class MainActivity : ComponentActivity() {
                     if (startupVisible) {
                         StartupScreen()
                     } else {
-                        AppNavigation()
+                        AppNavigation(
+                            immersiveFullscreenEnabled = settings.immersiveFullscreenEnabled
+                        )
                     }
                 }
             }

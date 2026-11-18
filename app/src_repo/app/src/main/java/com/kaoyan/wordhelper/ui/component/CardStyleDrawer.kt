@@ -59,6 +59,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -139,6 +140,8 @@ fun CardStyleDrawer(
     onSelectStyle: (HoloCardStyle) -> Unit,
     onGlossHighChange: (Boolean) -> Unit,
     onMotionEnabledChange: (Boolean) -> Unit,
+    ambientBackdropId: String = "auto",
+    onAmbientBackdropChange: (String) -> Unit = {},
     navDrawerOpen: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -148,6 +151,7 @@ fun CardStyleDrawer(
     val drawerWidthPx = with(LocalDensity.current) { drawerWidth.toPx() }
     val shape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp)
     val selectedStyle = HoloCardStyle.fromId(selectedStyleId)
+    val selectedAmbient = AmbientBackdropMode.fromId(ambientBackdropId)
 
     BackHandler(enabled = state.isOpen) {
         state.close(scope)
@@ -274,6 +278,26 @@ fun CardStyleDrawer(
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "背景氛围",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            AmbientBackdropMode.entries.forEach { mode ->
+                                AmbientBackdropCapsule(
+                                    label = mode.label,
+                                    selected = selectedAmbient == mode,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { onAmbientBackdropChange(mode.id) },
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = "光影控制",
                         style = MaterialTheme.typography.labelLarge,
@@ -370,6 +394,61 @@ private fun StyleRow(
                 modifier = Modifier.size(20.dp),
             )
         }
+    }
+}
+
+/** 背景氛围胶囊：5 个并排、31dp 高、11sp，最多两行；只改氛围，不影响材质列表。 */
+@Composable
+private fun AmbientBackdropCapsule(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 700f),
+        label = "ambientCapsuleScale",
+    )
+    Box(
+        modifier = modifier
+            .height(31.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                else MaterialTheme.colorScheme.surface.copy(alpha = 0.45f)
+            )
+            .border(
+                1.dp,
+                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                else MaterialTheme.colorScheme.outline.copy(alpha = 0.16f),
+                CircleShape,
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            lineHeight = 12.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            textAlign = TextAlign.Center,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 2.dp),
+        )
     }
 }
 

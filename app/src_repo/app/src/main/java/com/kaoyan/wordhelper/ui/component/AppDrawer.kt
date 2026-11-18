@@ -21,11 +21,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -90,6 +92,9 @@ fun AppMenuButton(
 /**
  * 三个一级页共用的页头：菜单按钮 + 标题 + 右侧动作。
  * 和学习页用同一套内边距，保证三页的「三条横线」落在同一个位置。
+ *
+ * 1.4.7.4：先让开系统状态栏（隐藏时为 0），再让开挖孔安全边距，
+ * 因此全屏沉浸开启 / 关闭两种状态下，三页的「≡」都落在同一像素位置，也不会被前置摄像头压住。
  */
 @Composable
 fun AppPageHeader(
@@ -99,7 +104,10 @@ fun AppPageHeader(
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .displayCutoutPadding(),
         verticalAlignment = Alignment.CenterVertically
     ) {
         AppMenuButton(onClick = onOpenDrawer)

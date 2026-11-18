@@ -1,13 +1,16 @@
 package com.kaoyan.wordhelper.ui.screen
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -39,19 +42,40 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kaoyan.wordhelper.ui.component.CardEntrance
+import com.kaoyan.wordhelper.ui.component.CardExitStyle
+import com.kaoyan.wordhelper.ui.component.CardTransitionOverlay
+import com.kaoyan.wordhelper.ui.component.DeckStackUnderlay
 import com.kaoyan.wordhelper.ui.component.FlowBurnPalette
 import com.kaoyan.wordhelper.ui.component.FlowBurnPalettes
 import com.kaoyan.wordhelper.ui.component.FlowBurnProgressBar
+import com.kaoyan.wordhelper.ui.component.HoloCardStyle
+import com.kaoyan.wordhelper.ui.component.HoloCardSurface
+import com.kaoyan.wordhelper.ui.component.HoloCardTheme
+import com.kaoyan.wordhelper.ui.component.LocalHoloCardPalette
+import com.kaoyan.wordhelper.ui.component.captureCardSnapshot
+import com.kaoyan.wordhelper.ui.component.rememberCardTransitionController
+import com.kaoyan.wordhelper.ui.component.rememberHoloLightState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val DemoTierNames = listOf("迟缓", "正常", "快一点", "更快", "最快")
+
+/** 与 CardTransitionOverlay 的 TAG 对齐，方便 adb logcat 一条命令核对四种退场。 */
+private const val DemoTransitionTag = "CardTransition"
 
 /**
  * /ui-demo 页面（UI 动效沙盒）：进度条流光调色实验室。
@@ -68,6 +92,14 @@ fun UiDemoScreen(onBack: () -> Unit) {
     var manualIndex by rememberSaveable { mutableStateOf(0) }
     var autoSlot by remember { mutableStateOf(0) }
     var simulationJob by remember { mutableStateOf<Job?>(null) }
+
+    // 04 切卡过场实验室：预览卡快照 + 独立退场特效 + 右下角抽牌入场。
+    val cardTransition = rememberCardTransitionController()
+    val rootView = LocalView.current
+    val density = LocalDensity.current
+    var previewKey by remember { mutableStateOf(0) }
+    var previewStyle by remember { mutableStateOf(CardExitStyle.TEAR) }
+    var previewCardBounds by remember { mutableStateOf(Rect.Zero) }
 
     val scope = rememberCoroutineScope()
     DisposableEffect(Unit) {
@@ -110,6 +142,30 @@ fun UiDemoScreen(onBack: () -> Unit) {
         }
     }
 
+    /**
+     * 播放一次退场：先同步抓拍预览卡当前像素，再交给过场控制器，
+     * 最后自增 contentKey 让 CardEntrance 从右下角弧线抽回一张新卡。
+     */
+    fun playExitCard(style: CardExitStyle) {
+        val bounds = previewCardBounds
+        val snapshot = if (bounds.width > 0f && bounds.height > 0f) {
+            captureCardSnapshot(
+                view = rootView,
+                left = bounds.left,
+                top = bounds.top,
+                width = bounds.width,
+                height = bounds.height,
+                cornerRadiusPx = with(density) { 28.dp.toPx() }
+            )
+        } else {
+            null
+        }
+        previewStyle = style
+        Log.d(DemoTransitionTag, "sandbox launch style=$style snapshot=${snapshot != null}")
+        cardTransition.launch(snapshot, style, motionEnabled = true)
+        previewKey++
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -125,14 +181,16 @@ fun UiDemoScreen(onBack: () -> Unit) {
             )
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        // 根 Box：滚动内容 + 全屏过场画布。画布是最后一个兄弟节点，只画特效、不接触摸。
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             PreviewCard(
                 tier = activeTier,
                 palette = displayPalette,
@@ -266,8 +324,206 @@ fun UiDemoScreen(onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
+
+            SectionCard(
+                title = "04 · 切卡过场实验室",
+                subtitle = "点按钮在预览卡上反复播放；四种退场各自独立。"
+            ) {
+                val cardLight = rememberHoloLightState(motionEnabled = true)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(340.dp)
+                        .testTag("ui_demo_transition_card")
+                        .onGloballyPositioned { previewCardBounds = it.boundsInRoot() }
+                ) {
+                    DeckStackUnderlay(
+                        cardStyle = HoloCardStyle.PEARL,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    CardEntrance(
+                        controller = cardTransition,
+                        contentKey = previewKey,
+                        motionEnabled = true,
+                        cornerRadius = 28.dp,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        HoloCardTheme(style = HoloCardStyle.PEARL) {
+                            HoloCardSurface(
+                                style = HoloCardStyle.PEARL,
+                                light = cardLight,
+                                isBack = false,
+                                glossHigh = true,
+                                modifier = Modifier.fillMaxSize(),
+                                shape = RoundedCornerShape(28.dp)
+                            ) {
+                                TransitionPreviewContent()
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ExitStyleChip(
+                        label = "随机撕碎",
+                        style = CardExitStyle.TEAR,
+                        selectedStyle = previewStyle,
+                        modifier = Modifier.weight(1f)
+                    ) { playExitCard(CardExitStyle.TEAR) }
+                    ExitStyleChip(
+                        label = "不规则碎裂",
+                        style = CardExitStyle.VORONOI,
+                        selectedStyle = previewStyle,
+                        modifier = Modifier.weight(1f)
+                    ) { playExitCard(CardExitStyle.VORONOI) }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ExitStyleChip(
+                        label = "纸张焚烧",
+                        style = CardExitStyle.BURN,
+                        selectedStyle = previewStyle,
+                        modifier = Modifier.weight(1f)
+                    ) { playExitCard(CardExitStyle.BURN) }
+                    ExitStyleChip(
+                        label = "右下角抽牌",
+                        style = CardExitStyle.FLING_GOOD,
+                        selectedStyle = previewStyle,
+                        modifier = Modifier.weight(1f)
+                    ) { playExitCard(CardExitStyle.FLING_GOOD) }
+                }
+                Text(
+                    text = "当前退场：${previewStyle.demoLabel()} · 已播放 $previewKey 次",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // 铺满页面根部的特效画布；Canvas 没有 pointerInput，不拦滚动与胶囊点击。
+        CardTransitionOverlay(controller = cardTransition, modifier = Modifier.fillMaxSize())
         }
     }
+}
+
+/** 04 实验室里的假词卡内容：浅色 PEARL 底 + 深墨字，颜色全部取自 HoloCardTheme。 */
+@Composable
+private fun TransitionPreviewContent() {
+    val palette = LocalHoloCardPalette.current
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 22.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "PEARL · 珍珠柔光白",
+                style = MaterialTheme.typography.labelSmall,
+                color = palette.subInk,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = "04",
+                style = MaterialTheme.typography.labelMedium,
+                color = palette.accent,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "resilient",
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 40.sp,
+                    lineHeight = 48.sp,
+                    fontWeight = FontWeight.Medium
+                ),
+                color = palette.ink
+            )
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = palette.ink.copy(alpha = 0.08f)
+            ) {
+                Text(
+                    text = "/rɪˈzɪliənt/",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.subInk
+                )
+            }
+            Text(
+                text = "有弹性的；能恢复的",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = palette.ink,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "Children are often more resilient than we expect.",
+                style = MaterialTheme.typography.bodySmall,
+                color = palette.subInk,
+                textAlign = TextAlign.Center,
+                maxLines = 2
+            )
+        }
+
+        Text(
+            text = "点击下方胶囊 · 退场后从右下角抽回新卡",
+            style = MaterialTheme.typography.labelSmall,
+            color = palette.subInk.copy(alpha = 0.85f)
+        )
+    }
+}
+
+/** 轻量选中态胶囊：选中只换容器色/字色，不产生全屏手势层。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExitStyleChip(
+    label: String,
+    style: CardExitStyle,
+    selectedStyle: CardExitStyle,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = selectedStyle == style,
+        onClick = onClick,
+        modifier = modifier,
+        label = {
+            Text(
+                text = label,
+                modifier = Modifier.fillMaxWidth(),
+                maxLines = 1,
+                softWrap = false,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    )
+}
+
+private fun CardExitStyle.demoLabel(): String = when (this) {
+    CardExitStyle.TEAR -> "随机撕碎"
+    CardExitStyle.VORONOI -> "不规则碎裂"
+    CardExitStyle.BURN -> "纸张焚烧"
+    CardExitStyle.FLING_GOOD -> "右下角抽牌"
+    CardExitStyle.FLING_HARD -> "右下角缩回"
+    CardExitStyle.FADE -> "淡入淡出"
 }
 
 @Composable

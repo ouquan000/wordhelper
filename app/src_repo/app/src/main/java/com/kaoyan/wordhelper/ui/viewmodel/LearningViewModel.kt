@@ -90,7 +90,9 @@ data class LearningCheckInUiState(
 data class LearningPace(
     val tier: Int = 1,
     val elapsedMs: Long = 0L,
-    val lastAnswerDurationMs: Long = 0L
+    val lastAnswerDurationMs: Long = 0L,
+    /** 连续心流热力 0..1：作答瞬间接近 1，随后按约 4.2s 线性冷却，不随切卡瞬间归零。 */
+    val heat: Float = 0f
 )
 
 private fun paceTierForAnswerDuration(durationMs: Long): Int = when {
@@ -100,6 +102,19 @@ private fun paceTierForAnswerDuration(durationMs: Long): Int = when {
     durationMs <= 13_000L -> 2
     else -> 1
 }
+
+/** 作答耗时 → 连续热力：6s 内 1，8s≈0.8，10s≈0.55，13s≈0.2，16s 后 0。 */
+private fun paceHeatForAnswerDuration(durationMs: Long): Float = when {
+    durationMs <= 0L -> 0f
+    durationMs <= 6_000L -> 1f
+    durationMs <= 8_000L -> 1f - (durationMs - 6_000L) / 2_000f * 0.20f
+    durationMs <= 10_000L -> 0.80f - (durationMs - 8_000L) / 2_000f * 0.25f
+    durationMs <= 13_000L -> 0.55f - (durationMs - 10_000L) / 3_000f * 0.35f
+    durationMs <= 16_000L -> 0.20f - (durationMs - 13_000L) / 3_000f * 0.20f
+    else -> 0f
+}
+
+private const val PACE_HEAT_COOLDOWN_MS = 4_200L
 
 /**
  * 卡背重写进度（1.4.3.1）。
@@ -167,6 +182,10 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     private val _learningPace = MutableStateFlow(LearningPace())
     val learningPace: StateFlow<LearningPace> = _learningPace.asStateFlow()
     private var paceBaseTier = 1
+
+    /** 最近一次作答记录的热力基准与记录时刻；ticker 按 4.2s 线性冷却。 */
+    private var paceBaseHeat = 0f
+    private var paceHeatRecordedAtMs = 0L
     private var recognitionAutoPronounceEventCounter = 0L
     internal var retryQueueRandomSource: RetryRandomSource = RetryRandomSource.Default
     private val _isSubmitting = MutableStateFlow(false)
@@ -1408,12 +1427,14 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         }
         currentWordPresentedAtMs = if (nextWord != null) System.currentTimeMillis() else 0L
         if (oldWordId != nextWord?.id) {
-            // 切新卡/答完立即回到 Tier1 基础节奏；停留 >22s 再由 ticker 抬到 Tier0。
+            // 切新卡/答完立即回到 Tier1 基础节奏；热力保留冷却尾迹，不瞬间归零。
+            val carriedHeat = currentPaceHeat(System.currentTimeMillis())
             paceBaseTier = 1
             _learningPace.value = LearningPace(
                 tier = 1,
                 elapsedMs = 0L,
-                lastAnswerDurationMs = _learningPace.value.lastAnswerDurationMs
+                lastAnswerDurationMs = _learningPace.value.lastAnswerDurationMs,
+                heat = carriedHeat
             )
         }
         if (oldWordId != nextWord?.id) {
@@ -1446,6 +1467,13 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         return (now - startAt).coerceAtLeast(0L)
     }
 
+    /** 当前热力：从最近一次作答基准线性冷却，4.2s 后归零。 */
+    private fun currentPaceHeat(nowMs: Long): Float {
+        if (paceBaseHeat <= 0f) return 0f
+        val cooledMs = (nowMs - paceHeatRecordedAtMs).coerceAtLeast(0L)
+        return (paceBaseHeat * (1f - cooledMs / PACE_HEAT_COOLDOWN_MS.toFloat())).coerceIn(0f, 1f)
+    }
+
     /** ticker 用：当前卡停留 >22s 强制 Tier0，否则沿用最近一次作答耗时对应的基础档位。 */
     private fun refreshLearningPace() {
         val now = System.currentTimeMillis()
@@ -1459,13 +1487,14 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             elapsed > 22_000L -> 0
             else -> paceBaseTier.coerceIn(1, 4)
         }
+        val heat = currentPaceHeat(now)
         val current = _learningPace.value
-        if (current.tier != tier || current.elapsedMs != elapsed) {
-            _learningPace.value = current.copy(tier = tier, elapsedMs = elapsed)
+        if (current.tier != tier || current.elapsedMs != elapsed || current.heat != heat) {
+            _learningPace.value = current.copy(tier = tier, elapsedMs = elapsed, heat = heat)
         }
     }
 
-    /** 作答后立即把节奏切到本次耗时对应的档位；切卡时 updateQueue 会再重置回 Tier1。 */
+    /** 作答后立即把节奏切到本次耗时对应的档位；切卡时 updateQueue 会再重置回 Tier1，热力保留冷却尾迹。 */
     private fun recordAnswerPace(durationMs: Long) {
         val safeDuration = durationMs.coerceAtLeast(0L)
         val now = System.currentTimeMillis()
@@ -1475,10 +1504,13 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             0L
         }
         paceBaseTier = paceTierForAnswerDuration(safeDuration)
+        paceBaseHeat = paceHeatForAnswerDuration(safeDuration)
+        paceHeatRecordedAtMs = now
         _learningPace.value = LearningPace(
             tier = if (elapsed > 22_000L) 0 else paceBaseTier,
             elapsedMs = elapsed,
-            lastAnswerDurationMs = safeDuration
+            lastAnswerDurationMs = safeDuration,
+            heat = paceBaseHeat
         )
     }
 

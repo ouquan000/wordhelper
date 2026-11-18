@@ -1,5 +1,9 @@
 package com.kaoyan.wordhelper.ui.navigation
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.ViewTreeObserver
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
@@ -32,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,8 +52,16 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -96,8 +109,10 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
  * 按住往左拉就跟着回去，中途反向也立刻响应；松手按速度/位置吸附。
  */
 @Composable
-fun AppNavigation() {
+fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
     val navController = rememberNavController()
+    // 1.4.7.4：全局全屏沉浸提到根层级统一控制，三页切换时状态栏不再反复弹出/隐藏。
+    GlobalFullscreenStatusBarEffect(enabled = immersiveFullscreenEnabled)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     var learningMode by rememberSaveable { mutableStateOf(LearningMode.RECOGNITION) }
@@ -334,3 +349,61 @@ fun AppNavigation() {
 
 
 
+
+/**
+ * 1.4.7.4：全局全屏沉浸（隐藏系统状态栏）。
+ *
+ * 从 LearningScreen 提升到根层级：学习 / 词库 / 我的三页共用同一个窗口状态，
+ * 切页时状态栏不会先弹出再收起，页面也不会上下跳 24dp。
+ * - 开启：隐藏 statusBars，并允许顶部下滑临时呼出（BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE）；
+ * - 关闭：立即恢复系统状态栏与原来的 systemBarsBehavior；
+ * - 回到前台 / 窗口重新拿到焦点时再收一次，压掉系统先把状态栏显回来的那一帧。
+ */
+@Composable
+private fun GlobalFullscreenStatusBarEffect(enabled: Boolean) {
+    val view = LocalView.current
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(view, context, lifecycleOwner, enabled) {
+        val window = context.findActivity()?.window
+        if (window == null) {
+            return@DisposableEffect onDispose { }
+        }
+        val controller = WindowCompat.getInsetsController(window, view)
+        val previousBehavior = controller.systemBarsBehavior
+        fun apply() {
+            if (enabled) {
+                controller.systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.hide(WindowInsetsCompat.Type.statusBars())
+            } else {
+                controller.show(WindowInsetsCompat.Type.statusBars())
+                controller.systemBarsBehavior = previousBehavior
+            }
+        }
+        apply()
+        val focusListener = ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
+            if (hasFocus) apply()
+        }
+        view.viewTreeObserver.addOnWindowFocusChangeListener(focusListener)
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME, Lifecycle.Event.ON_START -> apply()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            view.viewTreeObserver.removeOnWindowFocusChangeListener(focusListener)
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            controller.show(WindowInsetsCompat.Type.statusBars())
+            controller.systemBarsBehavior = previousBehavior
+        }
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}

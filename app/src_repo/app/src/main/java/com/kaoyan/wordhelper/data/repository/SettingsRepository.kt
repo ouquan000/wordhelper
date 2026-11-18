@@ -31,6 +31,11 @@ private const val DEFAULT_PLANNED_NEW_WORDS_ENABLED = false
 private const val DEFAULT_CARD_STYLE_ID = "pearl"
 private const val DEFAULT_CARD_GLOSS_HIGH = true
 private const val DEFAULT_CARD_MOTION_ENABLED = true
+// 1.4.7.4：学习页背景氛围；auto 跟随卡片材质，其余为显式锁定的独立氛围。
+private const val DEFAULT_AMBIENT_BACKDROP_ID = "auto"
+private val AMBIENT_BACKDROP_IDS = setOf("auto", "aurora", "abyss", "ember", "velvet")
+// 1.4.7.4：三大主页默认全局全屏沉浸（隐藏系统状态栏），可由「我的 → 设置」显式关闭。
+private const val DEFAULT_IMMERSIVE_FULLSCREEN_ENABLED = true
 private val CARD_STYLE_IDS = setOf("classic", "prism", "rainbow", "pearl", "sparkle", "chrome", "etched")
 private const val DEFAULT_CARD_BACK_URL = ""
 private const val DEFAULT_CARD_BACK_TOKEN = ""
@@ -61,8 +66,10 @@ data class UserSettings(
     val cardStyleId: String = DEFAULT_CARD_STYLE_ID,
     /** true = 璀璨炫光（1.0x），false = 柔和护眼（0.55x）。 */
     val cardGlossHigh: Boolean = DEFAULT_CARD_GLOSS_HIGH,
-    /** true = 自动呼吸 + 指尖追光；false = 锁定光源、静止省电。 */
+    /** true = 自动呼吸 + 姿态追光；false = 锁定光源、静止省电。 */
     val cardMotionEnabled: Boolean = DEFAULT_CARD_MOTION_ENABLED,
+    /** 1.4.7.4：三大主页全局全屏沉浸（隐藏系统状态栏）；false = 恢复系统状态栏。 */
+    val immersiveFullscreenEnabled: Boolean = DEFAULT_IMMERSIVE_FULLSCREEN_ENABLED,
     /** 卡背结构地址；空 = 没配，刷新时提示去设置里填。 */
     val cardBackUrl: String = DEFAULT_CARD_BACK_URL,
     /** 电脑端启动时打印的口令；空 = 没填，非本机访问会被 401。 */
@@ -91,7 +98,9 @@ data class UserSettings(
      */
     val cardBackTlsPin: String = DEFAULT_CARD_BACK_TLS_PIN,
     /** 局域网 HTTPS 端口；默认 8443，实际值由 HTTPS /identity 的 tls_port 更新。 */
-    val cardBackTlsPort: Int = DEFAULT_CARD_BACK_TLS_PORT
+    val cardBackTlsPort: Int = DEFAULT_CARD_BACK_TLS_PORT,
+    /** 1.4.7.4：学习页背景氛围 id：auto / aurora / abyss / ember / velvet。 */
+    val ambientBackdropId: String = DEFAULT_AMBIENT_BACKDROP_ID
 )
 
 data class TodayNewWordsPlan(
@@ -172,6 +181,8 @@ class SettingsRepository(private val context: Context) {
                 .takeIf { it in CARD_STYLE_IDS } ?: DEFAULT_CARD_STYLE_ID,
             cardGlossHigh = prefs[KEY_CARD_GLOSS_HIGH] ?: DEFAULT_CARD_GLOSS_HIGH,
             cardMotionEnabled = prefs[KEY_CARD_MOTION_ENABLED] ?: DEFAULT_CARD_MOTION_ENABLED,
+            immersiveFullscreenEnabled =
+                prefs[KEY_IMMERSIVE_FULLSCREEN_ENABLED] ?: DEFAULT_IMMERSIVE_FULLSCREEN_ENABLED,
             cardBackUrl = prefs[KEY_CARD_BACK_URL] ?: DEFAULT_CARD_BACK_URL,
             cardBackToken = prefs[KEY_CARD_BACK_TOKEN] ?: DEFAULT_CARD_BACK_TOKEN,
             cardBackLastGoodUrl = prefs[KEY_CARD_BACK_LAST_GOOD_URL] ?: DEFAULT_CARD_BACK_LAST_GOOD_URL,
@@ -179,7 +190,9 @@ class SettingsRepository(private val context: Context) {
             cardBackLanAuto = prefs[KEY_CARD_BACK_LAN_AUTO] ?: DEFAULT_CARD_BACK_LAN_AUTO,
             cardBackTlsPin = prefs[KEY_CARD_BACK_TLS_PIN] ?: DEFAULT_CARD_BACK_TLS_PIN,
             cardBackTlsPort = (prefs[KEY_CARD_BACK_TLS_PORT] ?: DEFAULT_CARD_BACK_TLS_PORT)
-                .takeIf { it in 1..65535 } ?: DEFAULT_CARD_BACK_TLS_PORT
+                .takeIf { it in 1..65535 } ?: DEFAULT_CARD_BACK_TLS_PORT,
+            ambientBackdropId = (prefs[KEY_AMBIENT_BACKDROP_ID] ?: DEFAULT_AMBIENT_BACKDROP_ID)
+                .takeIf { it in AMBIENT_BACKDROP_IDS } ?: DEFAULT_AMBIENT_BACKDROP_ID
         )
     }
 
@@ -249,6 +262,17 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updateCardMotionEnabled(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[KEY_CARD_MOTION_ENABLED] = enabled }
+    }
+
+    /** 背景氛围写入；未知 id 落回 auto（跟随卡片），不让脏数据把背景画空。 */
+    suspend fun updateAmbientBackdropId(id: String) {
+        val safe = id.takeIf { it in AMBIENT_BACKDROP_IDS } ?: DEFAULT_AMBIENT_BACKDROP_ID
+        dataStore.edit { prefs -> prefs[KEY_AMBIENT_BACKDROP_ID] = safe }
+    }
+
+    /** 1.4.7.4：全局全屏沉浸开关，实时写回；关闭后根布局立即恢复系统状态栏。 */
+    suspend fun updateImmersiveFullscreenEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_IMMERSIVE_FULLSCREEN_ENABLED] = enabled }
     }
 
     /**
@@ -487,6 +511,9 @@ class SettingsRepository(private val context: Context) {
         private val KEY_CARD_STYLE_ID = stringPreferencesKey("card_style_id")
         private val KEY_CARD_GLOSS_HIGH = booleanPreferencesKey("card_gloss_high")
         private val KEY_CARD_MOTION_ENABLED = booleanPreferencesKey("card_motion_enabled")
+        private val KEY_AMBIENT_BACKDROP_ID = stringPreferencesKey("ambient_backdrop_id")
+        private val KEY_IMMERSIVE_FULLSCREEN_ENABLED =
+            booleanPreferencesKey("immersive_fullscreen_enabled")
         private val KEY_CARD_BACK_URL = stringPreferencesKey("card_back_url")
         private val KEY_CARD_BACK_TOKEN = stringPreferencesKey("card_back_token")
         private val KEY_CARD_BACK_LAST_GOOD_URL = stringPreferencesKey("card_back_last_good_url")
