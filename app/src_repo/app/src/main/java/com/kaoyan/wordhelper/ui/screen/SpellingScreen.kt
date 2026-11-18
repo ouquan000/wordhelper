@@ -7,8 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,10 +23,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -34,7 +35,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,11 +43,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
@@ -60,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import com.kaoyan.wordhelper.data.entity.Word
 import com.kaoyan.wordhelper.data.model.SpellingOutcome
 import com.kaoyan.wordhelper.ui.component.AIGeneratedBadge
+import com.kaoyan.wordhelper.ui.component.StandardPanel
 import com.kaoyan.wordhelper.ui.theme.AlertRed
 import com.kaoyan.wordhelper.ui.theme.KnownGreen
 import com.kaoyan.wordhelper.util.SpellingEvaluator
@@ -134,11 +133,6 @@ fun SpellingScreen(
         }
     }
 
-    val borderColor = when (status) {
-        SpellingStatus.Correct -> KnownGreen
-        SpellingStatus.Wrong, SpellingStatus.CopyRequired -> AlertRed
-        SpellingStatus.Idle -> MaterialTheme.colorScheme.outline
-    }
     val attemptProgress = (attemptCount.coerceAtMost(MAX_ATTEMPTS)).toFloat() / MAX_ATTEMPTS.toFloat()
     val remainingAttempts = (MAX_ATTEMPTS - attemptCount).coerceAtLeast(0)
     val statusText = when (status) {
@@ -165,15 +159,14 @@ fun SpellingScreen(
                 .verticalScroll(contentScrollState),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            GlassPanel(
+            // 顶部进度卡：透明底 + 20dp 圆角 + 1dp 细描边；文字颜色全部交给 MaterialTheme，日夜自动反转。
+            StandardPanel(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                tint = statusColor.copy(alpha = 0.10f)
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Row(
@@ -183,7 +176,8 @@ fun SpellingScreen(
                         Text(
                             text = "拼写练习",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = "$attemptCount/$MAX_ATTEMPTS 次",
@@ -216,53 +210,51 @@ fun SpellingScreen(
                 }
             }
 
-            GlassPanel(
+            // 音标释义卡：同样透明细描边；音标小胶囊用主色 10% 透明底色 + 主色文字，不再用黑色实块。
+            StandardPanel(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
+                shape = RoundedCornerShape(20.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "根据释义拼写英文单词",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        if (word.phonetic.isNotBlank()) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                            ) {
-                                Text(
-                                    text = word.phonetic,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                        if (word.meaning.isNotBlank()) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "根据释义拼写英文单词",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (word.phonetic.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                            contentColor = MaterialTheme.colorScheme.primary
+                        ) {
                             Text(
-                                text = word.meaning,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
+                                text = word.phonetic,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }
+                    }
+                    if (word.meaning.isNotBlank()) {
+                        Text(
+                            text = word.meaning,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             }
 
-            GlassPanel(
+            // 提示工具卡：小胶囊保持透明/主色淡底，提示结果区用淡主色 + 细描边，跟随主题。
+            StandardPanel(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp)
+                shape = RoundedCornerShape(20.dp),
+                contentPadding = PaddingValues(12.dp)
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
@@ -279,7 +271,13 @@ fun SpellingScreen(
                                 }
                             },
                             enabled = canUseHints,
-                            label = { Text(text = "首字母") }
+                            label = { Text(text = "首字母") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = Color.Transparent,
+                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                selectedLabelColor = MaterialTheme.colorScheme.primary
+                            )
                         )
                         FilterChip(
                             selected = showLengthHint,
@@ -289,75 +287,82 @@ fun SpellingScreen(
                                 }
                             },
                             enabled = canUseHints,
-                            label = { Text(text = "长度") }
+                            label = { Text(text = "长度") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = Color.Transparent,
+                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                selectedLabelColor = MaterialTheme.colorScheme.primary
+                            )
                         )
                     }
                     if (showFirstHint || showLengthHint) {
-                        Box(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(Color.White.copy(alpha = 0.06f))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                                .border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                if (showFirstHint) {
-                                    Text(
-                                        text = "首字母：${target.firstOrNull() ?: '-'}",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                                if (showLengthHint) {
-                                    Text(
-                                        text = "长度：${target.length}",
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
+                            if (showFirstHint) {
+                                Text(
+                                    text = "首字母：${target.firstOrNull() ?: '-'}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            if (showLengthHint) {
+                                Text(
+                                    text = "长度：${target.length}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
                             }
                         }
                     }
                 }
             }
             if (status == SpellingStatus.CopyRequired) {
-                GlassPanel(
+                // 抄写提示条：透明细描边，用主题 error 色提示，浅色/深色都清晰。
+                StandardPanel(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    tint = AlertRed.copy(alpha = 0.10f)
+                    shape = RoundedCornerShape(20.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
                 ) {
                     Text(
                         text = "本轮需抄写正确拼写后才能继续",
                         style = MaterialTheme.typography.bodySmall,
-                        color = AlertRed,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
-        GlassPanel(
+        // 底部输入 + 提交区：一块透明细描边面板，输入框与按钮颜色全部由主题控制。
+        StandardPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .imePadding(),
             shape = RoundedCornerShape(20.dp),
-            tint = borderColor.copy(alpha = 0.07f)
+            contentPadding = PaddingValues(12.dp)
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (status == SpellingStatus.CopyRequired) {
                     Text(
                         text = "正确拼写：$target",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = AlertRed,
+                        color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.testTag("spelling_correct_answer")
                     )
                     OutlinedTextField(
@@ -380,6 +385,7 @@ fun SpellingScreen(
                                 onContinueAfterFailure()
                             }
                         }),
+                        colors = spellingFieldColors(),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("spelling_copy_input")
@@ -391,6 +397,7 @@ fun SpellingScreen(
                             }
                         },
                         enabled = !isSubmitting && copyInput.trim().equals(target, ignoreCase = true),
+                        colors = spellingSubmitButtonColors(),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("spelling_continue_after_copy")
@@ -427,11 +434,7 @@ fun SpellingScreen(
                             autoCorrect = false
                         ),
                         keyboardActions = KeyboardActions(onDone = { submit() }),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = borderColor,
-                            unfocusedBorderColor = borderColor,
-                            cursorColor = MaterialTheme.colorScheme.primary
-                        ),
+                        colors = spellingFieldColors(),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("spelling_input")
@@ -444,7 +447,7 @@ fun SpellingScreen(
                         Text(
                             text = "拼写错误，请再试一次（剩余 ${MAX_ATTEMPTS - attemptCount} 次）",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = AlertRed,
+                            color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.testTag("spelling_retry_hint")
                         )
                     }
@@ -453,6 +456,7 @@ fun SpellingScreen(
                     Button(
                         onClick = { submit() },
                         enabled = !isSubmitting && input.isNotBlank(),
+                        colors = spellingSubmitButtonColors(),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("spelling_submit")
@@ -476,58 +480,44 @@ fun SpellingScreen(
     }
 }
 
-/** 液态玻璃容器：半透明深色基底 + 顶部环境高光 + 1dp 白色描边，直接浮在全局暗夜背景上。 */
+/**
+ * 输入框统一配色：文字/标签/占位符全部取自 MaterialTheme。
+ * 浅色模式下 onSurface 是深墨色、onSurfaceVariant 是中灰，占位符不会发白看不清；
+ * 深色模式下两者自动变浅。容器保持透明，让 StandardPanel 的细描边成为唯一轮廓。
+ */
 @Composable
-private fun GlassPanel(
-    modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(20.dp),
-    tint: Color = Color.Transparent,
-    content: @Composable BoxScope.() -> Unit
-) {
-    val base = Brush.verticalGradient(
-        colors = listOf(
-            Color(0xB31A2233),
-            Color(0xD90B0F18)
-        )
-    )
-    // 玻璃底板是深色的，所以面板内部强制使用一套深色语义色：
-    // 外层即使是浅色主题（onSurface 近黑），面板里的文字/输入框/芯片也保持浅色，避免看不见。
-    val scheme = MaterialTheme.colorScheme
-    val glassScheme = remember(scheme) {
-        scheme.copy(
-            onSurface = Color(0xFFF8FAFC),
-            onSurfaceVariant = Color(0xFFCBD5E1),
-            onBackground = Color(0xFFF8FAFC),
-            outline = Color.White.copy(alpha = 0.28f),
-            outlineVariant = Color.White.copy(alpha = 0.16f),
-            surface = Color(0xFF131A28),
-            surfaceVariant = Color(0xFF1B2333)
-        )
-    }
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(brush = base, shape = shape)
-            .background(color = tint, shape = shape)
-            .border(width = 1.dp, color = Color.White.copy(alpha = 0.18f), shape = shape)
-    ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.10f), Color.Transparent)
-                    )
-                )
-        )
-        // 保持 content 仍在 BoxScope 内（不额外套布局容器，避免改变原有布局语义），只加主题与内容色。
-        MaterialTheme(colorScheme = glassScheme) {
-            CompositionLocalProvider(LocalContentColor provides glassScheme.onSurface) {
-                content()
-            }
-        }
-    }
-}
+private fun spellingFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+    disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    focusedContainerColor = Color.Transparent,
+    unfocusedContainerColor = Color.Transparent,
+    disabledContainerColor = Color.Transparent,
+    cursorColor = MaterialTheme.colorScheme.primary,
+    focusedBorderColor = MaterialTheme.colorScheme.primary,
+    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+    disabledBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.50f),
+    errorBorderColor = MaterialTheme.colorScheme.error,
+    focusedLabelColor = MaterialTheme.colorScheme.primary,
+    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.70f),
+    errorLabelColor = MaterialTheme.colorScheme.error,
+    focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    errorPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant
+)
+
+/**
+ * 主操作按钮配色：主色实底 + onPrimary 文字（唯一允许“白字”的地方，深色主题下会自动变深字）。
+ * 禁用态换成中性半透明底 + onSurface 半透明文字，保证浅色/深色下都还能读出按钮上的字。
+ */
+@Composable
+private fun spellingSubmitButtonColors() = ButtonDefaults.buttonColors(
+    containerColor = MaterialTheme.colorScheme.primary,
+    contentColor = MaterialTheme.colorScheme.onPrimary,
+    disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.60f)
+)
 
 @Composable
 private fun SpellingMatchIndicator(input: String, target: String) {
@@ -553,6 +543,7 @@ private fun SpellingMatchIndicator(input: String, target: String) {
         Text(
             text = annotated,
             style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -568,20 +559,23 @@ private fun SpellingAIAssistSection(
     onRequestAiAssist: (forceRefresh: Boolean) -> Unit,
     enabled: Boolean
 ) {
-    GlassPanel(
+    // AI 记忆卡：同样走 StandardPanel（透明底 + 细描边），不再套深色玻璃底板。
+    StandardPanel(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
+        shape = RoundedCornerShape(16.dp),
+        contentPadding = PaddingValues(10.dp)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OutlinedButton(
                 onClick = { onRequestAiAssist(!aiAssistText.isNullOrBlank()) },
                 enabled = aiAssistAvailable && enabled && !aiAssistLoading,
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.70f)
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("spelling_ai_memory")
@@ -609,39 +603,40 @@ private fun SpellingAIAssistSection(
                 Text(
                     text = aiAssistError,
                     style = MaterialTheme.typography.bodySmall,
-                    color = AlertRed
+                    color = MaterialTheme.colorScheme.error
                 )
             }
 
             if (!aiAssistText.isNullOrBlank()) {
                 Box(modifier = Modifier.fillMaxWidth()) {
-                    Box(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color.White.copy(alpha = 0.06f))
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.06f))
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.30f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = "AI 助记",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = aiAssistText,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                text = "内容由 AI 生成，请甄别参考。",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            text = "AI 助记",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = aiAssistText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "内容由 AI 生成，请甄别参考。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     AIGeneratedBadge(
                         modifier = Modifier

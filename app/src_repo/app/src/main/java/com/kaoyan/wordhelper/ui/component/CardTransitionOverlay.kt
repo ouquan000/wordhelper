@@ -384,7 +384,7 @@ fun CardEntrance(
     controller: CardTransitionController,
     contentKey: Any?,
     motionEnabled: Boolean,
-    cornerRadius: Dp = 28.dp,
+    cornerRadius: Dp = 24.dp,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
@@ -503,7 +503,7 @@ fun CardEntrance(
 fun DeckStackUnderlay(
     cardStyle: HoloCardStyle,
     modifier: Modifier = Modifier,
-    cornerRadius: Dp = 28.dp
+    cornerRadius: Dp = 24.dp
 ) {
     HoloCardTheme(style = cardStyle) {
         val palette = LocalHoloCardPalette.current

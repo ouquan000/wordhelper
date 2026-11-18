@@ -8,7 +8,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,12 +23,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -66,6 +63,7 @@ import com.kaoyan.wordhelper.data.repository.SyncStatusStore
 import com.kaoyan.wordhelper.ui.component.HeatmapGrid
 import com.kaoyan.wordhelper.ui.component.HeatmapLegend
 import com.kaoyan.wordhelper.ui.component.MemoryLineChart
+import com.kaoyan.wordhelper.ui.component.StandardPanel
 import com.kaoyan.wordhelper.ui.viewmodel.AiLabSummary
 import com.kaoyan.wordhelper.ui.viewmodel.BookStats
 import com.kaoyan.wordhelper.ui.viewmodel.HeatmapCell
@@ -86,7 +84,10 @@ fun ProfileScreen(
     onOpenAiLab: () -> Unit = {},
     onOpenSyncStatus: () -> Unit = {},
     onOpenUiDemo: () -> Unit = {},
-    onOpenDrawer: () -> Unit = {}
+    onOpenDrawer: () -> Unit = {},
+    // 日夜双模式：由 AppNavigation 从 settingsFlow 传入，默认日间
+    darkThemeEnabled: Boolean = false,
+    onDarkThemeEnabledChange: (Boolean) -> Unit = {}
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val showBuiltinFullBooks by viewModel.showBuiltinFullBooks.collectAsStateWithLifecycle()
@@ -212,24 +213,16 @@ fun ProfileScreen(
             ) {
             // UI 动效沙盒临时入口（feat/frontend-ui）：放在第一个 item，StatsCard 之前。
             item {
-                Card(
+                // 沙盒入口：统一成标准透明细描边面板，不再单独铺 primary 实心底；
+                // 标题与图标仍用 primary 做强调，日夜模式都跟着主题走。
+                StandardPanel(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("profile_ui_demo_entry"),
-                    shape = RoundedCornerShape(20.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
-                    ),
-                    colors = androidx.compose.material3.CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                    )
+                    onClick = onOpenUiDemo
                 ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(onClick = onOpenUiDemo)
-                            .padding(16.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -314,6 +307,7 @@ fun ProfileScreen(
                         cardBackLanAuto = settings.cardBackLanAuto,
                         immersiveFullscreenEnabled = settings.immersiveFullscreenEnabled,
                         rewritePendingCount = rewritePendingCount,
+                        darkThemeEnabled = darkThemeEnabled,
                         onNewWordsLimitChange = viewModel::updateNewWordsLimit,
                         onFontScaleChange = viewModel::updateFontScale,
                         onDarkModeChange = viewModel::updateDarkMode,
@@ -321,6 +315,7 @@ fun ProfileScreen(
                         onShowBuiltinFullBooksChange = viewModel::updateShowBuiltinFullBooks,
                         onCardBackUrlChange = viewModel::updateCardBackUrl,
                         onCardBackLanAutoChange = viewModel::updateCardBackLanAuto,
+                        onDarkThemeEnabledChange = onDarkThemeEnabledChange,
                         onImmersiveFullscreenEnabledChange = { enabled ->
                             uiScope.launch {
                                 settingsRepository.updateImmersiveFullscreenEnabled(enabled)
@@ -366,14 +361,10 @@ private fun StatsCard(
     onStatsScopeChange: (StatsScope) -> Unit,
     onOpenStats: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)),
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
+    // 外层统一用标准透明面板：20dp 圆角 + 1dp 细描边，氛围背景直接透上来。
+    // 内部图表（折线图 / 热力图）本身是透明绘制，不需要再套实心方块。
+    StandardPanel(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
@@ -597,14 +588,9 @@ private fun DataManageCard(
     onSync: () -> Unit,
     onOpenSyncStatus: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)),
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
+    // 数据管理卡：透明底 + 细描边，交给 StandardPanel 统一处理日夜两种描边色。
+    StandardPanel(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(text = "数据管理", style = MaterialTheme.typography.titleLarge)
@@ -691,9 +677,12 @@ private fun SettingsCard(
     cardBackLanAuto: Boolean,
     immersiveFullscreenEnabled: Boolean,
     rewritePendingCount: Int,
+    // 日夜双模式总开关（旧 darkMode 字段保留兼容）
+    darkThemeEnabled: Boolean,
     onNewWordsLimitChange: (Int) -> Unit,
     onFontScaleChange: (Float) -> Unit,
     onDarkModeChange: (DarkMode) -> Unit,
+    onDarkThemeEnabledChange: (Boolean) -> Unit,
     onPlannedNewWordsEnabledChange: (Boolean) -> Unit,
     onShowBuiltinFullBooksChange: (Boolean) -> Unit,
     onCardBackUrlChange: (String) -> Unit,
@@ -708,17 +697,21 @@ private fun SettingsCard(
         parsedDailyNewWords in 1..500 &&
         parsedDailyNewWords != newWordsLimit
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)),
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
+    // 学习设置卡：同样收进标准透明面板，内部间距保持 16dp 不变。
+    StandardPanel(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(text = "学习设置", style = MaterialTheme.typography.titleLarge)
+            // 日夜双模式总开关：放在最顶部，和抽屉里的「外观」快捷开关共用同一份设置。
+            SettingRow(
+                title = "外观模式",
+                options = listOf(false, true),
+                optionLabels = listOf("日间", "夜间"),
+                optionTags = listOf("settings_theme_light", "settings_theme_dark"),
+                selected = darkThemeEnabled,
+                onSelect = onDarkThemeEnabledChange
+            )
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(text = "每日新学词数（不含待复习）", style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -752,13 +745,15 @@ private fun SettingsCard(
                 selected = fontScale,
                 onSelect = onFontScaleChange
             )
+            // 旧「深色模式」三选项行保留兼容（tags 不动）：实际状态统一映射到
+            // darkThemeEnabled，避免和上面的「外观模式」两套开关打架。
             SettingRow(
                 title = "深色模式",
                 options = listOf(DarkMode.FOLLOW_SYSTEM, DarkMode.LIGHT, DarkMode.DARK),
                 optionLabels = listOf("跟随系统", "浅色", "深色"),
                 optionTags = listOf("settings_dark_follow", "settings_dark_light", "settings_dark_dark"),
-                selected = darkMode,
-                onSelect = onDarkModeChange
+                selected = if (darkThemeEnabled) DarkMode.DARK else DarkMode.LIGHT,
+                onSelect = { onDarkThemeEnabledChange(it == DarkMode.DARK) }
             )
             SettingRow(
                 title = "规划单词",
@@ -889,14 +884,9 @@ private fun LabEntryCard(
     summary: AiLabSummary,
     onOpenAiLab: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)),
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
+    // 实验室入口：透明细描边面板，标题与正文沿用主题文字色。
+    StandardPanel(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(text = "实验室", style = MaterialTheme.typography.titleLarge)
@@ -929,14 +919,9 @@ private fun AboutCard() {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
         }.getOrNull().orEmpty()
     }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)),
-        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
+    // 关于卡：统一透明细描边，版本信息等文案全部走主题色。
+    StandardPanel(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(text = "关于软件", style = MaterialTheme.typography.titleLarge)

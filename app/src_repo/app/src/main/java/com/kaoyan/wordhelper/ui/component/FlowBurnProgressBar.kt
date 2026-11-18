@@ -370,7 +370,8 @@ fun FlowBurnProgressBar(
 
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        // 6dp -> 4dp：收紧「学习进度 / 计数」与进度条之间的空隙，把高度还给上方卡片。
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         if (showHeader) {
             Row(

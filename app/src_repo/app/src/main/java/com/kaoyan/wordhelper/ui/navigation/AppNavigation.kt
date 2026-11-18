@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.outlined.LibraryBooks
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.derivedStateOf
@@ -89,6 +90,7 @@ import com.kaoyan.wordhelper.ui.screen.StatsScreen
 import com.kaoyan.wordhelper.ui.screen.SyncStatusScreen
 import com.kaoyan.wordhelper.ui.screen.TodayNewWordsSelectScreen
 import com.kaoyan.wordhelper.ui.screen.UiDemoScreen
+import com.kaoyan.wordhelper.ui.theme.LocalAppDarkTheme
 import kotlinx.coroutines.launch
 
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
@@ -127,9 +129,14 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
         .collectAsStateWithLifecycle(initialValue = UserSettings())
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    // 首帧 backStack 还没就绪时 route 为 null，此时也按学习页处理：
+    // startDestination 就是学习页，否则第一帧会先套一次 systemBars 再跳变，卡片同样会抖一下。
+    val isLearningRoute = currentRoute == null || currentRoute == Screen.Learning.route
     var learningMode by rememberSaveable { mutableStateOf(LearningMode.RECOGNITION) }
 
     val scope = rememberCoroutineScope()
+    // 抽屉玻璃的日/夜配色跟主题保持一致（主题由 settings.darkThemeEnabled 驱动）。
+    val darkTheme = LocalAppDarkTheme.current
     // 360dp 是 ModalDrawerSheet 内部 DrawerDefaults.MaximumDrawerWidth 的上限：
     // 抽屉本体（和它内部的 Column）都会被夹到 360，宽屏上若还按 78% 算，
     // 右侧就会多出一条没内容的透明缝，所以这里先夹住。
@@ -248,6 +255,16 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
                     scaleY = depthScale
                     transformOrigin = TransformOrigin.Center
                 },
+            // 学习页不消费底部系统栏 inset：Scaffold 默认 contentWindowInsets = systemBars，
+            // 从底部上滑呼出手势条 / 进多任务时，navigationBars 会瞬时从 0 跳到 ~48dp，
+            // innerPadding 跟着变 → NavHost 的 padding 变 → 学习页卡片被「压短」一下。
+            // 学习页自带 statusBarsPadding / displayCutoutPadding 与底部 16dp 留白，
+            // 拼写页另有 navigationBarsPadding，所以这里给 0 即可；其余路由保持默认行为。
+            contentWindowInsets = if (isLearningRoute) {
+                WindowInsets(0, 0, 0, 0)
+            } else {
+                ScaffoldDefaults.contentWindowInsets
+            },
             // 透明容器：页面自己不带底色时露出的是底层的 AmbientBackdrop 烟雾
             containerColor = Color.Transparent
         ) { innerPadding ->
@@ -291,7 +308,11 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
                             onOpenStats = { navController.navigate(Screen.Stats.route) },
                             onOpenAiLab = { navController.navigate(Screen.AILab.route) },
                             onOpenSyncStatus = { navController.navigate(Screen.SyncStatus.route) },
-                            onOpenUiDemo = { navController.navigate(Screen.UiDemo.route) }
+                            onOpenUiDemo = { navController.navigate(Screen.UiDemo.route) },
+                            darkThemeEnabled = uiSettings.darkThemeEnabled,
+                            onDarkThemeEnabledChange = { enabled ->
+                                scope.launch { appContext.settingsRepository.updateDarkThemeEnabled(enabled) }
+                            }
                         )
                     }
                     composable(Screen.UiDemo.route) {
@@ -350,18 +371,30 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
                 modifier = Modifier
                     .fillMaxSize()
                     .shadow(12.dp, drawerShape)
-                    // 液态玻璃：半透明深基底（上浅下深）+ 1dp 白 0.22 描边，
-                    // 与全息卡同一套审美；容器色保持透明，不盖住底下的渐变。
+                    // 液态玻璃：浅色是白色半透明玻璃（上白下浅灰蓝），深色保持深基底；
+                    // 容器色保持透明，不盖住底下的渐变。
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color(0xF2161C2B), Color(0xFF070A11))
+                            if (darkTheme) {
+                                listOf(Color(0xF2161C2B), Color(0xFF070A11))
+                            } else {
+                                listOf(Color(0xF2FFFFFF), Color(0xF7F4F6FA))
+                            }
                         ),
                         drawerShape
                     )
-                    .border(1.dp, Color.White.copy(alpha = 0.22f), drawerShape),
+                    .border(
+                        width = 1.dp,
+                        color = if (darkTheme) {
+                            Color.White.copy(alpha = 0.22f)
+                        } else {
+                            Color(0xFF0F172A).copy(alpha = 0.12f)
+                        },
+                        shape = drawerShape
+                    ),
                 drawerShape = drawerShape,
                 drawerContainerColor = Color.Transparent,
-                drawerContentColor = Color(0xFFE2E8F0),
+                drawerContentColor = if (darkTheme) Color(0xFFE2E8F0) else Color(0xFF0F172A),
                 drawerTonalElevation = 0.dp,
                 // 抽屉严格贴住屏幕左/上/下边，系统栏边距由内容自己用 padding 让
                 windowInsets = WindowInsets(0, 0, 0, 0)
@@ -374,7 +407,11 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
                             .fillMaxSize()
                             .background(
                                 Brush.verticalGradient(
-                                    0f to Color.White.copy(alpha = 0.10f),
+                                    0f to if (darkTheme) {
+                                        Color.White.copy(alpha = 0.10f)
+                                    } else {
+                                        Color.White.copy(alpha = 0.45f)
+                                    },
                                     0.30f to Color.Transparent
                                 )
                             )
@@ -385,7 +422,11 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
                         currentRoute = currentRoute,
                         onModeChange = { learningMode = it },
                         onNavigate = navigateFromDrawer,
-                        drawerProgress = { drawerProgress.value }
+                        drawerProgress = { drawerProgress.value },
+                        darkThemeEnabled = uiSettings.darkThemeEnabled,
+                        onDarkThemeEnabledChange = { enabled ->
+                            scope.launch { appContext.settingsRepository.updateDarkThemeEnabled(enabled) }
+                        }
                     )
                 }
             }

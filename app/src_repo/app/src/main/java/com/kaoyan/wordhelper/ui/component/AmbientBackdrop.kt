@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.unit.dp
+import com.kaoyan.wordhelper.ui.theme.LocalAppDarkTheme
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -68,12 +69,17 @@ private val AmbientLayers = listOf(
     AmbientLayer(5, 0.62f, 0.02f, 0.80f, 0.080f, 0.040f, 0.028f, 5.5f),
 )
 
-/** 每层峰值 alpha 0.12–0.18；边缘在 1.0 处完全羽化到透明。 */
-private val AmbientLayerAlphas = floatArrayOf(
-    0.16f, 0.14f, 0.18f, 0.13f, 0.15f, 0.12f,
+/** 日间：极淡冰蓝/珍珠白/浅薰衣草，峰值 0.25–0.40，清爽通透。 */
+private val DayLayerAlphas = floatArrayOf(
+    0.34f, 0.26f, 0.38f, 0.30f, 0.40f, 0.32f,
 )
 
-/** 整页最底层：黑曜石底 + 多层羽化径向烟雾 + 四角暗角。 */
+/** 夜间：深靛蓝/幽紫/冷蓝，峰值略高于旧版以保住颜色存在感。 */
+private val NightLayerAlphas = floatArrayOf(
+    0.32f, 0.28f, 0.36f, 0.26f, 0.30f, 0.24f,
+)
+
+/** 整页最底层：日夜双模式底色 + 多层羽化径向烟雾 + 随模式变化的暗角。 */
 @Composable
 fun AmbientBackdrop(
     mode: AmbientBackdropMode,
@@ -82,7 +88,12 @@ fun AmbientBackdrop(
     motionEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val targetColors = remember(mode, cardStyle) { ambientColors(mode, cardStyle) }
+    // 用 App 自己的明暗信号判断日夜，不能读 MaterialTheme.background（卡片主题会覆盖它）。
+    val darkTheme = LocalAppDarkTheme.current
+    val layerAlphas = if (darkTheme) NightLayerAlphas else DayLayerAlphas
+    val targetColors = remember(mode, cardStyle, darkTheme) {
+        ambientColors(mode, cardStyle, darkTheme)
+    }
 
     // 六层颜色各自 600ms 过渡：旧色雾淡出、新色雾淡入同时发生，不会先闪黑再亮。
     // 颜色数量固定为 6，组合调用顺序稳定。
@@ -147,7 +158,7 @@ fun AmbientBackdrop(
                 val centers = ArrayList<Offset>(AmbientLayers.size)
                 AmbientLayers.forEachIndexed { index, layer ->
                     val color = layerColors[index].value
-                    val alpha = AmbientLayerAlphas[index]
+                    val alpha = layerAlphas[index]
                     val radius = longSide * layer.radius
                     radii[index] = radius
                     centers.add(Offset(w * layer.centerX, h * layer.centerY))
@@ -163,18 +174,28 @@ fun AmbientBackdrop(
                     )
                 }
 
-                // 四角暗角：中心透明，越靠角越黑；中间边缘几乎不受影响。
+                // 日间用极淡白色提亮四角（不压黑），夜间保留收敛后的黑色暗角。
+                val vignetteEdge = if (darkTheme) {
+                    Color.Black.copy(alpha = 0.12f)
+                } else {
+                    Color.White.copy(alpha = 0.10f)
+                }
+                val vignetteCorner = if (darkTheme) {
+                    Color.Black.copy(alpha = 0.34f)
+                } else {
+                    Color.White.copy(alpha = 0.22f)
+                }
                 val vignette = Brush.radialGradient(
                     0f to Color.Transparent,
                     0.50f to Color.Transparent,
-                    0.78f to Color.Black.copy(alpha = 0.18f),
-                    1f to Color.Black.copy(alpha = 0.48f),
+                    0.78f to vignetteEdge,
+                    1f to vignetteCorner,
                     center = Offset(w / 2f, h / 2f),
                     radius = 0.50f * sqrt(w * w + h * h),
                 )
 
                 onDrawBehind {
-                    drawRect(Color(0xFF070A11))
+                    drawRect(if (darkTheme) Color(0xFF080C14) else Color(0xFFF4F6FA))
 
                     // 沿重力反方向偏移：光源偏右，烟雾整体向左让，最多约 8.8dp（0.22 × 40dp）。
                     val normalizedX =
@@ -207,57 +228,117 @@ fun AmbientBackdrop(
 
 private const val PI_FLOAT = 6.2831855f
 
+private fun ambientColors(
+    mode: AmbientBackdropMode,
+    style: HoloCardStyle,
+    darkTheme: Boolean,
+): List<Color> = if (darkTheme) nightAmbientColors(mode, style) else dayAmbientColors(mode, style)
+
 /**
- * AUTO 按皮肤区分色系，避免所有皮肤都同一套蓝紫：
- * pearl 冷银/淡紫/冰蓝，rainbow 红/琥珀/绿/蓝/紫，prism 青/蓝/品红，
- * sparkle 紫/金，chrome 银灰/冷蓝，etched 青铜/墨绿，classic 暖米白/深蓝。
+ * 日间：冰蓝 / 珍珠白 / 浅薰衣草，AUTO 仍按皮肤微调色相但统一压成淡彩。
+ * 色值只做低饱和提亮，叠在 0xFFF4F6FA 基底上保持清爽通透。
  */
-private fun ambientColors(mode: AmbientBackdropMode, style: HoloCardStyle): List<Color> = when (mode) {
-    AmbientBackdropMode.AUTO -> when (style) {
-        HoloCardStyle.PEARL -> listOf(
-            Color(0xFFBFD0EA), Color(0xFFCDBFE8), Color(0xFF9FC6E8),
-            Color(0xFFD8DEEA), Color(0xFFB7C6DE), Color(0xFFA9BEDF),
+private fun dayAmbientColors(mode: AmbientBackdropMode, style: HoloCardStyle): List<Color> =
+    when (mode) {
+        AmbientBackdropMode.AUTO -> when (style) {
+            HoloCardStyle.PEARL -> listOf(
+                Color(0xFFDDE6F5), Color(0xFFE8DDF7), Color(0xFFD6E6F7),
+                Color(0xFFEDF0F7), Color(0xFFDDE6F2), Color(0xFFD8E4F5),
+            )
+            HoloCardStyle.RAINBOW -> listOf(
+                Color(0xFFFFD9D9), Color(0xFFFFE6C7), Color(0xFFD5F0DD),
+                Color(0xFFD2E2FF), Color(0xFFE4D6FF), Color(0xFFFFD6EE),
+            )
+            HoloCardStyle.PRISM -> listOf(
+                Color(0xFFCBEDEA), Color(0xFFD2E2FF), Color(0xFFFFD6EE),
+                Color(0xFFD6F0FA), Color(0xFFDDD6FF), Color(0xFFFFE0F2),
+            )
+            HoloCardStyle.SPARKLE -> listOf(
+                Color(0xFFE4D6FF), Color(0xFFFFEFC7), Color(0xFFEDD6FF),
+                Color(0xFFFFF2D2), Color(0xFFD8D2FF), Color(0xFFFFE8C2),
+            )
+            HoloCardStyle.CHROME -> listOf(
+                Color(0xFFE6EBF2), Color(0xFFD2E0EE), Color(0xFFDDE6EE),
+                Color(0xFFCADBE8), Color(0xFFEDF1F5), Color(0xFFD6E4EF),
+            )
+            HoloCardStyle.ETCHED -> listOf(
+                Color(0xFFF0DFCB), Color(0xFFD6E4D8), Color(0xFFE8D8C2),
+                Color(0xFFD0E0D4), Color(0xFFF5E6D2), Color(0xFFDDE8DE),
+            )
+            HoloCardStyle.CLASSIC -> listOf(
+                Color(0xFFF5EEDC), Color(0xFFD6DEF0), Color(0xFFEFE6D2),
+                Color(0xFFD2DCF0), Color(0xFFE8DFC8), Color(0xFFDDE4F5),
+            )
+        }
+        AmbientBackdropMode.AURORA -> listOf(
+            Color(0xFFBFE8E0), Color(0xFFC7D4FF), Color(0xFFD8F0E4),
+            Color(0xFFCDE8F2), Color(0xFFE0D8FF), Color(0xFFD5EDE8),
         )
-        HoloCardStyle.RAINBOW -> listOf(
-            Color(0xFFE05A5A), Color(0xFFE0A24A), Color(0xFF5FBF7A),
-            Color(0xFF4A8FE0), Color(0xFF8E5FD0), Color(0xFFD05FA8),
+        AmbientBackdropMode.ABYSS -> listOf(
+            Color(0xFFC7E4FF), Color(0xFFCDEFF2), Color(0xFFC2D8F5),
+            Color(0xFFD5F0F2), Color(0xFFCFE2FF), Color(0xFFD8EDF8),
         )
-        HoloCardStyle.PRISM -> listOf(
-            Color(0xFF4FD8D0), Color(0xFF4A7FE0), Color(0xFFD05AA8),
-            Color(0xFF58C6E8), Color(0xFF7A6FE0), Color(0xFFE06AC0),
+        AmbientBackdropMode.EMBER -> listOf(
+            Color(0xFFFFD9CC), Color(0xFFFFE4CC), Color(0xFFF5D2C8),
+            Color(0xFFFFEBD6), Color(0xFFF0D4CE), Color(0xFFFFE0D0),
         )
-        HoloCardStyle.SPARKLE -> listOf(
-            Color(0xFF8F5FD0), Color(0xFFD8B45A), Color(0xFFA06FE0),
-            Color(0xFFE0C06A), Color(0xFF6A5FC0), Color(0xFFC69A4A),
-        )
-        HoloCardStyle.CHROME -> listOf(
-            Color(0xFFC8D2DE), Color(0xFF6A8FB8), Color(0xFFA8B8C8),
-            Color(0xFF5F7FA8), Color(0xFFD0D8E2), Color(0xFF7F9FBE),
-        )
-        HoloCardStyle.ETCHED -> listOf(
-            Color(0xFFB07A4A), Color(0xFF3F5F4A), Color(0xFF8A6A3A),
-            Color(0xFF2F4F3F), Color(0xFFC08A5A), Color(0xFF4A6A52),
-        )
-        HoloCardStyle.CLASSIC -> listOf(
-            Color(0xFFE8DCC0), Color(0xFF3A4F8A), Color(0xFFD8C8A8),
-            Color(0xFF2F4270), Color(0xFFC8B890), Color(0xFF4A5F9A),
+        AmbientBackdropMode.VELVET -> listOf(
+            Color(0xFFE4D6FF), Color(0xFFF0D6F0), Color(0xFFD8D8FF),
+            Color(0xFFEAD8FF), Color(0xFFF2D8E8), Color(0xFFDDD6FA),
         )
     }
-    AmbientBackdropMode.AURORA -> listOf(
-        Color(0xFF3FD8B0), Color(0xFF5A6FE0), Color(0xFF4AE08A),
-        Color(0xFF4FC8D8), Color(0xFF7A5FD8), Color(0xFF3FB88A),
-    )
-    AmbientBackdropMode.ABYSS -> listOf(
-        Color(0xFF1F4F9A), Color(0xFF2A8FA8), Color(0xFF1A3F7A),
-        Color(0xFF3FB0B0), Color(0xFF245F9A), Color(0xFF2A7F9A),
-    )
-    AmbientBackdropMode.EMBER -> listOf(
-        Color(0xFFA83A2A), Color(0xFFC86A2A), Color(0xFF8A2A2A),
-        Color(0xFFD8A04A), Color(0xFF7A2A2A), Color(0xFFB85A2A),
-    )
-    // 丝绒：紫/品红/深蓝，整体更暗、更收敛。
-    AmbientBackdropMode.VELVET -> listOf(
-        Color(0xFF6A3FA0), Color(0xFFA03A7A), Color(0xFF3A3F8A),
-        Color(0xFF5A2F8A), Color(0xFF8A2F6A), Color(0xFF2F2F6A),
-    )
-}
+
+/**
+ * 夜间：深靛蓝 / 幽紫 / 冷蓝，彻底移除旧版的偏绿、偏褐、品红。
+ * 只保留色相上的轻微差别，整体都落在蓝紫色域里。
+ */
+private fun nightAmbientColors(mode: AmbientBackdropMode, style: HoloCardStyle): List<Color> =
+    when (mode) {
+        AmbientBackdropMode.AUTO -> when (style) {
+            HoloCardStyle.PEARL -> listOf(
+                Color(0xFF1E2A5A), Color(0xFF2A1F55), Color(0xFF16305A),
+                Color(0xFF232B66), Color(0xFF33245E), Color(0xFF1B2F5E),
+            )
+            HoloCardStyle.RAINBOW -> listOf(
+                Color(0xFF232B66), Color(0xFF33245E), Color(0xFF1E2A5A),
+                Color(0xFF2A1F55), Color(0xFF16305A), Color(0xFF3A2A66),
+            )
+            HoloCardStyle.PRISM -> listOf(
+                Color(0xFF16305A), Color(0xFF2A1F55), Color(0xFF232B66),
+                Color(0xFF1E2A5A), Color(0xFF33245E), Color(0xFF1B2F5E),
+            )
+            HoloCardStyle.SPARKLE -> listOf(
+                Color(0xFF33245E), Color(0xFF2A1F55), Color(0xFF232B66),
+                Color(0xFF3A2A66), Color(0xFF1E2A5A), Color(0xFF2A1F55),
+            )
+            HoloCardStyle.CHROME -> listOf(
+                Color(0xFF1B2F5E), Color(0xFF232B66), Color(0xFF16305A),
+                Color(0xFF1E2A5A), Color(0xFF2A3A6A), Color(0xFF1B2F5E),
+            )
+            HoloCardStyle.ETCHED -> listOf(
+                Color(0xFF1E2A5A), Color(0xFF2A1F55), Color(0xFF16305A),
+                Color(0xFF232B66), Color(0xFF2A2A5E), Color(0xFF1B2F5E),
+            )
+            HoloCardStyle.CLASSIC -> listOf(
+                Color(0xFF1E2A5A), Color(0xFF232B66), Color(0xFF16305A),
+                Color(0xFF2A1F55), Color(0xFF1B2F5E), Color(0xFF33245E),
+            )
+        }
+        AmbientBackdropMode.AURORA -> listOf(
+            Color(0xFF1E2A5A), Color(0xFF24406E), Color(0xFF2A1F55),
+            Color(0xFF16305A), Color(0xFF2E3A7A), Color(0xFF1B2F5E),
+        )
+        AmbientBackdropMode.ABYSS -> listOf(
+            Color(0xFF16305A), Color(0xFF1E2A5A), Color(0xFF123A66),
+            Color(0xFF232B66), Color(0xFF1B2F5E), Color(0xFF24406E),
+        )
+        AmbientBackdropMode.EMBER -> listOf(
+            Color(0xFF2A1F55), Color(0xFF33245E), Color(0xFF1E2A5A),
+            Color(0xFF3A2A66), Color(0xFF232B66), Color(0xFF2A1F55),
+        )
+        // 丝绒：幽紫为主，保持最暗、最收敛。
+        AmbientBackdropMode.VELVET -> listOf(
+            Color(0xFF33245E), Color(0xFF2A1F55), Color(0xFF232B66),
+            Color(0xFF3A2A66), Color(0xFF1E2A5A), Color(0xFF2A1F55),
+        )
+    }

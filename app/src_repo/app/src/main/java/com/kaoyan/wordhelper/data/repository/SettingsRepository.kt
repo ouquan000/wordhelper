@@ -53,6 +53,8 @@ data class UserSettings(
     val newWordsLimit: Int = DEFAULT_NEW_WORDS_LIMIT,
     val fontScale: Float = DEFAULT_FONT_SCALE,
     val darkMode: DarkMode = DarkMode.FOLLOW_SYSTEM,
+    /** 日夜双模式总开关：true = 夜间，false = 日间（默认浅色，不跟随系统）。 */
+    val darkThemeEnabled: Boolean = false,
     val reviewPressureReliefEnabled: Boolean = DEFAULT_REVIEW_PRESSURE_RELIEF_ENABLED,
     val reviewPressureDailyCap: Int = DEFAULT_REVIEW_PRESSURE_DAILY_CAP,
     val algorithmV4Enabled: Boolean = DEFAULT_ALGORITHM_V4_ENABLED,
@@ -159,6 +161,7 @@ class SettingsRepository(private val context: Context) {
             newWordsLimit = prefs[KEY_NEW_WORDS_LIMIT] ?: DEFAULT_NEW_WORDS_LIMIT,
             fontScale = prefs[KEY_FONT_SCALE] ?: DEFAULT_FONT_SCALE,
             darkMode = DarkMode.fromValue(prefs[KEY_DARK_MODE] ?: DarkMode.FOLLOW_SYSTEM.value),
+            darkThemeEnabled = prefs[KEY_DARK_THEME_ENABLED] ?: false,
             reviewPressureReliefEnabled = prefs[KEY_REVIEW_PRESSURE_RELIEF_ENABLED]
                 ?: DEFAULT_REVIEW_PRESSURE_RELIEF_ENABLED,
             reviewPressureDailyCap = (prefs[KEY_REVIEW_PRESSURE_DAILY_CAP] ?: DEFAULT_REVIEW_PRESSURE_DAILY_CAP)
@@ -212,6 +215,11 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updateDarkMode(mode: DarkMode) {
         dataStore.edit { prefs -> prefs[KEY_DARK_MODE] = mode.value }
+    }
+
+    /** 日夜双模式开关：写入新键，旧 darkMode 键保持不动以兼容历史设置。 */
+    suspend fun updateDarkThemeEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_DARK_THEME_ENABLED] = enabled }
     }
 
     suspend fun updateReviewPressureReliefEnabled(enabled: Boolean) {
@@ -497,6 +505,7 @@ class SettingsRepository(private val context: Context) {
         private val KEY_NEW_WORDS_LIMIT = intPreferencesKey("new_words_limit")
         private val KEY_FONT_SCALE = floatPreferencesKey("font_scale")
         private val KEY_DARK_MODE = intPreferencesKey("dark_mode")
+        private val KEY_DARK_THEME_ENABLED = booleanPreferencesKey("dark_theme_enabled")
         private val KEY_REVIEW_PRESSURE_RELIEF_ENABLED =
             booleanPreferencesKey("review_pressure_relief_enabled")
         private val KEY_REVIEW_PRESSURE_DAILY_CAP = intPreferencesKey("review_pressure_daily_cap")

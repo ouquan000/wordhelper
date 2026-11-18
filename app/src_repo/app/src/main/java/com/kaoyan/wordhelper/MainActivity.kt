@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -15,7 +14,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import com.kaoyan.wordhelper.ui.navigation.AppNavigation
 import com.kaoyan.wordhelper.ui.screen.StartupScreen
 import com.kaoyan.wordhelper.ui.theme.KaoyanWordTheme
-import com.kaoyan.wordhelper.data.repository.DarkMode
 import com.kaoyan.wordhelper.data.repository.UserSettings
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
@@ -57,11 +55,8 @@ class MainActivity : ComponentActivity() {
                     lifecycleOwner = this@MainActivity,
                     initialValue = UserSettings()
                 )
-                val darkTheme = when (settings.darkMode) {
-                    DarkMode.FOLLOW_SYSTEM -> isSystemInDarkTheme()
-                    DarkMode.LIGHT -> false
-                    DarkMode.DARK -> true
-                }
+                // 日夜双模式：默认浅色，不再跟随系统（模拟器系统为深色）。
+                val darkTheme = settings.darkThemeEnabled
                 KaoyanWordTheme(darkTheme = darkTheme, fontScale = settings.fontScale) {
                     var startupVisible by rememberSaveable { mutableStateOf(true) }
                     LaunchedEffect(Unit) {

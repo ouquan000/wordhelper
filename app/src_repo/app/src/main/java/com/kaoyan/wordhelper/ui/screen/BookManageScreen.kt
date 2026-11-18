@@ -10,7 +10,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,8 +34,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,7 +45,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -74,6 +70,7 @@ import com.kaoyan.wordhelper.data.entity.Book
 import com.kaoyan.wordhelper.ui.component.MasteryDonutChart
 import com.kaoyan.wordhelper.ui.component.MasteryLegend
 import com.kaoyan.wordhelper.ui.component.AppPageHeader
+import com.kaoyan.wordhelper.ui.component.StandardPanel
 import com.kaoyan.wordhelper.ui.viewmodel.BookManageViewModel
 import com.kaoyan.wordhelper.ui.viewmodel.BookUiModel
 import com.kaoyan.wordhelper.ui.viewmodel.EarlyReviewCandidate
@@ -313,14 +310,12 @@ fun BookManageScreen(
                 enter = fadeIn(animationSpec = tween(260)) +
                     slideInVertically(initialOffsetY = { it / 4 }, animationSpec = tween(320))
             ) {
-                Surface(
+                // 顶部「当前词书」条：换成标准透明细描边面板，刷新逻辑与 testTag 原样保留。
+                StandardPanel(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)),
-                    color = MaterialTheme.colorScheme.surface
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(
@@ -373,7 +368,10 @@ fun BookManageScreen(
                 visible = isImporting,
                 enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = tween(240))
             ) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                )
             }
 
             if (isImporting) {
@@ -382,7 +380,8 @@ fun BookManageScreen(
 
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 88.dp)
+                // v5：底部留 92dp，避免悬浮 + 按钮压住最后一条词书文字。
+                contentPadding = PaddingValues(bottom = 92.dp)
             ) {
                 itemsIndexed(books, key = { _, item -> item.book.id }) { index, item ->
                     AnimatedVisibility(
@@ -443,15 +442,14 @@ private fun BookDetailSheet(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Surface(
+        // 详情弹窗里的三项统计：原来是实心 surfaceVariant 小方块，改成透明底 + 1dp 细描边。
+        StandardPanel(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 DetailStat(label = "已学习", value = item.learned)
@@ -543,19 +541,16 @@ private fun BookListItem(
     }
     val statsText = "已掌握率 $masteryRate% · 待复习 ${item.dueCount} · 提前复习 ${item.earlyReviewCount} · 预计学完 $estimateText"
 
-    Card(
+    // 词书整行：标准透明面板（20dp 圆角 + 1dp 细描边），点击仍进详情；
+    // 卡片间 12dp 间距由外层 LazyColumn 的 spacedBy 控制，这里不再额外加 padding。
+    StandardPanel(
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize(animationSpec = tween(260)),
-        onClick = onOpenDetail,
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f))
+        onClick = onOpenDetail
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -572,7 +567,12 @@ private fun BookListItem(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                LinearProgressIndicator(progress = { animatedProgress }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(
+                    progress = { animatedProgress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                )
             }
             Spacer(modifier = Modifier.size(12.dp))
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -687,17 +687,15 @@ private fun EarlyReviewCandidateItem(
     selected: Boolean,
     onToggle: () -> Unit
 ) {
-    Card(
+    // 提前复习候选行：同样透明底 + 细描边，整行点击勾选与 Checkbox 行为不变。
+    StandardPanel(
         modifier = Modifier.fillMaxWidth(),
-        onClick = onToggle,
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+        onClick = onToggle
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Checkbox(checked = selected, onCheckedChange = { onToggle() })

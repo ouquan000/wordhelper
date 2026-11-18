@@ -34,7 +34,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Person
@@ -62,6 +64,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kaoyan.wordhelper.ui.screen.LearningMode
+import com.kaoyan.wordhelper.ui.theme.LocalAppDarkTheme
 
 private val LearningMode.label: String
     get() = if (this == LearningMode.RECOGNITION) "认词模式" else "拼写模式"
@@ -142,8 +145,12 @@ fun AppDrawerContent(
     onNavigate: (DrawerDestination) -> Unit,
     modifier: Modifier = Modifier,
     // 抽屉开合进度：0f = 全关，1f = 全开。默认 1f，兼容不传的旧调用方
-    drawerProgress: () -> Float = { 1f }
+    drawerProgress: () -> Float = { 1f },
+    // 日夜双模式：由 settingsFlow 传入，切换后立即写 DataStore
+    darkThemeEnabled: Boolean = false,
+    onDarkThemeEnabledChange: (Boolean) -> Unit = {}
 ) {
+    val darkTheme = LocalAppDarkTheme.current
     var modeExpanded by rememberSaveable { mutableStateOf(false) }
     val arrowRotation by animateFloatAsState(
         targetValue = if (modeExpanded) 180f else 0f,
@@ -165,11 +172,85 @@ fun AppDrawerContent(
             .padding(horizontal = 10.dp)
             .padding(bottom = 12.dp)
     ) {
+        // 「外观」快捷开关：一眼看清当前日/夜，单击直接切换并写回设置。
+        val themeInteraction = remember { MutableInteractionSource() }
+        val themeShape = RoundedCornerShape(16.dp)
+        val themeTextPrimary = if (darkTheme) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+        val themeTextSecondary = if (darkTheme) Color(0xFFCBD5E1) else Color(0xFF475569)
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .pressScaleModifier(themeInteraction)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            if (darkTheme) Color.White.copy(alpha = 0.08f) else Color(0xF2FFFFFF),
+                            if (darkTheme) Color.White.copy(alpha = 0.02f) else Color(0xF7F4F6FA)
+                        )
+                    ),
+                    themeShape
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (darkTheme) {
+                        Color.White.copy(alpha = 0.16f)
+                    } else {
+                        Color(0xFF0F172A).copy(alpha = 0.12f)
+                    },
+                    shape = themeShape
+                )
+                .clickable(
+                    interactionSource = themeInteraction,
+                    indication = LocalIndication.current
+                ) { onDarkThemeEnabledChange(!darkThemeEnabled) }
+                .testTag("drawer_theme_toggle"),
+            shape = themeShape,
+            color = Color.Transparent
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = if (darkThemeEnabled) Icons.Filled.DarkMode else Icons.Filled.LightMode,
+                    contentDescription = null,
+                    tint = if (darkTheme) Color(0xFFBFD0FF) else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "外观",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = themeTextSecondary
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = if (darkThemeEnabled) "夜间" else "日间",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeTextPrimary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                // 右侧显示「点一下会切到哪」，太阳/月亮一眼可辨。
+                Icon(
+                    imageVector = if (darkThemeEnabled) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                    contentDescription = if (darkThemeEnabled) "切换到日间" else "切换到夜间",
+                    tint = themeTextSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+
         // 模式状态栏：只显示当前模式，点它才展开
         val modeBarInteraction = remember { MutableInteractionSource() }
-        // 模式胶囊：透明 Surface + 白玻璃渐变 + 1dp 白描边。
-        // 抽屉底色永远是深色玻璃，这里不能再用 primaryContainer 之类的主题实心色。
+        // 模式胶囊：透明 Surface + 玻璃渐变 + 1dp 细描边；浅色用白玻璃，深色保持深玻璃。
         val modeBarShape = RoundedCornerShape(18.dp)
+        val modeBarText = if (darkTheme) Color(0xFFF1F5F9) else Color(0xFF0F172A)
+        val modeBarArrow = if (darkTheme) Color(0xFFCBD5E1) else Color(0xFF475569)
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -177,14 +258,29 @@ fun AppDrawerContent(
                 .pressScaleModifier(modeBarInteraction)
                 .background(
                     Brush.verticalGradient(
-                        listOf(
-                            Color.White.copy(alpha = 0.10f),
-                            Color.White.copy(alpha = 0.02f)
-                        )
+                        if (darkTheme) {
+                            listOf(
+                                Color.White.copy(alpha = 0.10f),
+                                Color.White.copy(alpha = 0.02f)
+                            )
+                        } else {
+                            listOf(
+                                Color(0xF2FFFFFF),
+                                Color(0xF7F4F6FA)
+                            )
+                        }
                     ),
                     modeBarShape
                 )
-                .border(1.dp, Color.White.copy(alpha = 0.20f), modeBarShape)
+                .border(
+                    width = 1.dp,
+                    color = if (darkTheme) {
+                        Color.White.copy(alpha = 0.20f)
+                    } else {
+                        Color(0xFF0F172A).copy(alpha = 0.12f)
+                    },
+                    shape = modeBarShape
+                )
                 .clickable(
                     interactionSource = modeBarInteraction,
                     indication = LocalIndication.current
@@ -203,13 +299,13 @@ fun AppDrawerContent(
                     text = currentMode.label,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFFF1F5F9),
+                    color = modeBarText,
                     modifier = Modifier.weight(1f)
                 )
                 Icon(
                     imageVector = Icons.Filled.KeyboardArrowDown,
                     contentDescription = if (modeExpanded) "收起模式" else "展开模式",
-                    tint = Color(0xFFCBD5E1),
+                    tint = modeBarArrow,
                     modifier = Modifier
                         .size(22.dp)
                         .rotate(arrowRotation)
@@ -299,23 +395,37 @@ private fun ModeOptionRow(
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val darkTheme = LocalAppDarkTheme.current
     val shape = RoundedCornerShape(14.dp)
-    // 选中项 = 蓝紫流光胶囊；未选中 = 极淡的白玻璃。两者都自带描边，
-    // 不再依赖主题色，亮色主题下也不会变成一块看不清的浅色实心块。
+    // 选中项 = 蓝紫流光胶囊；未选中 = 极淡玻璃。浅色改用深墨文字/描边，深色保持白玻璃。
     val fillBrush = if (selected) {
         Brush.horizontalGradient(
             listOf(
-                Color(0xFF7C9BFF).copy(alpha = 0.38f),
-                Color(0xFF9B7CFF).copy(alpha = 0.22f)
+                Color(0xFF7C9BFF).copy(alpha = if (darkTheme) 0.38f else 0.22f),
+                Color(0xFF9B7CFF).copy(alpha = if (darkTheme) 0.22f else 0.14f)
             )
         )
     } else {
         Brush.verticalGradient(
             listOf(
-                Color.White.copy(alpha = 0.05f),
-                Color.White.copy(alpha = 0.02f)
+                if (darkTheme) {
+                    Color.White.copy(alpha = 0.05f)
+                } else {
+                    Color(0xFF0F172A).copy(alpha = 0.04f)
+                },
+                if (darkTheme) {
+                    Color.White.copy(alpha = 0.02f)
+                } else {
+                    Color(0xFF0F172A).copy(alpha = 0.02f)
+                }
             )
         )
+    }
+    val borderColor = when {
+        selected && darkTheme -> Color.White.copy(alpha = 0.24f)
+        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+        darkTheme -> Color.White.copy(alpha = 0.10f)
+        else -> Color(0xFF0F172A).copy(alpha = 0.10f)
     }
     Surface(
         modifier = Modifier
@@ -325,11 +435,7 @@ private fun ModeOptionRow(
             .background(fillBrush, shape)
             .border(
                 width = 1.dp,
-                color = if (selected) {
-                    Color.White.copy(alpha = 0.24f)
-                } else {
-                    Color.White.copy(alpha = 0.10f)
-                },
+                color = borderColor,
                 shape = shape
             )
             .clickable(
@@ -351,14 +457,19 @@ private fun ModeOptionRow(
                 text = text,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (selected) Color(0xFFF8FAFC) else Color(0xFFCBD5E1),
+                color = when {
+                    selected && darkTheme -> Color(0xFFF8FAFC)
+                    selected -> Color(0xFF0F172A)
+                    darkTheme -> Color(0xFFCBD5E1)
+                    else -> Color(0xFF475569)
+                },
                 modifier = Modifier.weight(1f)
             )
             if (selected) {
                 Icon(
                     imageVector = Icons.Filled.Check,
                     contentDescription = "当前模式",
-                    tint = Color(0xFFBFD0FF),
+                    tint = if (darkTheme) Color(0xFFBFD0FF) else MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -374,23 +485,24 @@ private fun DrawerNavRow(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(16.dp)
+    val darkTheme = LocalAppDarkTheme.current
     val primary = MaterialTheme.colorScheme.primary
-    // 玻璃行：未选中是 4% 白底 + 10% 白描边，选中是 primary→紫 的横向渐变 + 发光。
-    // 渐变两端、描边、辉光、文字/图标色都走 200ms 过渡，切换时不会硬切。
+    // 玻璃行：未选中是极淡底 + 细描边，选中是蓝紫渐变 + 发光。
+    // 浅色用淡蓝紫渐变 + 主色边框/深墨文字，深色保持原来的深玻璃高亮。
     val fillStart by animateColorAsState(
         targetValue = if (selected) {
-            primary.copy(alpha = 0.34f)
+            if (darkTheme) primary.copy(alpha = 0.34f) else Color(0xFF7C9BFF).copy(alpha = 0.22f)
         } else {
-            Color.White.copy(alpha = 0.04f)
+            if (darkTheme) Color.White.copy(alpha = 0.04f) else Color(0xFF0F172A).copy(alpha = 0.04f)
         },
         animationSpec = tween(200),
         label = "drawerNavFillStart"
     )
     val fillEnd by animateColorAsState(
         targetValue = if (selected) {
-            Color(0xFF9B7CFF).copy(alpha = 0.10f)
+            Color(0xFF9B7CFF).copy(alpha = if (darkTheme) 0.10f else 0.14f)
         } else {
-            Color.White.copy(alpha = 0.04f)
+            if (darkTheme) Color.White.copy(alpha = 0.04f) else Color(0xFF0F172A).copy(alpha = 0.04f)
         },
         animationSpec = tween(200),
         label = "drawerNavFillEnd"
@@ -399,23 +511,33 @@ private fun DrawerNavRow(
         targetValue = if (selected) {
             primary.copy(alpha = 0.45f)
         } else {
-            Color.White.copy(alpha = 0.10f)
+            if (darkTheme) Color.White.copy(alpha = 0.10f) else Color(0xFF0F172A).copy(alpha = 0.10f)
         },
         animationSpec = tween(200),
         label = "drawerNavBorder"
     )
     val glow by animateDpAsState(
-        targetValue = if (selected) 10.dp else 0.dp,
+        targetValue = if (selected && darkTheme) 10.dp else 0.dp,
         animationSpec = tween(200),
         label = "drawerNavGlow"
     )
     val labelColor by animateColorAsState(
-        targetValue = if (selected) Color.White else Color(0xFFE2E8F0),
+        targetValue = when {
+            selected && darkTheme -> Color.White
+            selected -> Color(0xFF0F172A)
+            darkTheme -> Color(0xFFE2E8F0)
+            else -> Color(0xFF475569)
+        },
         animationSpec = tween(200),
         label = "drawerNavLabel"
     )
     val iconColor by animateColorAsState(
-        targetValue = if (selected) Color(0xFFBFD0FF) else Color(0xFF94A3B8),
+        targetValue = when {
+            selected && darkTheme -> Color(0xFFBFD0FF)
+            selected -> primary
+            darkTheme -> Color(0xFF94A3B8)
+            else -> Color(0xFF64748B)
+        },
         animationSpec = tween(200),
         label = "drawerNavIcon"
     )

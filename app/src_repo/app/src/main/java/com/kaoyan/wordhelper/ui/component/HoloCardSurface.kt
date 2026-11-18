@@ -27,6 +27,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -48,6 +49,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -60,6 +62,23 @@ import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
+
+/** 全息卡统一圆角：卡面、溢光、棱边与快照全部对齐 24dp，避免多层圆角错位。 */
+private val HoloCardCorner = 24.dp
+
+/**
+ * 从传入的 [Shape] 解析绘制用圆角像素值。
+ * 默认卡面是 RoundedCornerShape(HoloCardCorner)，这里直接跟随调用方传入的 shape，
+ * 避免出现「外层按 24dp 裁、内层材质按 28dp 画」的错位。
+ */
+private fun Shape.cornerPx(size: Size, density: Density): Float {
+    val rounded = this as? RoundedCornerShape
+    return if (rounded != null) {
+        rounded.topStart.toPx(size, density)
+    } else {
+        with(density) { HoloCardCorner.toPx() }
+    }
+}
 
 /**
  * 7 款卡片材质。id 与 DataStore 里持久化的 cardStyleId 一一对应。
@@ -562,7 +581,7 @@ fun HoloCardSurface(
     isBack: Boolean,
     glossHigh: Boolean,
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(28.dp),
+    shape: Shape = RoundedCornerShape(HoloCardCorner),
     /** 心流档位 0..4 与连续热力 0..1：驱动外框微光晕、流光与暖色氛围。 */
     paceTier: Int = 1,
     paceHeat: Float = 0f,
@@ -608,45 +627,45 @@ fun HoloCardSurface(
     }
 
     Box(modifier = modifier) {
-        // 心流暖色外发光：随 tier/heat 抬升，卡背自动收敛到约 35%，只做氛围不抢文字。
+        // 心流暖色外发光：卡背自动收敛，只做氛围不抢文字。
+        // 用 foundation 的 Modifier.shadow（按 shape 生成圆角轮廓），不再用
+        // graphicsLayer.shadowElevation —— 后者在没有背景的图层上会沿矩形边界漏光，
+        // 在四个圆角外侧留下方形残影。抬升量取固定值：逐帧读 pace 会让整卡重组，
+        // 心流的动态部分交给下方 Canvas 溢光。
         Box(
             Modifier
                 .matchParentSize()
-                .graphicsLayer {
-                    val pace = (
-                        paceTierAnim.value / 4f * 0.42f +
-                            paceHeatAnim.value * 0.58f
-                        ).coerceIn(0f, 1f) * if (isBack) 0.62f else 1f
-                    this.shape = shape
-                    clip = false
-                    shadowElevation = (8f + 16f * pace) * density
-                    ambientShadowColor = Color(0xFFFFB066).copy(alpha = 0.20f + 0.16f * pace)
-                    spotShadowColor = Color(0xFFFFB066).copy(alpha = 0.24f + 0.20f * pace)
-                }
+                .shadow(
+                    elevation = 12.dp,
+                    shape = shape,
+                    clip = false,
+                    ambientColor = Color(0xFFFFB066).copy(alpha = 0.24f),
+                    spotColor = Color(0xFFFFB066).copy(alpha = 0.30f),
+                )
         )
         // 双层弥散阴影：底层大范围环境软投影 alpha .14，近景接触投影 alpha .08。
-        // 读 breath 在 graphicsLayer 里，只重绘不重组；呼吸带来 1~2dp 的纵深变化。
+        // 同样交给 Modifier.shadow，阴影轮廓跟随圆角 shape，四角不再出现直角光斑。
         Box(
             Modifier
                 .matchParentSize()
-                .graphicsLayer {
-                    this.shape = shape
-                    clip = false
-                    shadowElevation = (18f + 2f * light.breath.floatValue) * density
-                    ambientShadowColor = Color.Black.copy(alpha = 0.14f)
-                    spotShadowColor = Color.Black.copy(alpha = 0.14f)
-                }
+                .shadow(
+                    elevation = 18.dp,
+                    shape = shape,
+                    clip = false,
+                    ambientColor = Color.Black.copy(alpha = 0.14f),
+                    spotColor = Color.Black.copy(alpha = 0.14f),
+                )
         )
         Box(
             Modifier
                 .matchParentSize()
-                .graphicsLayer {
-                    this.shape = shape
-                    clip = false
-                    shadowElevation = (4f + 1f * light.breath.floatValue) * density
-                    ambientShadowColor = Color.Black.copy(alpha = 0.08f)
-                    spotShadowColor = Color.Black.copy(alpha = 0.08f)
-                }
+                .shadow(
+                    elevation = 4.dp,
+                    shape = shape,
+                    clip = false,
+                    ambientColor = Color.Black.copy(alpha = 0.08f),
+                    spotColor = Color.Black.copy(alpha = 0.08f),
+                )
         )
         // 卡面环境溢光：略大于卡片轮廓的柔光，颜色由本款材质的 accent/frontTop 混合，
         // 常态约 0.14、心流高燃约 0.21。放在三层阴影与卡面之间，只在卡外缘发光，
@@ -656,16 +675,34 @@ fun HoloCardSurface(
                 .matchParentSize()
                 .graphicsLayer { clip = false }
         ) {
-            drawAmbientSpill(
-                palette = palette,
-                lightX = light.lightX.floatValue,
-                lightY = light.lightY.floatValue,
-                pace = (
-                    paceTierAnim.value / 4f * 0.42f +
-                        paceHeatAnim.value * 0.58f
-                    ).coerceIn(0f, 1f) * if (isBack) 0.62f else 1f,
-                isBack = isBack,
-            )
+            val corner = shape.cornerPx(size, this)
+            // 画布本身是矩形，若直接画外晕会在四个圆角外侧留下方形光斑。
+            // 这里先用「比卡片大 4dp 的圆角矩形」裁剪，光晕只沿圆角边缘露出。
+            val spillExpand = 4.dp.toPx()
+            val spillClip = Path().apply {
+                addRoundRect(
+                    RoundRect(
+                        -spillExpand,
+                        -spillExpand,
+                        size.width + spillExpand,
+                        size.height + spillExpand,
+                        CornerRadius(corner + spillExpand, corner + spillExpand),
+                    )
+                )
+            }
+            clipPath(spillClip) {
+                drawAmbientSpill(
+                    palette = palette,
+                    lightX = light.lightX.floatValue,
+                    lightY = light.lightY.floatValue,
+                    pace = (
+                        paceTierAnim.value / 4f * 0.42f +
+                            paceHeatAnim.value * 0.58f
+                        ).coerceIn(0f, 1f) * if (isBack) 0.62f else 1f,
+                    isBack = isBack,
+                    corner = corner,
+                )
+            }
         }
         // 注意：这一层不能用 matchParentSize —— 全 matchParentSize 的 Box 量出来是 0 宽，
         // 内容会被压成一条缝。让它由 content 决定尺寸，Canvas 再 matchParentSize 铺满。
@@ -677,7 +714,8 @@ fun HoloCardSurface(
             Canvas(Modifier.matchParentSize()) {
                 val w = size.width
                 val h = size.height
-                val corner = 28.dp.toPx()
+                // 内层材质圆角直接跟随传入 shape（默认 24dp），与外层 clip 完全一致。
+                val corner = shape.cornerPx(size, this)
                 val path = Path().apply {
                     addRoundRect(RoundRect(0f, 0f, w, h, CornerRadius(corner, corner)))
                 }
@@ -736,7 +774,7 @@ private fun DrawScope.drawHoloMaterial(
     drawSkinMicroDetail(style, palette, lx, ly, w, h, scale, diagonal, gloss)
     drawHoloGlare(style, lx, ly, hover, gloss, w, h, diagonal)
     drawHoloPaceAmbience(palette, lx, ly, pace, w, h)
-    drawHoloRim(palette, lx, ly, hover, w, h, corner, scale, pace)
+    drawHoloRim(palette, lx, ly, hover, w, h, corner, pace)
 }
 
 /**
@@ -1395,6 +1433,7 @@ private fun DrawScope.drawAmbientSpill(
     lightY: Float,
     pace: Float,
     isBack: Boolean,
+    corner: Float,
 ) {
     val w = size.width
     val h = size.height
@@ -1406,7 +1445,6 @@ private fun DrawScope.drawAmbientSpill(
     val lx = lightX.coerceIn(0f, 1f) * w
     val ly = lightY.coerceIn(0f, 1f) * h
     val expand = 3.dp.toPx()
-    val corner = 28.dp.toPx()
     val radius = 1.15f * sqrt(w * w + h * h)
     val strokeWidths = floatArrayOf(22f, 13f, 6f)
     strokeWidths.forEachIndexed { index, widthDp ->
@@ -1428,41 +1466,24 @@ private fun DrawScope.drawAmbientSpill(
     }
 }
 
-private fun DrawScope.drawHoloRim(    palette: HoloCardPalette,
+/**
+ * 外缘高光：全息卡只保留这一条 1px 的「白 → accent → 透明」渐变描边。
+ * 旧版的 1.5px 双层描边、距边缘 14dp 的极细内框和四角星芒都已移除，
+ * 避免出现厚重深蓝玻璃外壳 / 双层边框的观感。
+ */
+private fun DrawScope.drawHoloRim(
+    palette: HoloCardPalette,
     lx: Float,
     ly: Float,
     hover: Float,
     w: Float,
     h: Float,
     corner: Float,
-    scale: Float,
     pace: Float = 0f,
 ) {
     val op = (0.55f + hover * 0.45f + 0.30f * pace.coerceIn(0f, 1f)) *
         if (palette.dark) 1f else 0.85f
-    val stroke = 1.5f * scale
-    val inset = stroke / 2f
-    drawRoundRect(
-        color = if (palette.dark) Color.White.copy(alpha = 0.05f * op)
-        else palette.ink.copy(alpha = 0.05f * op),
-        topLeft = Offset(inset, inset),
-        size = Size(w - stroke, h - stroke),
-        cornerRadius = CornerRadius(corner, corner),
-        style = Stroke(stroke),
-    )
-    drawRoundRect(
-        brush = Brush.radialGradient(
-            0f to Color.White.copy(alpha = 0.75f * op),
-            0.42f to Color.Transparent,
-            center = Offset(lx, ly),
-            radius = 0.42f * sqrt(w * w + h * h),
-        ),
-        topLeft = Offset(inset, inset),
-        size = Size(w - stroke, h - stroke),
-        cornerRadius = CornerRadius(corner, corner),
-        style = Stroke(stroke),
-    )
-    // 1dp 外缘高光：accent 染色 + 重心随 light.lightX/lightY 游走，不是固定白边。
+    // 1px 外缘高光：accent 染色 + 重心随 lightX/lightY 游走，不是固定白边。
     val rimStroke = 1.dp.toPx()
     drawRoundRect(
         brush = Brush.radialGradient(
@@ -1478,37 +1499,6 @@ private fun DrawScope.drawHoloRim(    palette: HoloCardPalette,
         cornerRadius = CornerRadius(corner, corner),
         style = Stroke(rimStroke),
     )
-    // 距边缘 14dp 的极细流光内框
-    val frameInset = 14.dp.toPx()
-    drawRoundRect(
-        brush = Brush.linearGradient(
-            listOf(
-                palette.accent.copy(alpha = 0.42f * op),
-                Color.White.copy(alpha = if (palette.dark) 0.10f else 0.55f),
-                palette.accent.copy(alpha = 0.18f * op),
-            ),
-            start = Offset(0f, 0f),
-            end = Offset(w, h),
-        ),
-        topLeft = Offset(frameInset, frameInset),
-        size = Size((w - frameInset * 2f).coerceAtLeast(1f), (h - frameInset * 2f).coerceAtLeast(1f)),
-        cornerRadius = CornerRadius((corner - frameInset).coerceAtLeast(8f)),
-        style = Stroke(0.7.dp.toPx()),
-    )
-    // 四角微光星芒：避开顶部按钮栏与中央单词区
-    val starInset = 22.dp.toPx()
-    val topY = 84.dp.toPx().coerceAtMost(h * 0.30f)
-    drawCornerSparkle(Offset(starInset, topY), 5.dp.toPx(), palette)
-    drawCornerSparkle(Offset(w - starInset, topY), 5.dp.toPx(), palette)
-    drawCornerSparkle(Offset(starInset, h - 26.dp.toPx()), 4.dp.toPx(), palette)
-    drawCornerSparkle(Offset(w - starInset, h - 26.dp.toPx()), 4.dp.toPx(), palette)
-}
-
-private fun DrawScope.drawCornerSparkle(center: Offset, radius: Float, palette: HoloCardPalette) {
-    val tint = if (palette.dark) Color.White.copy(alpha = 0.55f) else palette.accent.copy(alpha = 0.45f)
-    drawLine(tint, Offset(center.x - radius, center.y), Offset(center.x + radius, center.y), 0.8.dp.toPx())
-    drawLine(tint, Offset(center.x, center.y - radius), Offset(center.x, center.y + radius), 0.8.dp.toPx())
-    drawCircle(Color.White.copy(alpha = 0.7f), radius = 0.9.dp.toPx(), center = center)
 }
 
 // ---------------------------------------------------------------------------

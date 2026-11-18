@@ -213,7 +213,7 @@ private fun HeatmapCellBox(cell: HeatmapCell?) {
     val colors = heatmapColors()
     val baseColor = cell?.let { colors.getOrElse(it.level) { colors.last() } } ?: Color.Transparent
     val color = if (cell?.inRange == false) {
-        baseColor.copy(alpha = 0.2f)
+        baseColor.copy(alpha = 0.5f)
     } else {
         baseColor
     }
@@ -241,7 +241,7 @@ private fun LegendItem(label: String, color: Color) {
 private fun heatmapColors(): List<Color> {
     val base = MaterialTheme.colorScheme.primary
     return listOf(
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
         base.copy(alpha = 0.2f),
         base.copy(alpha = 0.4f),
         base.copy(alpha = 0.6f),

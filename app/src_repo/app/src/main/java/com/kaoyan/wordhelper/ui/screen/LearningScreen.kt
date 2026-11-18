@@ -42,7 +42,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -346,7 +345,8 @@ fun LearningScreen(
                 top = bounds.top,
                 width = bounds.width,
                 height = bounds.height,
-                cornerRadiusPx = with(density) { 28.dp.toPx() }
+                // 与全息卡统一 24dp 圆角，快照不会带出 28dp 的旧轮廓。
+                cornerRadiusPx = with(density) { 24.dp.toPx() }
             )
         }
         cardTransition.launchAnswer(
@@ -528,7 +528,9 @@ fun LearningScreen(
                 // 1.4.3：卡背输入框唤起键盘时，整页让到键盘上方，
                 // 否则「重写思路」按钮会被键盘盖住，点不到（edge-to-edge 默认不会让）。
                 .imePadding()
-                .navigationBarsPadding()
+                // 注意：这里不再消费 navigationBars inset。动态的 navigationBarsPadding()
+                // 会在上滑呼出系统手势条 / 进入多任务时瞬间改变可用高度，把卡片压扁；
+                // 底部安全间距改为固定值（由底部进度条的 16dp padding 承担），高度恒定。
                 // 全屏沉浸下状态栏隐藏，顶部先让开状态栏（隐藏时为 0）与挖孔安全边距，
                 // 再留 12dp 呼吸位——与词库 / 我的两页 AppPageHeader 的 12dp 完全一致。
                 .statusBarsPadding()
@@ -777,10 +779,11 @@ fun LearningScreen(
                 barHeight = 10.dp,
                 sprintSize = 30,
                 heat = learningPace.heat,
-                // 整体上移 2dp，和底部手势区拉开呼吸间距
+                // 底部改用固定 16dp 呼吸边距（不消费 navigationBars inset）：
+                // 上滑手势条出现/消失时进度条与卡片高度都纹丝不动。
                 modifier = Modifier
                     .fillMaxWidth()
-                    .offset(y = (-2).dp)
+                    .padding(bottom = 16.dp)
             )
         }
 
@@ -1417,7 +1420,7 @@ private fun WordCard(
                                 start = Offset(bandX - bandW, 0f),
                                 end = Offset(bandX + bandW, size.height)
                             ),
-                            cornerRadius = CornerRadius(28.dp.toPx()),
+                            cornerRadius = CornerRadius(24.dp.toPx()),
                             size = size
                         )
                     }
