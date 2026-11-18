@@ -16,6 +16,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -254,7 +256,7 @@ fun CardStyleDrawer(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    contentPadding = PaddingValues(
                         start = 12.dp,
                         end = 12.dp,
                         top = 4.dp,
@@ -284,15 +286,19 @@ fun CardStyleDrawer(
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        // 横向滚动：5 个标签各自按内容宽度排布，不再 weight 平分把中文挤成两行。
+                        LazyRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(40.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(horizontal = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            AmbientBackdropMode.entries.forEach { mode ->
+                            items(AmbientBackdropMode.entries, key = { it.id }) { mode ->
                                 AmbientBackdropCapsule(
                                     label = mode.label,
                                     selected = selectedAmbient == mode,
-                                    modifier = Modifier.weight(1f),
                                     onClick = { onAmbientBackdropChange(mode.id) },
                                 )
                             }
@@ -397,7 +403,7 @@ private fun StyleRow(
     }
 }
 
-/** 背景氛围胶囊：5 个并排、31dp 高、11sp，最多两行；只改氛围，不影响材质列表。 */
+/** 背景氛围胶囊：横向滚动排布、36dp 高、11sp 单行；只改氛围，不影响材质列表。 */
 @Composable
 private fun AmbientBackdropCapsule(
     label: String,
@@ -414,7 +420,7 @@ private fun AmbientBackdropCapsule(
     )
     Box(
         modifier = modifier
-            .height(31.dp)
+            .height(36.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -440,14 +446,15 @@ private fun AmbientBackdropCapsule(
         Text(
             text = label,
             fontSize = 11.sp,
-            lineHeight = 12.sp,
+            lineHeight = 13.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             color = if (selected) MaterialTheme.colorScheme.primary
             else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
+            maxLines = 1,
+            softWrap = false,
             textAlign = TextAlign.Center,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 2.dp),
+            // 宽度跟着文字走（不 weight 平分），左右留 14dp 让胶囊有呼吸感。
+            modifier = Modifier.padding(horizontal = 14.dp),
         )
     }
 }

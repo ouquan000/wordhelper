@@ -46,8 +46,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -65,7 +63,6 @@ import com.kaoyan.wordhelper.ui.component.HoloCardStyle
 import com.kaoyan.wordhelper.ui.component.HoloCardSurface
 import com.kaoyan.wordhelper.ui.component.HoloCardTheme
 import com.kaoyan.wordhelper.ui.component.LocalHoloCardPalette
-import com.kaoyan.wordhelper.ui.component.captureCardSnapshot
 import com.kaoyan.wordhelper.ui.component.rememberCardTransitionController
 import com.kaoyan.wordhelper.ui.component.rememberHoloLightState
 import kotlinx.coroutines.Job
@@ -93,12 +90,10 @@ fun UiDemoScreen(onBack: () -> Unit) {
     var autoSlot by remember { mutableStateOf(0) }
     var simulationJob by remember { mutableStateOf<Job?>(null) }
 
-    // 04 切卡过场实验室：预览卡快照 + 独立退场特效 + 右下角抽牌入场。
+    // 04 切卡过场实验室：只记录预览卡 bounds，退场 ghost 与卡片同位置同尺寸。
     val cardTransition = rememberCardTransitionController()
-    val rootView = LocalView.current
-    val density = LocalDensity.current
     var previewKey by remember { mutableStateOf(0) }
-    var previewStyle by remember { mutableStateOf(CardExitStyle.TEAR) }
+    var previewStyle by remember { mutableStateOf(CardExitStyle.SLIDE_RIGHT) }
     var previewCardBounds by remember { mutableStateOf(Rect.Zero) }
 
     val scope = rememberCoroutineScope()
@@ -143,26 +138,14 @@ fun UiDemoScreen(onBack: () -> Unit) {
     }
 
     /**
-     * 播放一次退场：先同步抓拍预览卡当前像素，再交给过场控制器，
-     * 最后自增 contentKey 让 CardEntrance 从右下角弧线抽回一张新卡。
+     * 播放一次退场：把预览卡 bounds 交给过场控制器（不抓像素），
+     * 然后自增 contentKey 让 CardEntrance 播一次 120ms 淡入。
      */
     fun playExitCard(style: CardExitStyle) {
-        val bounds = previewCardBounds
-        val snapshot = if (bounds.width > 0f && bounds.height > 0f) {
-            captureCardSnapshot(
-                view = rootView,
-                left = bounds.left,
-                top = bounds.top,
-                width = bounds.width,
-                height = bounds.height,
-                cornerRadiusPx = with(density) { 28.dp.toPx() }
-            )
-        } else {
-            null
-        }
+        val bounds = previewCardBounds.takeIf { it.width > 0f && it.height > 0f }
         previewStyle = style
-        Log.d(DemoTransitionTag, "sandbox launch style=$style snapshot=${snapshot != null}")
-        cardTransition.launch(snapshot, style, motionEnabled = true)
+        Log.d(DemoTransitionTag, "sandbox launch style=$style bounds=$bounds")
+        cardTransition.launch(bounds, style, motionEnabled = true, cardStyle = HoloCardStyle.PEARL)
         previewKey++
     }
 
@@ -327,7 +310,7 @@ fun UiDemoScreen(onBack: () -> Unit) {
 
             SectionCard(
                 title = "04 · 切卡过场实验室",
-                subtitle = "点按钮在预览卡上反复播放；四种退场各自独立。"
+                subtitle = "轻量 GPU 方案：ghost 位移 + 轻微旋转 + 淡出，新卡 120ms 淡入。"
             ) {
                 val cardLight = rememberHoloLightState(motionEnabled = true)
                 Box(
@@ -368,34 +351,23 @@ fun UiDemoScreen(onBack: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     ExitStyleChip(
-                        label = "随机撕碎",
-                        style = CardExitStyle.TEAR,
+                        label = "认识 · 右滑出",
+                        style = CardExitStyle.SLIDE_RIGHT,
                         selectedStyle = previewStyle,
                         modifier = Modifier.weight(1f)
-                    ) { playExitCard(CardExitStyle.TEAR) }
+                    ) { playExitCard(CardExitStyle.SLIDE_RIGHT) }
                     ExitStyleChip(
-                        label = "不规则碎裂",
-                        style = CardExitStyle.VORONOI,
+                        label = "不认识 · 左滑出",
+                        style = CardExitStyle.SLIDE_LEFT,
                         selectedStyle = previewStyle,
                         modifier = Modifier.weight(1f)
-                    ) { playExitCard(CardExitStyle.VORONOI) }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                    ) { playExitCard(CardExitStyle.SLIDE_LEFT) }
                     ExitStyleChip(
-                        label = "纸张焚烧",
-                        style = CardExitStyle.BURN,
+                        label = "原地淡出",
+                        style = CardExitStyle.FADE,
                         selectedStyle = previewStyle,
                         modifier = Modifier.weight(1f)
-                    ) { playExitCard(CardExitStyle.BURN) }
-                    ExitStyleChip(
-                        label = "右下角抽牌",
-                        style = CardExitStyle.FLING_GOOD,
-                        selectedStyle = previewStyle,
-                        modifier = Modifier.weight(1f)
-                    ) { playExitCard(CardExitStyle.FLING_GOOD) }
+                    ) { playExitCard(CardExitStyle.FADE) }
                 }
                 Text(
                     text = "当前退场：${previewStyle.demoLabel()} · 已播放 $previewKey 次",
@@ -518,12 +490,9 @@ private fun ExitStyleChip(
 }
 
 private fun CardExitStyle.demoLabel(): String = when (this) {
-    CardExitStyle.TEAR -> "随机撕碎"
-    CardExitStyle.VORONOI -> "不规则碎裂"
-    CardExitStyle.BURN -> "纸张焚烧"
-    CardExitStyle.FLING_GOOD -> "右下角抽牌"
-    CardExitStyle.FLING_HARD -> "右下角缩回"
-    CardExitStyle.FADE -> "淡入淡出"
+    CardExitStyle.SLIDE_RIGHT -> "认识 · 右滑出"
+    CardExitStyle.SLIDE_LEFT -> "不认识 · 左滑出"
+    CardExitStyle.FADE -> "原地淡出"
 }
 
 @Composable

@@ -8,6 +8,7 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -109,7 +110,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -152,7 +152,6 @@ import com.kaoyan.wordhelper.ui.component.CardStyleDrawerState
 import com.kaoyan.wordhelper.ui.component.CardStyleEntryButton
 import com.kaoyan.wordhelper.ui.component.CardTransitionOverlay
 import com.kaoyan.wordhelper.ui.component.DeckStackUnderlay
-import com.kaoyan.wordhelper.ui.component.captureCardSnapshot
 import com.kaoyan.wordhelper.ui.component.FlowBurnProgressBar
 import com.kaoyan.wordhelper.ui.component.HoloCardStyle
 import com.kaoyan.wordhelper.ui.component.HoloCardSurface
@@ -256,11 +255,8 @@ fun LearningScreen(
     }.collectAsStateWithLifecycle(initialValue = CardUiPrefs())
     val cardStyle = HoloCardStyle.fromId(cardUiPrefs.styleId)
 
-    // 物理销毁转场：控制器只持有快照与特效，不参与评分提交（零阻塞）。
-    // 快照抓的是学习页根 View 上卡片 bounds 的像素，圆角由控制器裁。
+    // 轻量切卡转场：控制器只记卡片 bounds 与方向，不抓像素、不参与评分提交（零阻塞）。
     val cardTransition = rememberCardTransitionController()
-    val rootView = LocalView.current
-    val density = LocalDensity.current
     var cardBounds by remember { mutableStateOf<Rect?>(null) }
     val systemAnimationsOn = rememberSystemAnimationsEnabled()
     val transitionEnabled = cardUiPrefs.motionEnabled && systemAnimationsOn
@@ -336,26 +332,17 @@ fun LearningScreen(
 
     fun handleAnswer(rating: StudyRating, removeFromNewWords: Boolean = false) {
         if (isAnswering) return
-        // 1) 同步抓拍当前卡（含当前全息皮肤与圆角），此刻界面还没换词。
+        // 1) 先把当前卡片的 bounds 交给过场层（此刻界面还没换词），退场 ghost 与卡片同位置同尺寸。
         // 2) 再提交评分：ViewModel 立即切词，不等任何动画。
-        val snapshot = cardBounds?.let { bounds ->
-            captureCardSnapshot(
-                view = rootView,
-                left = bounds.left,
-                top = bounds.top,
-                width = bounds.width,
-                height = bounds.height,
-                // 与全息卡统一 24dp 圆角，快照不会带出 28dp 的旧轮廓。
-                cornerRadiusPx = with(density) { 24.dp.toPx() }
-            )
-        }
         cardTransition.launchAnswer(
             rating = rating,
             removeFromNewWords = removeFromNewWords,
             paceTier = learningPace.tier,
             paceHeat = learningPace.heat,
-            snapshot = snapshot,
-            motionEnabled = transitionEnabled
+            bounds = cardBounds,
+            motionEnabled = transitionEnabled,
+            // ghost 用当前皮肤取底色，浅色卡不会退场时变黑。
+            cardStyle = cardStyle
         )
         if (removeFromNewWords) {
             viewModel.submitAnswerAndRemoveFromNewWords(rating)
@@ -709,7 +696,7 @@ fun LearningScreen(
                                             } // key(word.id)
                                         } // 底牌 + 主卡（同一动画层）
                                     } // CardEntrance
-                                } // learning_word_card 外层 Box（快照抓整卡 bounds）
+                                } // learning_word_card 外层 Box（过场层从这里取整卡 bounds）
                             }
                             RecognitionActionPanel(
                                 isAnswering = isAnswering,
@@ -1275,8 +1262,24 @@ private fun WordCard(
     paceHeat: Float = 0f,
     modifier: Modifier = Modifier
 ) {
+    // 翻面角度是唯一真相：0° = 正面，180° = 背面。
+    // 用 Animatable 而不是 animateFloatAsState + Boolean：连点时新的 animateTo 会取消上一段
+    // 弹簧并从「当前角度」继续加速，不会像改 target 那样先顿一帧再重头起步，也就不会闪回。
+    val angle = remember(word.id) { Animatable(0f) }
+    // 正/背面只由角度决定：跨过 90° 切背面，越过 270° 才切回正面。
+    // 弹簧过冲 >180° 时仍落在 90..270 区间内，照实渲染卡背，不会闪回正面。
+    val showBack by remember(angle) {
+        derivedStateOf {
+            val n = ((angle.value % 360f) + 360f) % 360f
+            n in 90f..270f
+        }
+    }
+    // 翻面「意图状态」：点击时取反，决定这次动画的目标角度。
+    // 它不参与正/背面渲染判定（那个只由 angle 派生），也允许出现
+    // 「isFlipped 已取反、角度还在途中」的中间态——这正是连点能反向接续的原因。
     var isFlipped by remember(word.id) { mutableStateOf(false) }
-    // 卡背延后到换词动画（最长 320ms，见 wordCardTransition）结束后的静止帧再首次组合。
+    val flipScope = rememberCoroutineScope()
+    // 卡背延后到换词动画结束后的静止帧再首次组合。
     // 翻面时它已经在树里，跨 90° 的那一帧就只剩 layer 的 alpha 切换，不再付首次组合 + 测量。
     var backReady by remember(word.id) { mutableStateOf(false) }
     val normalizedWordLength = word.word.trim().length
@@ -1326,7 +1329,11 @@ private fun WordCard(
         else -> 5
     }
     val backContentScrollState = rememberScrollState()
+    // 换词即复位：角度回到 0°、布尔状态同步，新词永远是正面朝上。
+    // 直接 snap 而不是 animate，避免换词瞬间还在播上一张卡的翻转。
     LaunchedEffect(word.id) {
+        angle.snapTo(0f)
+        isFlipped = false
         onFlipChanged(false)
         backContentScrollState.scrollTo(0)
     }
@@ -1337,17 +1344,6 @@ private fun WordCard(
         backReady = true
     }
     val density = LocalDensity.current
-    // 高响应弹簧（dampingRatio = 0.74 / stiffness = 460）驱动 0° ↔ 180°：约 300ms
-    // 干脆甩翻，带一点轻微物理过冲后在 180° 站稳——像真卡被手指弹过去，而不是匀速转。
-    val rotation = animateFloatAsState(
-        targetValue = if (isFlipped) 180f else 0f,
-        animationSpec = spring(dampingRatio = 0.74f, stiffness = 460f),
-        label = "wordCardRotation"
-    )
-    // 只在跨过 90° 这一处切一次：composition 读的是它，rotation 本体只进 layer lambda。
-    // （弹簧过冲 >180° 时 showFront 仍为 false，照实渲染卡背，不会闪回正面。）
-    val showFront by remember { derivedStateOf { rotation.value < 90f } }
-    val backVisible = !showFront
 
     val holoLight = rememberHoloLightState(motionEnabled)
     val tapMaxDragPx = with(density) { 4.dp.toPx() }
@@ -1359,7 +1355,7 @@ private fun WordCard(
         val faceSoftInk = palette.subInk
         // 整张卡是一个不可分割的实体：全息材质、边框、准星、正反面文字
         // 全挂在同一个 3D 旋转层上。翻面时整卡一起转，不再出现「卡内内容旋转门」；
-        // 切卡快照抓到的也是这张会一起飞走/补位的整卡。
+        // 切卡 ghost 覆盖的也是这张会一起滑出/补位的整卡。
         Box(
             modifier = modifier
                 // 先裁到卡片自身 bounds，再进 3D 旋转层：否则透视投影会把侧翻到
@@ -1368,17 +1364,20 @@ private fun WordCard(
                 .clipToBounds()
                 .graphicsLayer {
                     // 读值留在 layer lambda 里：整段翻面每帧只重画，不重组。
-                    rotationY = rotation.value
+                    rotationY = angle.value
                     // 卡片永远不俯仰：所有立体感来自 rotationY 与下面的描边。
                     rotationX = 0f
-                    cameraDistance = 14f * density.density
+                    cameraDistance = 12f * density.density
                     // 锚点正中心：卡片绕自身中轴甩翻，不做书脊铰链位移补偿。
                     transformOrigin = TransformOrigin.Center
+                    // 整卡（材质渐变 + 阴影 + 正反面文字）先在离屏层里合成完整一帧，
+                    // 再整体做 3D 投影：否则每个子层各自投影，侧翻时材质与文字会互相错位。
+                    compositingStrategy = CompositingStrategy.Offscreen
                 }
                 .drawWithContent {
                     // 先画卡面（不裁切、不遮挡），再叠立体厚度棱边与镜面扫光。
                     drawContent()
-                    val a = abs(rotation.value)
+                    val a = abs(angle.value)
                     if (a > 20f && a < 160f) {
                         val rad = a * PI.toFloat() / 180f
                         val t = a / 180f
@@ -1429,7 +1428,7 @@ private fun WordCard(
             HoloCardSurface(
                 style = cardStyle,
                 light = holoLight,
-                isBack = backVisible,
+                isBack = showBack,
                 glossHigh = glossHigh,
                 paceTier = paceTier,
                 paceHeat = paceHeat,
@@ -1449,8 +1448,23 @@ private fun WordCard(
                     translationY = (holoLight.lightY.floatValue - 0.5f) * 5.dp.toPx()
                 }
                 .cardFlipTap(tapMaxDragPx) {
-                    isFlipped = !isFlipped
-                    onFlipChanged(isFlipped)
+                    // 目标角度由「意图状态」isFlipped 取反决定，而不是由 showBack 决定：
+                    // showBack 要等角度越过 90° 才变 true，若在 0→90° 区间连点，它仍是 false，
+                    // 会导致每次都重启同一方向的动画、无法中途反向。用 isFlipped 取反即可真正反向接续。
+                    // Animatable 的 MutatorMutex 会自动取消上一段 animateTo，从当前角度继续。
+                    val next = !isFlipped
+                    isFlipped = next
+                    val target = if (next) 180f else 0f
+                    onFlipChanged(next)
+                    flipScope.launch {
+                        angle.animateTo(
+                            targetValue = target,
+                            animationSpec = spring(
+                                dampingRatio = 0.74f,
+                                stiffness = 460f
+                            )
+                        )
+                    }
                 }
                 .padding(horizontal = 20.dp, vertical = 20.dp)
                 .heightIn(min = 260.dp)
@@ -1459,9 +1473,9 @@ private fun WordCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     // 顶栏也是卡的一部分：随整卡翻转；到卡背时（外层已转过 180°）
-                    // 用 scaleX = -1 抵消这次镜像，到期胶囊/发音/星标仍然读得正、点得准。
+                    // 在本层再绕 Y 轴转 180°，把镜像转回来，到期胶囊/发音/星标仍然读得正、点得准。
                     .graphicsLayer {
-                        scaleX = if (backVisible) -1f else 1f
+                        rotationY = if (showBack) 180f else 0f
                         transformOrigin = TransformOrigin.Center
                     },
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1473,7 +1487,7 @@ private fun WordCard(
                 ) {
                     ReviewTimeTag(text = reviewTag, onClick = onReviewTagClick)
                     // 卡背顶栏：到期胶囊 + 记忆方法胶囊 + 星标同一行；正面保持原样不显示方法。
-                    if (backVisible) {
+                    if (showBack) {
                         methodLabelOf(word.method)?.let { label ->
                             MemoryMethodChip(label = label)
                         }
@@ -1525,7 +1539,7 @@ private fun WordCard(
                             .align(Alignment.Center)
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 8.dp)
-                            .graphicsLayer { alpha = if (backVisible) 0f else 1f },
+                            .graphicsLayer { alpha = if (showBack) 0f else 1f },
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
                     ) {
@@ -1561,8 +1575,10 @@ private fun WordCard(
                     }
 
                     // 背面同样常驻（词稳定 400ms 后才挂上），反贴 180°，跟正面共用同一次 3D 旋转。
+                    // 挂载看 showBack（而不是意图状态 isFlipped）：中途反向翻回时，角度还没退回正面，
+                    // 卡背内容必须继续留在树里，否则会在 90°..270° 之间出现空洞。
                     // 不可见时 interactive = false：滚动与重写条都不吃触摸，两面不会各响应一次。
-                    if (backReady || isFlipped) {
+                    if (backReady || showBack) {
                         // 1.4.3.2：重写区随卡背内容一起滚，排在正文最后，不再固定贴卡片底边。
                         CardBackBlocks(
                             config = cardBackConfig,
@@ -1570,7 +1586,7 @@ private fun WordCard(
                             displayWord = displayWord,
                             backWordStyle = backWordStyle,
                             scrollState = backContentScrollState,
-                            interactive = backVisible,
+                            interactive = showBack,
                             unverified = unverified,
                             unverifiedReason = unverifiedReason,
                             backActions = backActions
@@ -1585,8 +1601,8 @@ private fun WordCard(
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .graphicsLayer {
-                                // 外层卡背已转过 180°，这里用 scaleX 反镜像，灯泡文字与图标不反。
-                                scaleX = if (backVisible) -1f else 1f
+                                // 外层卡背已转过 180°，本层再绕 Y 轴转 180°，灯泡文字与图标不反。
+                                rotationY = if (showBack) 180f else 0f
                                 transformOrigin = TransformOrigin.Center
                             }
                     ) {
@@ -1660,9 +1676,9 @@ private fun CardBackBlocks(
             .fillMaxHeight()
             .padding(horizontal = 4.dp, vertical = 8.dp)
             .graphicsLayer {
-                // 外层整卡转到 180° 时，卡背内容会被水平镜像；用 scaleX 反镜像抵消，
+                // 外层整卡转到 180° 时，卡背内容会被水平镜像；本层再绕 Y 轴转 180° 把镜像转回来，
                 // 文字仍是正的（绕 Y 轴翻转不影响上下，所以渐隐遮罩的顶部仍是视觉顶部）。
-                scaleX = if (interactive) -1f else 1f
+                rotationY = if (interactive) 180f else 0f
                 // 不可见时只把 alpha 归零：它在树里但既不画、也不吃触摸。
                 alpha = if (interactive) 1f else 0f
                 // DstIn 遮罩要落在本层自己的离屏缓冲里，否则会去抠整张卡

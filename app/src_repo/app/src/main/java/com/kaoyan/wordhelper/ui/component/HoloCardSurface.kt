@@ -7,12 +7,17 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -20,13 +25,18 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -37,19 +47,27 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Canvas as GraphicsCanvas
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.PaintingStyle
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -60,6 +78,8 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -330,7 +350,9 @@ class HoloLightState {
     val hover = mutableFloatStateOf(0f)
     val breath = mutableFloatStateOf(0f)
 
-    internal var motionEnabled = true
+    // 用 snapshot state 暴露：HoloCardSurface 里据此决定是否启动 flowPhase 的 infinite transition，
+    // 运行时切换到「省电静止」时必须能触发重组把无限动画真正停掉。
+    internal var motionEnabled by mutableStateOf(true)
         private set
     private var velocityX = 0f
     private var velocityY = 0f
@@ -626,6 +648,24 @@ fun HoloCardSurface(
         paceHeatAnim.animateTo(target, spec)
     }
 
+    // 七款材质的缓慢流光：只有开启卡片动效时才跑 infinite transition，关闭时 phase 恒为 0，
+    // 不注册任何动画帧回调（省电）。这里只持有 State、不读 .value —— 相位在 Canvas 的
+    // draw lambda 里读取，所以每帧只触发重绘，不会重组整张卡片。
+    val flowPhase: State<Float>? = if (light.motionEnabled) {
+        val infinite = rememberInfiniteTransition(label = "holoFlow")
+        infinite.animateFloat(
+            initialValue = 0f,
+            targetValue = (2f * PI).toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 7200, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "holoFlowPhase",
+        )
+    } else {
+        null
+    }
+
     Box(modifier = modifier) {
         // 心流暖色外发光：卡背自动收敛，只做氛围不抢文字。
         // 用 foundation 的 Modifier.shadow（按 shape 生成圆角轮廓），不再用
@@ -670,74 +710,92 @@ fun HoloCardSurface(
         // 卡面环境溢光：略大于卡片轮廓的柔光，颜色由本款材质的 accent/frontTop 混合，
         // 常态约 0.14、心流高燃约 0.21。放在三层阴影与卡面之间，只在卡外缘发光，
         // 不裁切也不遮挡卡面任何内容。
-        Canvas(
+        // 裁剪 Path 在 drawWithCache 里按尺寸建一次，逐帧只读光源状态重绘。
+        Spacer(
             Modifier
                 .matchParentSize()
                 .graphicsLayer { clip = false }
-        ) {
-            val corner = shape.cornerPx(size, this)
-            // 画布本身是矩形，若直接画外晕会在四个圆角外侧留下方形光斑。
-            // 这里先用「比卡片大 4dp 的圆角矩形」裁剪，光晕只沿圆角边缘露出。
-            val spillExpand = 4.dp.toPx()
-            val spillClip = Path().apply {
-                addRoundRect(
-                    RoundRect(
-                        -spillExpand,
-                        -spillExpand,
-                        size.width + spillExpand,
-                        size.height + spillExpand,
-                        CornerRadius(corner + spillExpand, corner + spillExpand),
-                    )
-                )
-            }
-            clipPath(spillClip) {
-                drawAmbientSpill(
-                    palette = palette,
-                    lightX = light.lightX.floatValue,
-                    lightY = light.lightY.floatValue,
-                    pace = (
-                        paceTierAnim.value / 4f * 0.42f +
-                            paceHeatAnim.value * 0.58f
-                        ).coerceIn(0f, 1f) * if (isBack) 0.62f else 1f,
-                    isBack = isBack,
-                    corner = corner,
-                )
-            }
-        }
+                .drawWithCache {
+                    val corner = shape.cornerPx(size, this)
+                    // 画布本身是矩形，若直接画外晕会在四个圆角外侧留下方形光斑。
+                    // 这里先用「比卡片大 4dp 的圆角矩形」裁剪，光晕只沿圆角边缘露出。
+                    val spillExpand = 4.dp.toPx()
+                    val spillClip = Path().apply {
+                        addRoundRect(
+                            RoundRect(
+                                -spillExpand,
+                                -spillExpand,
+                                size.width + spillExpand,
+                                size.height + spillExpand,
+                                CornerRadius(corner + spillExpand, corner + spillExpand),
+                            )
+                        )
+                    }
+                    onDrawBehind {
+                        clipPath(spillClip) {
+                            drawAmbientSpill(
+                                palette = palette,
+                                lightX = light.lightX.floatValue,
+                                lightY = light.lightY.floatValue,
+                                pace = (
+                                    paceTierAnim.value / 4f * 0.42f +
+                                        paceHeatAnim.value * 0.58f
+                                    ).coerceIn(0f, 1f) * if (isBack) 0.62f else 1f,
+                                isBack = isBack,
+                                corner = corner,
+                            )
+                        }
+                    }
+                }
+        )
         // 注意：这一层不能用 matchParentSize —— 全 matchParentSize 的 Box 量出来是 0 宽，
         // 内容会被压成一条缝。让它由 content 决定尺寸，Canvas 再 matchParentSize 铺满。
         Box(
             Modifier
+                // 翻面/旋转时让整张卡面先离屏合成：SweepGradient、DstIn/DstOut 遮罩与
+                // 半透明面板都在独立缓冲里算完再一次性上屏，避免翻转过程中与背景互相串色。
+                // 只加在卡面本体上（阴影/溢光在它外层），24dp 圆角与三层阴影结构不变。
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .clip(shape)
                 .background(baseColor)
         ) {
-            Canvas(Modifier.matchParentSize()) {
-                val w = size.width
-                val h = size.height
-                // 内层材质圆角直接跟随传入 shape（默认 24dp），与外层 clip 完全一致。
-                val corner = shape.cornerPx(size, this)
-                val path = Path().apply {
-                    addRoundRect(RoundRect(0f, 0f, w, h, CornerRadius(corner, corner)))
-                }
-                clipPath(path) {
-                    drawHoloMaterial(
-                        style = style,
-                        palette = palette,
-                        lightX = if (isBack) 1f - light.lightX.floatValue else light.lightX.floatValue,
-                        lightY = light.lightY.floatValue,
-                        hover = light.hover.floatValue,
-                        gloss = gloss,
-                        w = w,
-                        h = h,
-                        corner = corner,
-                        dots = dots,
-                        pace = (
-                            paceTierAnim.value / 4f * 0.42f +
-                                paceHeatAnim.value * 0.58f
-                            ).coerceIn(0f, 1f) * if (isBack) 0.62f else 1f,
-                    )
-                }
-            }
+            Spacer(
+                Modifier
+                    .matchParentSize()
+                    .drawWithCache {
+                        val w = size.width
+                        val h = size.height
+                        // 内层材质圆角直接跟随传入 shape（默认 24dp），与外层 clip 完全一致。
+                        val corner = shape.cornerPx(size, this)
+                        val cardClip = Path().apply {
+                            addRoundRect(RoundRect(0f, 0f, w, h, CornerRadius(corner, corner)))
+                        }
+                        // 暗刻同心纹 / 流光扇面按当前像素尺寸建一次，尺寸不变就一直复用。
+                        val renderCache = buildHoloRenderCache(size, this, style)
+                        onDrawBehind {
+                            clipPath(cardClip) {
+                                drawHoloMaterial(
+                                    style = style,
+                                    palette = palette,
+                                    lightX = if (isBack) 1f - light.lightX.floatValue else light.lightX.floatValue,
+                                    lightY = light.lightY.floatValue,
+                                    hover = light.hover.floatValue,
+                                    gloss = gloss,
+                                    w = w,
+                                    h = h,
+                                    corner = corner,
+                                    dots = dots,
+                                    pace = (
+                                        paceTierAnim.value / 4f * 0.42f +
+                                            paceHeatAnim.value * 0.58f
+                                        ).coerceIn(0f, 1f) * if (isBack) 0.62f else 1f,
+                                    flowPhase = flowPhase?.value ?: 0f,
+                                    renderCache = renderCache,
+                                )
+                            }
+                        }
+                    }
+            )
             // 卡背不再铺任何暗化/磨砂遮罩：文字直接印在全息材质上，
             // 材质本身（drawHoloMaterial）照旧绘制，只是不再压一层黑。
             content()
@@ -761,18 +819,29 @@ private fun DrawScope.drawHoloMaterial(
     corner: Float,
     dots: List<HoloDot>,
     pace: Float = 0f,
+    /** 0..2π 的流光相位：只在绘制阶段读取，驱动扫光/扇面旋转，不重建任何位图。 */
+    flowPhase: Float = 0f,
+    /** 按尺寸预生成的位图/画刷缓存（暗刻同心纹 + CD 扇形高光）。 */
+    renderCache: HoloRenderCache? = null,
 ) {
     val lx = lightX * w
     val ly = lightY * h
     val scale = w / 440f
     val diagonal = sqrt(w * w + h * h)
 
-    drawHoloBase(style, palette, lx, ly, w, h, scale, diagonal)
-    drawHoloFoil(style, lx, ly, hover, gloss, w, h, scale, diagonal, dots)
+    // 陀螺仪光源仍是主光源；相位只叠一圈极小的椭圆轨道漂移（约 ±4.5% 卡宽），
+    // 让高光在没有倾斜输入时也缓慢流动，且不会把实时倾斜「吃掉」。
+    val flowLx = lx + cos(flowPhase) * w * 0.045f
+    val flowLy = ly + sin(flowPhase) * h * 0.045f
+
+    drawHoloBase(style, palette, lx, ly, w, h, scale, diagonal, flowPhase, renderCache)
+    drawHoloFoil(style, flowLx, flowLy, hover, gloss, w, h, scale, diagonal, dots, flowPhase, renderCache)
     // 逐帧微纹理：星尘闪烁 / 等高线衍射 / 贝母薄纱 / 斜向镜面亮带。
     // 全部读实时光源坐标，所以只重绘、不重组，也不会让任何缓存失效。
-    drawSkinMicroDetail(style, palette, lx, ly, w, h, scale, diagonal, gloss)
-    drawHoloGlare(style, lx, ly, hover, gloss, w, h, diagonal)
+    drawSkinMicroDetail(style, palette, flowLx, flowLy, w, h, scale, diagonal, gloss, flowPhase, renderCache)
+    drawHoloGlare(style, flowLx, flowLy, hover, gloss, w, h, diagonal)
+    // CD 各向异性扇形高光：缓存好的 SweepGradient，每帧只改旋转角。
+    drawHoloFlowSheen(renderCache?.sheenBrush, flowPhase, gloss, palette.dark, w, h)
     drawHoloPaceAmbience(palette, lx, ly, pace, w, h)
     drawHoloRim(palette, lx, ly, hover, w, h, corner, pace)
 }
@@ -825,6 +894,8 @@ private fun DrawScope.drawHoloBase(
     h: Float,
     scale: Float,
     diagonal: Float,
+    flowPhase: Float = 0f,
+    renderCache: HoloRenderCache? = null,
 ) {
     when (style) {
         HoloCardStyle.CLASSIC -> {
@@ -994,7 +1065,8 @@ private fun DrawScope.drawHoloBase(
 
         HoloCardStyle.ETCHED -> {
             drawRect(Color(0xFF121214))
-            drawEtchedRings(w, h, scale, Color.White.copy(alpha = 0.05f))
+            // 同心刻纹走预渲染的 ImageBitmap（尺寸不变就一直复用），不再逐帧循环描圆。
+            drawEtchedRings(w, h, scale, Color.White.copy(alpha = 0.05f), renderCache?.etchedRings)
             drawRect(
                 Brush.radialGradient(
                     0f to Color(0xFF1D1D21),
@@ -1018,6 +1090,8 @@ private fun DrawScope.drawHoloFoil(
     scale: Float,
     diagonal: Float,
     dots: List<HoloDot>,
+    flowPhase: Float = 0f,
+    renderCache: HoloRenderCache? = null,
 ) {
     when (style) {
         HoloCardStyle.CLASSIC -> {
@@ -1202,9 +1276,14 @@ private fun DrawScope.drawHoloFoil(
 
         HoloCardStyle.ETCHED -> {
             val op = (0.30f + hover * 0.70f) * gloss
+            // 暗刻反射随流光缓慢平移：相位只改渐变起点偏移，不重建任何纹理。
+            val flowShift = cos(flowPhase) * max(w, h) * 0.05f
             val foil = angleGradient(
                 115f, w, h,
-                shift = Offset((lx - 0.5f * w) * 1.2f, (ly - 0.5f * h) * 1.2f),
+                shift = Offset(
+                    (lx - 0.5f * w) * 1.2f + flowShift,
+                    (ly - 0.5f * h) * 1.2f + sin(flowPhase) * max(w, h) * 0.03f,
+                ),
                 period = 0.34f * max(w, h),
                 stops = listOf(
                     0f to Color(255, 95, 126).copy(alpha = op),
@@ -1220,7 +1299,8 @@ private fun DrawScope.drawHoloFoil(
                 canvas.saveLayer(Rect(0f, 0f, w, h), Paint())
                 drawRect(brush = foil, topLeft = Offset.Zero, size = Size(w, h))
                 // 关键修复：遮罩用 White alpha 0.85，而不是看不见的 0.05。
-                canvas.drawEtchedRingMask(w, h, scale, Color.White.copy(alpha = 0.85f))
+                // 同心刻纹遮罩走缓存的 ImageBitmap（内部 DstOut），不再逐帧循环描圆。
+                drawEtchedRingMaskBitmap(renderCache?.etchedRings, w, h, scale, 0.85f)
                 // 光源径向衰减：亮在光附近，远处保持哑光黑。
                 drawRect(
                     brush = Brush.radialGradient(
@@ -1256,6 +1336,8 @@ private fun DrawScope.drawSkinMicroDetail(
     scale: Float,
     diagonal: Float,
     gloss: Float,
+    flowPhase: Float = 0f,
+    renderCache: HoloRenderCache? = null,
 ) {
     when (style) {
         HoloCardStyle.SPARKLE -> {
@@ -1271,7 +1353,13 @@ private fun DrawScope.drawSkinMicroDetail(
                     val dy = (sy - ly) / h
                     val dist = sqrt(dx * dx + dy * dy)
                     val near = (1f - dist / 1.05f).coerceIn(0f, 1f)
-                    val twinkle = 0.35f + 0.65f * hash01(seedBase + i * 13 + 7)
+                    // 闪烁相位随流光慢转：每颗星自己的相位固定，整体随 phase 缓慢起伏，
+                    // 只做三角函数运算，不分配对象也不重建纹理。
+                    val twinkle = 0.35f + 0.65f * (
+                        0.5f + 0.5f * sin(
+                            flowPhase + hash01(seedBase + i * 13 + 7) * 6.2831855f
+                        )
+                        )
                     val alpha = ((0.08f + 0.52f * near) * twinkle * gloss * (0.95f - 0.14f * layer))
                         .coerceIn(0f, 0.72f)
                     if (alpha <= 0.012f) continue
@@ -1295,7 +1383,11 @@ private fun DrawScope.drawSkinMicroDetail(
         HoloCardStyle.ETCHED -> {
             // 哑光碳黑上再补一档更细的等高线，并只在光斑掠过处叠彩虹衍射。
             val strength = (0.35f + 0.65f * gloss).coerceIn(0f, 1f)
-            drawEtchedRings(w, h, scale * 1.32f, Color.White.copy(alpha = 0.026f * strength))
+            drawEtchedRings(
+                w, h, scale * 1.32f,
+                Color.White.copy(alpha = 0.026f * strength),
+                renderCache?.etchedRingsDetail,
+            )
             val diffraction = Brush.radialGradient(
                 0f to Color(126, 220, 255).copy(alpha = 0.20f * strength),
                 0.42f to Color(196, 150, 255).copy(alpha = 0.12f * strength),
@@ -1307,7 +1399,7 @@ private fun DrawScope.drawSkinMicroDetail(
             drawIntoCanvas { canvas ->
                 canvas.saveLayer(Rect(0f, 0f, w, h), Paint())
                 drawRect(brush = diffraction, topLeft = Offset.Zero, size = Size(w, h))
-                canvas.drawEtchedRingMask(w, h, scale * 1.32f, Color.White.copy(alpha = 0.62f))
+                drawEtchedRingMaskBitmap(renderCache?.etchedRingsDetail, w, h, scale * 1.32f, 0.62f)
                 canvas.restore()
             }
         }
@@ -1509,26 +1601,36 @@ private fun DrawScope.drawHoloRim(
 fun HoloStyleSwatch(style: HoloCardStyle, modifier: Modifier = Modifier) {
     val palette = rememberHoloPalette(style)
     val dots = remember(style) { makeHoloDots(140, 0xBEEF) }
-    Canvas(modifier.clip(RoundedCornerShape(12.dp))) {
-        val w = size.width
-        val h = size.height
-        val corner = 12.dp.toPx()
-        val path = Path().apply { addRoundRect(RoundRect(0f, 0f, w, h, CornerRadius(corner, corner))) }
-        clipPath(path) {
-            drawHoloMaterial(
-                style = style,
-                palette = palette,
-                lightX = 0.34f,
-                lightY = 0.22f,
-                hover = 0f,
-                gloss = 1f,
-                w = w,
-                h = h,
-                corner = corner,
-                dots = dots,
-            )
-        }
-    }
+    Spacer(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .drawWithCache {
+                val w = size.width
+                val h = size.height
+                val corner = 12.dp.toPx()
+                val path = Path().apply { addRoundRect(RoundRect(0f, 0f, w, h, CornerRadius(corner, corner))) }
+                // 预览块与实卡共用同一套缓存：ETCHED 的同心纹同样走烘焙位图，
+                // 不在抽屉滚动时逐帧循环描圆。
+                val renderCache = buildHoloRenderCache(size, this, style)
+                onDrawBehind {
+                    clipPath(path) {
+                        drawHoloMaterial(
+                            style = style,
+                            palette = palette,
+                            lightX = 0.34f,
+                            lightY = 0.22f,
+                            hover = 0f,
+                            gloss = 1f,
+                            w = w,
+                            h = h,
+                            corner = corner,
+                            dots = dots,
+                            renderCache = renderCache,
+                        )
+                    }
+                }
+            }
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1549,13 +1651,159 @@ private fun purified(color: Color, alpha: Float): Color {
     )
 }
 
-private fun DrawScope.drawEtchedRings(w: Float, h: Float, scale: Float, color: Color) {
+/**
+ * 按像素尺寸烘焙的昂贵静态纹理缓存。
+ *
+ * 暗刻同心纹在 440dp 卡面下是 100+ 圈描边，原本每帧在 Canvas 里循环 drawCircle，
+ * 翻转时等于每帧重画上百条弧线。这里把它烘焙成 ImageBitmap：
+ *  - [etchedRings]       基准密度（scale = w / 440f），base 层与箔片遮罩共用
+ *  - [etchedRingsDetail] 1.32 倍密度，微纹理补强与细遮罩共用
+ * 位图只在 size / density / 款式变化时由 drawWithCache 在主线程重建一次，
+ * 之后每帧只做一次 drawImage。
+ * [sheenBrush] 是 CD 各向异性扇形高光的 SweepGradient：ShaderBrush 自己按尺寸
+ * 缓存 Shader，所以每帧只改旋转角，不会重新生成渐变对象。
+ */
+@Immutable
+private class HoloRenderCache(
+    val etchedRings: ImageBitmap?,
+    val etchedRingsDetail: ImageBitmap?,
+    val sheenBrush: Brush?,
+)
+
+/** 主线程（draw 阶段）构建一次；非 ETCHED 皮肤只缓存扇光画刷，不占位图内存。 */
+private fun buildHoloRenderCache(
+    size: Size,
+    density: Density,
+    style: HoloCardStyle,
+): HoloRenderCache {
+    val sheen = buildFlowSheenBrush(size)
+    if (style != HoloCardStyle.ETCHED) return HoloRenderCache(null, null, sheen)
+    val wPx = size.width.roundToInt().coerceAtLeast(1)
+    val hPx = size.height.roundToInt().coerceAtLeast(1)
+    val scale = wPx / 440f
+    return HoloRenderCache(
+        etchedRings = renderEtchedRingBitmap(wPx, hPx, density, scale),
+        etchedRingsDetail = renderEtchedRingBitmap(wPx, hPx, density, scale * 1.32f),
+        sheenBrush = sheen,
+    )
+}
+
+/** 把同心刻纹一次性画进 ImageBitmap（白线 + 透明底），失败时返回 null 走矢量兜底。 */
+private fun renderEtchedRingBitmap(
+    wPx: Int,
+    hPx: Int,
+    density: Density,
+    scale: Float,
+): ImageBitmap? = runCatching {
+    val bitmap = ImageBitmap(wPx, hPx)
+    CanvasDrawScope().draw(
+        density = density,
+        layoutDirection = LayoutDirection.Ltr,
+        canvas = GraphicsCanvas(bitmap),
+        size = Size(wPx.toFloat(), hPx.toFloat()),
+    ) {
+        drawEtchedRings(wPx.toFloat(), hPx.toFloat(), scale, Color.White, null)
+    }
+    bitmap
+}.getOrNull()
+
+/** CD 扇面画刷：一圈窄亮带 + 两侧冷暖偏色，alpha 交给绘制时的 alpha 参数控制。 */
+private fun buildFlowSheenBrush(size: Size): Brush? {
+    if (size.width <= 1f || size.height <= 1f) return null
+    val center = Offset(size.width / 2f, size.height / 2f)
+    return Brush.sweepGradient(
+        0f to Color.Transparent,
+        0.05f to Color(0xFFEAF5FF),
+        0.11f to Color(0xFF9FD0FF).copy(alpha = 0.55f),
+        0.18f to Color.Transparent,
+        0.30f to Color.Transparent,
+        0.37f to Color(0xFFFFE9C4).copy(alpha = 0.75f),
+        0.44f to Color.Transparent,
+        0.56f to Color.Transparent,
+        0.63f to Color(0xFFD8C8FF).copy(alpha = 0.70f),
+        0.70f to Color.Transparent,
+        1f to Color.Transparent,
+        center = center,
+    )
+}
+
+/**
+ * CD 各向异性扇形高光：椭圆扇面沿卡面中心缓慢旋转。
+ * 每帧只有一次画布旋转 + 一次非等比缩放，画刷与 Path 全部复用，不分配大对象。
+ */
+private fun DrawScope.drawHoloFlowSheen(
+    brush: Brush?,
+    flowPhase: Float,
+    gloss: Float,
+    dark: Boolean,
+    w: Float,
+    h: Float,
+) {
+    if (brush == null) return
+    val shortSide = min(w, h)
+    val longSide = max(w, h)
+    val anisotropy = (shortSide / longSide).coerceIn(0.35f, 1f)
+    val alpha = (0.10f + gloss * 0.09f) * (if (dark) 1f else 0.62f)
+    val center = Offset(w / 2f, h / 2f)
+    rotate(degrees = flowPhase * (180f / PI.toFloat()), pivot = center) {
+        scale(scaleX = 1f, scaleY = anisotropy, pivot = center) {
+            drawCircle(brush = brush, radius = longSide * 0.62f, center = center, alpha = alpha)
+        }
+    }
+}
+
+private fun DrawScope.drawEtchedRings(
+    w: Float,
+    h: Float,
+    scale: Float,
+    color: Color,
+    bitmap: ImageBitmap? = null,
+) {
+    if (bitmap != null) {
+        // 位图里是纯白刻纹，用 tint 换色 + 换透明度，1:1 贴回去。
+        drawImage(
+            image = bitmap,
+            colorFilter = ColorFilter.tint(color),
+            filterQuality = FilterQuality.Low,
+        )
+        return
+    }
     val center = Offset(w / 2f, h / 2f)
     val maxR = sqrt(w * w + h * h) / 2f
     var r = 1.2f * scale
     while (r < maxR) {
         drawCircle(color = color, radius = r, center = center, style = Stroke(1.2f * scale))
         r += 7f * scale
+    }
+}
+
+/**
+ * 用缓存位图做暗刻纹遮罩。
+ *
+ * 语义与旧的逐圆 DstIn 一致：`strength` 是压在底色上的强度（0.85 / 0.62），
+ * 结果 = 底色 × (1 - strength) 仅发生在刻纹线上，线外底色不变。
+ * 位图按整卡尺寸绘制，DstIn 会把透明区域（线外）的 dst 乘 0 直接擦掉箔片，
+ * 所以这里改用 DstOut：src.alpha = 0 处 dst 原样保留，线条处 dst × (1 - srcAlpha)。
+ */
+private fun DrawScope.drawEtchedRingMaskBitmap(
+    bitmap: ImageBitmap?,
+    w: Float,
+    h: Float,
+    scale: Float,
+    strength: Float,
+) {
+    if (bitmap != null) {
+        drawImage(
+            image = bitmap,
+            alpha = (1f - strength).coerceIn(0f, 1f),
+            colorFilter = ColorFilter.tint(Color.White),
+            blendMode = BlendMode.DstOut,
+            filterQuality = FilterQuality.Low,
+        )
+        return
+    }
+    drawIntoCanvas { canvas ->
+        canvas.drawEtchedRingMask(w, h, scale, Color.White.copy(alpha = strength))
     }
 }
 

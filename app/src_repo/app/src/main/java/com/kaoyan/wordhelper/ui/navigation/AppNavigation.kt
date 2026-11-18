@@ -143,7 +143,13 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
     val drawerWidth = (LocalConfiguration.current.screenWidthDp * 0.78f).dp
         .coerceAtMost(360.dp)
     val drawerWidthPx = with(LocalDensity.current) { drawerWidth.toPx() }
-    val drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)
+    // 只有右侧两条边是圆角：抽屉必须紧贴屏幕左/上/下，左上、左下不能有圆角缝隙。
+    val drawerShape = RoundedCornerShape(
+        topStart = 0.dp,
+        bottomStart = 0.dp,
+        topEnd = 24.dp,
+        bottomEnd = 24.dp
+    )
     // 0f = 全关，1f = 全开。拖动时直接改这个值，所以抽屉是跟手的。
     val drawerProgress = remember { Animatable(0f) }
     // 右侧「卡片材质」抽屉的状态提到这里：两个抽屉共用一套手势仲裁，
@@ -371,14 +377,22 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
                 modifier = Modifier
                     .fillMaxSize()
                     .shadow(12.dp, drawerShape)
-                    // 液态玻璃：浅色是白色半透明玻璃（上白下浅灰蓝），深色保持深基底；
-                    // 容器色保持透明，不盖住底下的渐变。
+                    // 液态玻璃：先铺一层不透明同色底（夜间 0xFF070A11 / 日间 0xFFF4F6FA），
+                    // 再叠 0.95 不透明度左右的同色系垂直玻璃渐变。两层叠加后底色完全不透，
+                    // 底层卡片的文字不会再透过抽屉，只留玻璃质感、不留字影。
+                    .background(if (darkTheme) Color(0xFF070A11) else Color(0xFFF4F6FA), drawerShape)
                     .background(
                         Brush.verticalGradient(
                             if (darkTheme) {
-                                listOf(Color(0xF2161C2B), Color(0xFF070A11))
+                                listOf(
+                                    Color(0xFF0B101C).copy(alpha = 0.95f),
+                                    Color(0xFF070A11).copy(alpha = 0.97f)
+                                )
                             } else {
-                                listOf(Color(0xF2FFFFFF), Color(0xF7F4F6FA))
+                                listOf(
+                                    Color.White.copy(alpha = 0.95f),
+                                    Color(0xF7F4F6FA).copy(alpha = 0.97f)
+                                )
                             }
                         ),
                         drawerShape

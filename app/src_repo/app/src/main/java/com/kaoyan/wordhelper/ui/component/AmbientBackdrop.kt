@@ -290,7 +290,8 @@ private fun dayAmbientColors(mode: AmbientBackdropMode, style: HoloCardStyle): L
 
 /**
  * 夜间：深靛蓝 / 幽紫 / 冷蓝，彻底移除旧版的偏绿、偏褐、品红。
- * 只保留色相上的轻微差别，整体都落在蓝紫色域里。
+ * 各模式之间只保留色相上的差别，整体压在深色域里；唯一例外是「星云余烬」——
+ * 它必须留在暖色余烬里，否则夜间和「纯黑丝绒」是同一片紫雾，模式等于失效。
  */
 private fun nightAmbientColors(mode: AmbientBackdropMode, style: HoloCardStyle): List<Color> =
     when (mode) {
@@ -332,9 +333,11 @@ private fun nightAmbientColors(mode: AmbientBackdropMode, style: HoloCardStyle):
             Color(0xFF16305A), Color(0xFF1E2A5A), Color(0xFF123A66),
             Color(0xFF232B66), Color(0xFF1B2F5E), Color(0xFF24406E),
         )
+        // 星云余烬：夜间必须是暖色余烬（深琥珀/暗赭），不能跟「纯黑丝绒」共用同一组紫蓝，
+        // 否则选中余烬时看到的还是丝绒的紫雾，等于这个模式在夜里没有分支。
         AmbientBackdropMode.EMBER -> listOf(
-            Color(0xFF2A1F55), Color(0xFF33245E), Color(0xFF1E2A5A),
-            Color(0xFF3A2A66), Color(0xFF232B66), Color(0xFF2A1F55),
+            Color(0xFF4A2118), Color(0xFF5A2A1B), Color(0xFF3A1A20),
+            Color(0xFF6A3320), Color(0xFF42201A), Color(0xFF52271C),
         )
         // 丝绒：幽紫为主，保持最暗、最收敛。
         AmbientBackdropMode.VELVET -> listOf(

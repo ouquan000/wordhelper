@@ -18,7 +18,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -54,6 +53,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -214,6 +214,7 @@ fun AppDrawerContent(
                     .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 前置图标跟随当前主题：夜间月亮、日间太阳，不能和右侧文字互相打架。
                 Icon(
                     imageVector = if (darkThemeEnabled) Icons.Filled.DarkMode else Icons.Filled.LightMode,
                     contentDescription = null,
@@ -234,10 +235,10 @@ fun AppDrawerContent(
                     color = themeTextPrimary
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                // 右侧显示「点一下会切到哪」，太阳/月亮一眼可辨。
+                // 右侧图标必须和状态文字一致：文字是「夜间」就配月亮，是「日间」就配太阳。
                 Icon(
-                    imageVector = if (darkThemeEnabled) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                    contentDescription = if (darkThemeEnabled) "切换到日间" else "切换到夜间",
+                    imageVector = if (darkThemeEnabled) Icons.Filled.DarkMode else Icons.Filled.LightMode,
+                    contentDescription = if (darkThemeEnabled) "当前为夜间模式" else "当前为日间模式",
                     tint = themeTextSecondary,
                     modifier = Modifier.size(18.dp)
                 )
@@ -484,7 +485,9 @@ private fun DrawerNavRow(
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val shape = RoundedCornerShape(16.dp)
+    // 选中态只画一层胶囊：高光渐变 + 1dp 描边。圆角取 50%，56dp 行高正好是胶囊形，
+    // 不再套 Surface 的第二层形状——那层裁剪会在渐变外面再叠出一个矩形底框。
+    val shape = RoundedCornerShape(percent = 50)
     val darkTheme = LocalAppDarkTheme.current
     val primary = MaterialTheme.colorScheme.primary
     // 玻璃行：未选中是极淡底 + 细描边，选中是蓝紫渐变 + 发光。
@@ -541,13 +544,15 @@ private fun DrawerNavRow(
         animationSpec = tween(200),
         label = "drawerNavIcon"
     )
-    Surface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
             .pressScaleModifier(interactionSource)
             .shadow(glow, shape, ambientColor = primary, spotColor = primary)
-            .background(Brush.horizontalGradient(listOf(fillStart, fillEnd)), shape)
+            // 先裁成胶囊再铺高光/描边：点击涟漪也被关在胶囊里，不会冒出方角。
+            .clip(shape)
+            .background(Brush.horizontalGradient(listOf(fillStart, fillEnd)))
             .border(1.dp, borderColor, shape)
             .clickable(
                 interactionSource = interactionSource,
@@ -560,31 +565,23 @@ private fun DrawerNavRow(
                     DrawerDestination.BOOKS -> "drawer_nav_books"
                     DrawerDestination.PROFILE -> "drawer_nav_profile"
                 }
-            ),
-        shape = shape,
-        color = Color.Transparent
+            )
+            .padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = destination.icon,
-                contentDescription = destination.label,
-                tint = iconColor,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(14.dp))
-            Text(
-                text = destination.label,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                color = labelColor
-            )
-            Box(modifier = Modifier.weight(1f))
-        }
+        Icon(
+            imageVector = destination.icon,
+            contentDescription = destination.label,
+            tint = iconColor,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(14.dp))
+        Text(
+            text = destination.label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = labelColor
+        )
     }
 }
 

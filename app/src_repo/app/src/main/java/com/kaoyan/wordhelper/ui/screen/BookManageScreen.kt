@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -63,6 +64,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -380,8 +382,8 @@ fun BookManageScreen(
 
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                // v5：底部留 92dp，避免悬浮 + 按钮压住最后一条词书文字。
-                contentPadding = PaddingValues(bottom = 92.dp)
+                // v6：底部留 88dp（用户指定），避免右下角悬浮 + 按钮遮住最后一张词书卡片。
+                contentPadding = PaddingValues(bottom = 88.dp)
             ) {
                 itemsIndexed(books, key = { _, item -> item.book.id }) { index, item ->
                     AnimatedVisibility(
@@ -510,6 +512,11 @@ private fun buildMasteryDistribution(item: BookUiModel): MasteryDistribution {
     )
 }
 
+// 右侧 76dp 操作列内按钮的横向内边距：按钮本身 fillMaxWidth（76dp）撑满整列，可点击区域由 Surface 宽度决定，
+// 内边距只影响文字两侧留白。取 2dp 是为了让 4 字标签在「大字」档（fontScale 1.1，labelLarge 17.6sp ≈ 70.4dp）
+// 仍能单行显示；纵向保持 Material3 默认 8dp，按钮高度不变。
+private val RIGHT_COLUMN_BUTTON_PADDING = PaddingValues(horizontal = 2.dp, vertical = 8.dp)
+
 @Composable
 private fun BookListItem(
     item: BookUiModel,
@@ -539,7 +546,10 @@ private fun BookListItem(
         0 -> "今天"
         else -> "${item.estimatedFinishDays}天"
     }
-    val statsText = "已掌握率 $masteryRate% · 待复习 ${item.dueCount} · 提前复习 ${item.earlyReviewCount} · 预计学完 $estimateText"
+    // 拆成两行：右侧操作列固定 76dp 后，单行长文本会被挤成多行；
+    // 第一行最多 2 行（窄屏放得下完整统计），第二行「预计学完」固定单行，避免被挤成两行。
+    val statsText = "已掌握率 $masteryRate% · 待复习 ${item.dueCount} · 提前复习 ${item.earlyReviewCount}"
+    val estimateTextLine = "预计学完 $estimateText"
 
     // 词书整行：标准透明面板（20dp 圆角 + 1dp 细描边），点击仍进详情；
     // 卡片间 12dp 间距由外层 LazyColumn 的 spacedBy 控制，这里不再额外加 padding。
@@ -565,7 +575,16 @@ private fun BookListItem(
                 Text(
                     text = statsText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = estimateTextLine,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 LinearProgressIndicator(
                     progress = { animatedProgress },
@@ -575,32 +594,61 @@ private fun BookListItem(
                 )
             }
             Spacer(modifier = Modifier.size(12.dp))
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // 右侧操作列：固定 76dp 并整体水平居中，按钮不因文字长短改变列宽，左侧文案区不再被挤压。
+            Column(
+                modifier = Modifier.width(76.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 if (item.book.isActive) {
-                    AssistChip(onClick = {}, label = { Text(text = "使用中") })
+                    AssistChip(onClick = {}, label = { Text(text = "使用中", maxLines = 1) })
                     if (item.book.type != Book.TYPE_NEW_WORDS) {
-                        TextButton(onClick = onOpenEarlyReview) {
-                            Text(text = "提前复习")
+                        TextButton(
+                            onClick = onOpenEarlyReview,
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = RIGHT_COLUMN_BUTTON_PADDING
+                        ) {
+                            Text(text = "提前复习", maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
-                    TextButton(onClick = onStartSpelling) {
-                        Text(text = "拼写测试")
+                    TextButton(
+                        onClick = onStartSpelling,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = RIGHT_COLUMN_BUTTON_PADDING
+                    ) {
+                        Text(text = "拼写测试", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 } else {
-                    OutlinedButton(onClick = onSwitch) {
-                        Text(text = "切换")
+                    OutlinedButton(
+                        onClick = onSwitch,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = RIGHT_COLUMN_BUTTON_PADDING
+                    ) {
+                        Text(text = "切换", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                TextButton(onClick = onExport) {
-                    Text(text = "导出")
+                TextButton(
+                    onClick = onExport,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = RIGHT_COLUMN_BUTTON_PADDING
+                ) {
+                    Text(text = "导出", maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (item.book.type == Book.TYPE_NEW_WORDS) {
-                    TextButton(onClick = onClearNewWords) {
-                        Text(text = "清空")
+                    TextButton(
+                        onClick = onClearNewWords,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = RIGHT_COLUMN_BUTTON_PADDING
+                    ) {
+                        Text(text = "清空", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 } else {
-                    TextButton(onClick = onDelete) {
-                        Text(text = "删除")
+                    TextButton(
+                        onClick = onDelete,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = RIGHT_COLUMN_BUTTON_PADDING
+                    ) {
+                        Text(text = "删除", maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
