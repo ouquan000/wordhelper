@@ -216,7 +216,7 @@ object FlowBurnPalettes {
  * @param tier 0=迟缓/超时回冷，1=正常，2=快一点，3=更快，4=最快/燃烧
  * @param elapsedMs 当前卡已停留毫秒（Tier0 由 ViewModel 判定）
  * @param motionEnabled false 或系统 Animator duration scale=0 时退化为静止颗粒条
- * @param barHeight 进度条自身高度，默认 18dp；沙盒可放大到 40dp
+ * @param barHeight 进度条自身高度，默认 11dp；沙盒可放大到 40dp
  * @param showHeader 是否显示「学习进度」与右侧等宽计数器
  * @param paletteOverride 非空时锁定这套色盘（沙盒手动预览用）
  * @param onPaletteSlotChanged 自动流转时每 14 秒回报当前池内色盘序号（0-based）
@@ -355,11 +355,12 @@ fun FlowBurnProgressBar(
         append('/')
         append(max(totalCount, 0).toString().padStart(2, '0'))
     }
-    // 18dp 轨道要留出同色系外发光的呼吸空间；24dp 沙盒模式再放宽。
+    // 轨道要留出同色系外发光的呼吸空间：10~15dp 的瘦身轨道靠 6dp 兜住 3 层外发光
+    // （最大 grow 5.1dp + 描边），再窄就会被 Canvas 高度裁掉顶端；24dp 沙盒模式再放宽。
     val haloPad = when {
         barHeight >= 24.dp -> 9.dp
         barHeight >= 16.dp -> 7.dp
-        else -> 3.dp
+        else -> 6.dp
     }
     val noise = remember { createFlowNoiseBitmap() }
     val noiseBrush = remember(noise) {

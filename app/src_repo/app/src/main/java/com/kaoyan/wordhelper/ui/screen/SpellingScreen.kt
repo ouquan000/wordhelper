@@ -3,10 +3,11 @@ package com.kaoyan.wordhelper.ui.screen
 import android.content.Context
 import android.os.VibrationEffect
 import android.os.Vibrator
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,11 +23,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -34,12 +34,16 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -161,10 +165,10 @@ fun SpellingScreen(
                 .verticalScroll(contentScrollState),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Surface(
+            GlassPanel(
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.dp, statusColor.copy(alpha = 0.22f)),
-                color = statusColor.copy(alpha = 0.09f)
+                tint = statusColor.copy(alpha = 0.10f)
             ) {
                 Column(
                     modifier = Modifier
@@ -212,22 +216,14 @@ fun SpellingScreen(
                 }
             }
 
-            Card(
+            GlassPanel(
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                                    MaterialTheme.colorScheme.surface
-                                )
-                            )
-                        )
                         .padding(horizontal = 16.dp, vertical = 14.dp)
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -259,9 +255,9 @@ fun SpellingScreen(
                 }
             }
 
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            GlassPanel(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -297,9 +293,11 @@ fun SpellingScreen(
                         )
                     }
                     if (showFirstHint || showLengthHint) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surface
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.06f))
                         ) {
                             Column(
                                 modifier = Modifier
@@ -325,10 +323,10 @@ fun SpellingScreen(
                 }
             }
             if (status == SpellingStatus.CopyRequired) {
-                Surface(
+                GlassPanel(
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
-                    color = AlertRed.copy(alpha = 0.08f),
-                    border = BorderStroke(1.dp, AlertRed.copy(alpha = 0.35f))
+                    tint = AlertRed.copy(alpha = 0.10f)
                 ) {
                     Text(
                         text = "本轮需抄写正确拼写后才能继续",
@@ -341,15 +339,13 @@ fun SpellingScreen(
         }
 
         Spacer(modifier = Modifier.height(8.dp))
-        Surface(
+        GlassPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .imePadding(),
             shape = RoundedCornerShape(20.dp),
-            tonalElevation = 2.dp,
-            border = BorderStroke(1.dp, borderColor.copy(alpha = 0.35f)),
-            color = MaterialTheme.colorScheme.surface
+            tint = borderColor.copy(alpha = 0.07f)
         ) {
             Column(
                 modifier = Modifier
@@ -480,6 +476,59 @@ fun SpellingScreen(
     }
 }
 
+/** 液态玻璃容器：半透明深色基底 + 顶部环境高光 + 1dp 白色描边，直接浮在全局暗夜背景上。 */
+@Composable
+private fun GlassPanel(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(20.dp),
+    tint: Color = Color.Transparent,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val base = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xB31A2233),
+            Color(0xD90B0F18)
+        )
+    )
+    // 玻璃底板是深色的，所以面板内部强制使用一套深色语义色：
+    // 外层即使是浅色主题（onSurface 近黑），面板里的文字/输入框/芯片也保持浅色，避免看不见。
+    val scheme = MaterialTheme.colorScheme
+    val glassScheme = remember(scheme) {
+        scheme.copy(
+            onSurface = Color(0xFFF8FAFC),
+            onSurfaceVariant = Color(0xFFCBD5E1),
+            onBackground = Color(0xFFF8FAFC),
+            outline = Color.White.copy(alpha = 0.28f),
+            outlineVariant = Color.White.copy(alpha = 0.16f),
+            surface = Color(0xFF131A28),
+            surfaceVariant = Color(0xFF1B2333)
+        )
+    }
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(brush = base, shape = shape)
+            .background(color = tint, shape = shape)
+            .border(width = 1.dp, color = Color.White.copy(alpha = 0.18f), shape = shape)
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.10f), Color.Transparent)
+                    )
+                )
+        )
+        // 保持 content 仍在 BoxScope 内（不额外套布局容器，避免改变原有布局语义），只加主题与内容色。
+        MaterialTheme(colorScheme = glassScheme) {
+            CompositionLocalProvider(LocalContentColor provides glassScheme.onSurface) {
+                content()
+            }
+        }
+    }
+}
+
 @Composable
 private fun SpellingMatchIndicator(input: String, target: String) {
     val annotated = buildAnnotatedString {
@@ -519,9 +568,10 @@ private fun SpellingAIAssistSection(
     onRequestAiAssist: (forceRefresh: Boolean) -> Unit,
     enabled: Boolean
 ) {
-    Surface(
+    GlassPanel(
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f)
+        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
     ) {
         Column(
             modifier = Modifier
@@ -565,10 +615,11 @@ private fun SpellingAIAssistSection(
 
             if (!aiAssistText.isNullOrBlank()) {
                 Box(modifier = Modifier.fillMaxWidth()) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surface
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.White.copy(alpha = 0.06f))
                     ) {
                         Column(
                             modifier = Modifier

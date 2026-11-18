@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -63,6 +64,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -262,6 +264,7 @@ fun BookManageScreen(
     Scaffold(
         // 状态栏内边距由外层 AppNavigation 统一处理，这里不再吃第二遍
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = Color.Transparent,
         floatingActionButton = {
             FloatingActionButton(onClick = {
                 importLauncher.launch(arrayOf("text/plain", "text/csv", "text/*", "application/*"))
@@ -276,9 +279,9 @@ fun BookManageScreen(
     ) { innerPadding ->
         val pageBrush = Brush.verticalGradient(
             colors = listOf(
-                MaterialTheme.colorScheme.background,
+                Color.Transparent,
                 MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
-                MaterialTheme.colorScheme.background
+                Color.Transparent
             )
         )
         val activeBookName = books.firstOrNull { it.book.isActive }?.book?.name ?: "-"
@@ -377,7 +380,10 @@ fun BookManageScreen(
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(bottom = 88.dp)
+            ) {
                 itemsIndexed(books, key = { _, item -> item.book.id }) { index, item ->
                     AnimatedVisibility(
                         visible = contentVisible,

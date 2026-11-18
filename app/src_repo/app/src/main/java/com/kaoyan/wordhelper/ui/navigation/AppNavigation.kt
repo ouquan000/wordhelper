@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.outlined.LibraryBooks
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -47,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -62,6 +62,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -69,8 +70,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.kaoyan.wordhelper.KaoyanWordApp
+import com.kaoyan.wordhelper.data.repository.UserSettings
+import com.kaoyan.wordhelper.ui.component.AmbientBackdrop
+import com.kaoyan.wordhelper.ui.component.AmbientBackdropMode
 import com.kaoyan.wordhelper.ui.component.AppDrawerContent
 import com.kaoyan.wordhelper.ui.component.DrawerDestination
+import com.kaoyan.wordhelper.ui.component.HoloCardStyle
 import com.kaoyan.wordhelper.ui.component.rememberCardStyleDrawerState
 import com.kaoyan.wordhelper.ui.screen.AILabScreen
 import com.kaoyan.wordhelper.ui.screen.BookBuildGuideScreen
@@ -113,12 +119,22 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
     val navController = rememberNavController()
     // 1.4.7.4：全局全屏沉浸提到根层级统一控制，三页切换时状态栏不再反复弹出/隐藏。
     GlobalFullscreenStatusBarEffect(enabled = immersiveFullscreenEnabled)
+    // 全局暗夜烟雾要跟着「卡片材质 / 氛围 / 呼吸动效」三个设置走，所以在根层级订阅一次 settingsFlow。
+    // Application 用 remember 缓存，别每次重组都做一次 applicationContext 强转。
+    val context = LocalContext.current
+    val appContext = remember(context) { context.applicationContext as KaoyanWordApp }
+    val uiSettings by appContext.settingsRepository.settingsFlow
+        .collectAsStateWithLifecycle(initialValue = UserSettings())
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     var learningMode by rememberSaveable { mutableStateOf(LearningMode.RECOGNITION) }
 
     val scope = rememberCoroutineScope()
+    // 360dp 是 ModalDrawerSheet 内部 DrawerDefaults.MaximumDrawerWidth 的上限：
+    // 抽屉本体（和它内部的 Column）都会被夹到 360，宽屏上若还按 78% 算，
+    // 右侧就会多出一条没内容的透明缝，所以这里先夹住。
     val drawerWidth = (LocalConfiguration.current.screenWidthDp * 0.78f).dp
+        .coerceAtMost(360.dp)
     val drawerWidthPx = with(LocalDensity.current) { drawerWidth.toPx() }
     val drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)
     // 0f = 全关，1f = 全开。拖动时直接改这个值，所以抽屉是跟手的。
@@ -176,9 +192,9 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            // 底层必须自己铺主题背景：抽屉打开时 Scaffold 会整体缩到 0.968，
-            // 不铺的话缩放四周露出的就是 Activity 的窗口白底（夜间尤其明显）。
-            .background(MaterialTheme.colorScheme.background)
+            // 这里不再铺不透明背景：整屏底色交给最底层的 AmbientBackdrop。
+            // 抽屉打开时 Scaffold 会整体缩到 0.968，四周露出的是同一层烟雾，
+            // 而不是 Activity 的窗口白底（夜间尤其明显）。
             .draggable(
                 state = dragState,
                 orientation = Orientation.Horizontal,
@@ -201,6 +217,17 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
                 }
             )
     ) {
+        // 全局暗夜烟雾：整个导航树只挂这一次（每帧绘制很重，不能每个页面各挂一份），
+        // 放在根 Box 的最底层、Scaffold 之前，因此所有页面和抽屉都在它之上。
+        // heat 恒为 0：这是全局静态氛围，升温效果只属于学习页的卡面。
+        AmbientBackdrop(
+            mode = AmbientBackdropMode.fromId(uiSettings.ambientBackdropId),
+            cardStyle = HoloCardStyle.fromId(uiSettings.cardStyleId),
+            heat = 0f,
+            motionEnabled = uiSettings.cardMotionEnabled,
+            modifier = Modifier.fillMaxSize()
+        )
+
         // 屏幕最左边缘那条窄带会被系统的「返回」手势抢走，导致从这里起手右滑直接退出 App。
         // 申请一段系统手势排除区（系统上限 200dp 高），这一段里的横向滑动交给抽屉。
         Box(
@@ -220,7 +247,9 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
                     scaleX = depthScale
                     scaleY = depthScale
                     transformOrigin = TransformOrigin.Center
-                }
+                },
+            // 透明容器：页面自己不带底色时露出的是底层的 AmbientBackdrop 烟雾
+            containerColor = Color.Transparent
         ) { innerPadding ->
             Box(modifier = Modifier.fillMaxSize()) {
                 NavHost(
@@ -321,26 +350,44 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
                 modifier = Modifier
                     .fillMaxSize()
                     .shadow(12.dp, drawerShape)
-                    .border(
-                        width = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
-                        shape = drawerShape
-                    ),
+                    // 液态玻璃：半透明深基底（上浅下深）+ 1dp 白 0.22 描边，
+                    // 与全息卡同一套审美；容器色保持透明，不盖住底下的渐变。
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xF2161C2B), Color(0xFF070A11))
+                        ),
+                        drawerShape
+                    )
+                    .border(1.dp, Color.White.copy(alpha = 0.22f), drawerShape),
                 drawerShape = drawerShape,
-                drawerContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                drawerContentColor = MaterialTheme.colorScheme.onSurface,
-                drawerTonalElevation = 2.dp,
-                // 抽屉从状态栏下方开始，系统状态栏那一行留给系统
+                drawerContainerColor = Color.Transparent,
+                drawerContentColor = Color(0xFFE2E8F0),
+                drawerTonalElevation = 0.dp,
+                // 抽屉严格贴住屏幕左/上/下边，系统栏边距由内容自己用 padding 让
                 windowInsets = WindowInsets(0, 0, 0, 0)
             ) {
-                AppDrawerContent(
-                    modifier = Modifier.statusBarsPadding().navigationBarsPadding(),
-                    currentMode = learningMode,
-                    currentRoute = currentRoute,
-                    onModeChange = { learningMode = it },
-                    onNavigate = navigateFromDrawer,
-                    drawerProgress = { drawerProgress.value }
-                )
+                // 内容外包一层：底层画顶部环境高光，上层才是原来的抽屉内容。
+                // 高光层只是绘制，不挂 clickable，不会挡住下面的点击。
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to Color.White.copy(alpha = 0.10f),
+                                    0.30f to Color.Transparent
+                                )
+                            )
+                    )
+                    AppDrawerContent(
+                        modifier = Modifier.statusBarsPadding().navigationBarsPadding(),
+                        currentMode = learningMode,
+                        currentRoute = currentRoute,
+                        onModeChange = { learningMode = it },
+                        onNavigate = navigateFromDrawer,
+                        drawerProgress = { drawerProgress.value }
+                    )
+                }
             }
         }
     }

@@ -47,12 +47,12 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.kaoyan.wordhelper.ui.theme.LocalAppDarkTheme
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -94,53 +94,70 @@ data class HoloCardPalette(
     val subInk: Color,
     val accent: Color,
     val panel: Color,
+    val panelStrong: Color,
     val panelBorder: Color,
     val frontTop: Color,
     val frontBottom: Color,
-) {
-    /** 背面内容磨砂底：浅色款白 0.72，深色款 #0F172A 0.62。 */
-    val frostedPanel: Color
-        get() = if (dark) Color(0xFF0F172A).copy(alpha = 0.62f) else Color.White.copy(alpha = 0.72f)
-}
+)
 
 val LocalHoloCardPalette = staticCompositionLocalOf {
     HoloCardPalette(
         style = HoloCardStyle.PEARL,
         dark = false,
-        ink = Color(0xFF17152E),
-        subInk = Color(0xFF4A4668),
+        ink = Color(0xFF111827),
+        subInk = Color(0xFF374151),
         accent = Color(0xFF6C5CE7),
-        panel = Color.White.copy(alpha = 0.72f),
-        panelBorder = Color(0xFF8E86C9).copy(alpha = 0.25f),
+        panel = Color.White.copy(alpha = 0.35f),
+        panelStrong = Color.White.copy(alpha = 0.55f),
+        panelBorder = Color(0xFF111827).copy(alpha = 0.15f),
         frontTop = Color(0xFFFDFCFF),
         frontBottom = Color(0xFFF1EEF8),
     )
 }
 
+/** 亮色皮肤的语义色：深墨字 + 半透明白面板（面板不压暗，让全息材质直接透出来）。 */
+private val LightSkinInk = Color(0xFF111827)
+private val LightSkinSubInk = Color(0xFF374151)
+private val LightSkinPanel = Color.White.copy(alpha = 0.35f)
+private val LightSkinPanelStrong = Color.White.copy(alpha = 0.55f)
+private val LightSkinPanelBorder = Color(0xFF111827).copy(alpha = 0.15f)
+
+/** 暗色皮肤的语义色：近白字 + 低透明度白面板。 */
+private val DarkSkinInk = Color(0xFFF8FAFC)
+private val DarkSkinSubInk = Color(0xFFCBD5E1)
+private val DarkSkinPanel = Color.White.copy(alpha = 0.08f)
+private val DarkSkinPanelStrong = Color.White.copy(alpha = 0.12f)
+private val DarkSkinPanelBorder = Color.White.copy(alpha = 0.22f)
+
 @Composable
 fun rememberHoloPalette(style: HoloCardStyle): HoloCardPalette {
-    val themeDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    // 必须读 App 真实明暗：HoloCardTheme 会把 background 换成半透明白面板，
+    // 若在此处用 background.luminance() 判断，深色皮肤的卡片会被误判成亮色，
+    // 于是内层拿到浅色 palette、外层仍用深色 palette（白字白底）。
+    val themeDark = LocalAppDarkTheme.current
     val classicDark = style == HoloCardStyle.CLASSIC && themeDark
     return remember(style, themeDark) {
         when (style) {
             HoloCardStyle.CLASSIC -> if (classicDark) HoloCardPalette(
                 style = style,
                 dark = true,
-                ink = Color(0xFFEAF0FF),
-                subInk = Color(0xFFB9C6E4),
+                ink = DarkSkinInk,
+                subInk = DarkSkinSubInk,
                 accent = Color(0xFFAEC4FF),
-                panel = Color(0xFF0F172A).copy(alpha = 0.62f),
-                panelBorder = Color.White.copy(alpha = 0.18f),
+                panel = DarkSkinPanel,
+                panelStrong = DarkSkinPanelStrong,
+                panelBorder = DarkSkinPanelBorder,
                 frontTop = Color(0xFF1A233C),
                 frontBottom = Color(0xFF111A2E),
             ) else HoloCardPalette(
                 style = style,
                 dark = false,
-                ink = Color(0xFF1F2A44),
-                subInk = Color(0xFF6D7895),
+                ink = LightSkinInk,
+                subInk = LightSkinSubInk,
                 accent = Color(0xFF2E5CCB),
-                panel = Color.White.copy(alpha = 0.72f),
-                panelBorder = Color(0xFFBAC6E3).copy(alpha = 0.35f),
+                panel = LightSkinPanel,
+                panelStrong = LightSkinPanelStrong,
+                panelBorder = LightSkinPanelBorder,
                 frontTop = Color(0xFFEAF2FF),
                 frontBottom = Color(0xFFFBFDFF),
             )
@@ -152,23 +169,26 @@ fun rememberHoloPalette(style: HoloCardStyle): HoloCardPalette {
             HoloCardStyle.PEARL -> HoloCardPalette(
                 style = style,
                 dark = false,
-                ink = Color(0xFF17152E),
-                subInk = Color(0xFF4A4668),
+                ink = LightSkinInk,
+                subInk = LightSkinSubInk,
                 accent = Color(0xFF6C5CE7),
-                panel = Color.White.copy(alpha = 0.72f),
-                panelBorder = Color(0xFF8E86C9).copy(alpha = 0.25f),
+                panel = LightSkinPanel,
+                panelStrong = LightSkinPanelStrong,
+                panelBorder = LightSkinPanelBorder,
                 frontTop = Color(0xFFFDFCFF),
                 frontBottom = Color(0xFFF1EEF8),
             )
 
+            // chrome 现在是亮银皮肤：归亮色组，不能按「深色款」压成白字。
             HoloCardStyle.CHROME -> HoloCardPalette(
                 style = style,
                 dark = false,
-                ink = Color(0xFF1B1D24),
-                subInk = Color(0xFF4A4E59),
+                ink = LightSkinInk,
+                subInk = LightSkinSubInk,
                 accent = Color(0xFF3A3F4B),
-                panel = Color.White.copy(alpha = 0.72f),
-                panelBorder = Color(0xFF7C828F).copy(alpha = 0.30f),
+                panel = LightSkinPanel,
+                panelStrong = LightSkinPanelStrong,
+                panelBorder = LightSkinPanelBorder,
                 frontTop = Color(0xFFEFF1F4),
                 frontBottom = Color(0xFFC9CDD4),
             )
@@ -179,11 +199,12 @@ fun rememberHoloPalette(style: HoloCardStyle): HoloCardPalette {
 private fun darkPalette(style: HoloCardStyle, accent: Color) = HoloCardPalette(
     style = style,
     dark = true,
-    ink = Color(0xFFF4F4F6),
-    subInk = Color(0xFFD7DBE6).copy(alpha = 0.78f),
+    ink = DarkSkinInk,
+    subInk = DarkSkinSubInk,
     accent = accent,
-    panel = Color(0xFF0F172A).copy(alpha = 0.62f),
-    panelBorder = Color.White.copy(alpha = 0.22f),
+    panel = DarkSkinPanel,
+    panelStrong = DarkSkinPanelStrong,
+    panelBorder = DarkSkinPanelBorder,
     frontTop = Color(0xFF18213A),
     frontBottom = Color(0xFF0C1120),
 )
@@ -211,7 +232,7 @@ fun HoloCardTheme(style: HoloCardStyle, content: @Composable () -> Unit) {
                 onTertiary = Color(0xFF0A1020),
                 surface = palette.panel,
                 onSurface = palette.ink,
-                surfaceVariant = palette.panel,
+                surfaceVariant = palette.panelStrong,
                 onSurfaceVariant = palette.subInk,
                 background = palette.panel,
                 onBackground = palette.ink,
@@ -234,7 +255,7 @@ fun HoloCardTheme(style: HoloCardStyle, content: @Composable () -> Unit) {
                 onSecondaryContainer = palette.accent,
                 surface = palette.panel,
                 onSurface = palette.ink,
-                surfaceVariant = palette.panel,
+                surfaceVariant = palette.panelStrong,
                 onSurfaceVariant = palette.subInk,
                 background = palette.panel,
                 onBackground = palette.ink,
@@ -262,8 +283,18 @@ private const val SENSOR_LIGHT_MAX = 0.92f
 /** 一阶低通系数：SENSOR_DELAY_GAME（≈50Hz）下约 0.1s 收敛，压手抖但不拖泥带水。 */
 private const val SENSOR_LOW_PASS_ALPHA = 0.28f
 
-/** 静止时的呼吸微动比例：只让光斑轻轻「活」着，绝不抢倾斜主体。 */
-private const val SENSOR_BREATH_RATIO = 0.04f
+/**
+ * 二阶弹簧惯性：stiffness 160，阻尼 = 2√k·0.72（欠阻尼）——会被手指的倾斜「推」出惯性，
+ * 松手后带回一点点过冲再收住，而不是一阶低通那种「贴着目标滑」。
+ */
+private const val SENSOR_SPRING_STIFFNESS = 160f
+private val SENSOR_SPRING_DAMPING = 2f * sqrt(SENSOR_SPRING_STIFFNESS) * 0.72f
+
+/** 常驻呼吸：就算手机平放不动，光斑也永不静止（X 12% / Y 9.3% 两个互质周期）。 */
+private const val SENSOR_DRIFT_X_AMPLITUDE = 0.035f
+private const val SENSOR_DRIFT_X_OMEGA = 0.12f
+private const val SENSOR_DRIFT_Y_AMPLITUDE = 0.030f
+private const val SENSOR_DRIFT_Y_OMEGA = 0.093f
 
 /**
  * 虚拟光源。卡片本身永远水平（rotationX = 0），所有「流光」都来自这里。
@@ -325,27 +356,29 @@ class HoloLightState {
 
     internal fun step(dt: Float) {
         time += dt
-        // 呼吸：极低幅度、两个互质周期，避免机械感，但肉眼几乎只是「光在呼吸」。
-        val lissX = 0.25f * sin(2f * PI.toFloat() * time / 12.4f)
-        val lissY = 0.235f * sin(2f * PI.toFloat() * time / 10.3f + 1.1f)
+        // 常驻微漂移：以 0.5 为基线、永不静止的双轴呼吸（X≈±0.035 / Y≈±0.030）。
+        // 没有传感器时它就是唯一位移来源；有传感器时它就是倾斜的底座。
+        val driftX = 0.5f + SENSOR_DRIFT_X_AMPLITUDE * sin(time * SENSOR_DRIFT_X_OMEGA)
+        val driftY = 0.5f + SENSOR_DRIFT_Y_AMPLITUDE * sin(time * SENSOR_DRIFT_Y_OMEGA + 1.1f)
 
         val targetX: Float
         val targetY: Float
         if (hasTilt) {
-            // 重力偏移 → 归一化倾斜量 → 0.5 为中心的 ±0.42 光程，再叠极小呼吸。
-            val baseX = 0.5f + (gravityDeltaX / SENSOR_FULL_TILT_SIN).coerceIn(-1f, 1f) * SENSOR_LIGHT_SPAN
-            val baseY = 0.5f + (gravityDeltaY / SENSOR_FULL_TILT_SIN).coerceIn(-1f, 1f) * SENSOR_LIGHT_SPAN
-            targetX = (baseX + lissX * SENSOR_BREATH_RATIO).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
-            targetY = (baseY + lissY * SENSOR_BREATH_RATIO).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
+            // 重力偏移 → 归一化倾斜量 → ±0.42 光程，叠在呼吸基线之上，整体仍落在 0.08..0.92。
+            val baseX = (gravityDeltaX / SENSOR_FULL_TILT_SIN).coerceIn(-1f, 1f) * SENSOR_LIGHT_SPAN
+            val baseY = (gravityDeltaY / SENSOR_FULL_TILT_SIN).coerceIn(-1f, 1f) * SENSOR_LIGHT_SPAN
+            targetX = (driftX + baseX).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
+            targetY = (driftY + baseY).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
         } else {
-            // 没有可用姿态传感器：光斑停在中央做极微弱呼吸，不再大幅度李萨如巡游。
-            targetX = (0.5f + lissX * SENSOR_BREATH_RATIO).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
-            targetY = (0.5f + lissY * SENSOR_BREATH_RATIO).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
+            targetX = driftX.coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
+            targetY = driftY.coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
         }
-        // 无过冲阻尼弹簧：stiffness 160，damping 25.3（≈ 2√160），几乎不额外滞后。
-        velocityX += (160f * (targetX - lightX.floatValue) - 25.3f * velocityX) * dt
+        // 半隐式欧拉：先更新速度、再用新速度更新位置，dt 已由调用方夹在 0..50ms。
+        velocityX += ((targetX - lightX.floatValue) * SENSOR_SPRING_STIFFNESS -
+            velocityX * SENSOR_SPRING_DAMPING) * dt
         lightX.floatValue = (lightX.floatValue + velocityX * dt).coerceIn(0f, 1f)
-        velocityY += (160f * (targetY - lightY.floatValue) - 25.3f * velocityY) * dt
+        velocityY += ((targetY - lightY.floatValue) * SENSOR_SPRING_STIFFNESS -
+            velocityY * SENSOR_SPRING_DAMPING) * dt
         lightY.floatValue = (lightY.floatValue + velocityY * dt).coerceIn(0f, 1f)
         breath.floatValue = 0.5f + 0.5f * sin(2f * PI.toFloat() * time / 6.4f)
     }
@@ -667,18 +700,8 @@ fun HoloCardSurface(
                     )
                 }
             }
-            // 卡背：材质之上、内容之下铺一层与卡片同圆角的全幅均匀暗化。
-            // 只做整体压暗（让浅色卡背文字站得住、全息流光仍透出来），
-            // 不再画任何内嵌小矩形/内衬/描边——那就是用户报的「黑框」。
-            // 空 Box 不吃触摸，点击翻面、滚动、重写区照旧落在 content() 里。
-            if (isBack) {
-                Box(
-                    Modifier
-                        .matchParentSize()
-                        .clip(shape)
-                        .background(Color(0xFF0A0F1D).copy(alpha = 0.36f))
-                )
-            }
+            // 卡背不再铺任何暗化/磨砂遮罩：文字直接印在全息材质上，
+            // 材质本身（drawHoloMaterial）照旧绘制，只是不再压一层黑。
             content()
         }
     }
@@ -708,6 +731,9 @@ private fun DrawScope.drawHoloMaterial(
 
     drawHoloBase(style, palette, lx, ly, w, h, scale, diagonal)
     drawHoloFoil(style, lx, ly, hover, gloss, w, h, scale, diagonal, dots)
+    // 逐帧微纹理：星尘闪烁 / 等高线衍射 / 贝母薄纱 / 斜向镜面亮带。
+    // 全部读实时光源坐标，所以只重绘、不重组，也不会让任何缓存失效。
+    drawSkinMicroDetail(style, palette, lx, ly, w, h, scale, diagonal, gloss)
     drawHoloGlare(style, lx, ly, hover, gloss, w, h, diagonal)
     drawHoloPaceAmbience(palette, lx, ly, pace, w, h)
     drawHoloRim(palette, lx, ly, hover, w, h, corner, scale, pace)
@@ -1174,6 +1200,131 @@ private fun DrawScope.drawHoloFoil(
             }
         }
     }
+}
+
+/**
+ * 六款皮肤的逐帧微纹理补强（在 base / foil 之上、glare 之下）。
+ *
+ * 全部现画现算：点位用确定性哈希（无分配、无随机源），亮度由光斑到该点的距离决定，
+ * 因此光源一动纹理就跟着活，但整个过程只发生在 draw 阶段，不会触发重组。
+ */
+private fun DrawScope.drawSkinMicroDetail(
+    style: HoloCardStyle,
+    palette: HoloCardPalette,
+    lx: Float,
+    ly: Float,
+    w: Float,
+    h: Float,
+    scale: Float,
+    diagonal: Float,
+    gloss: Float,
+) {
+    when (style) {
+        HoloCardStyle.SPARKLE -> {
+            // 深午夜蓝上的三层错位星尘：离光斑越近越亮，大颗粒补一圈极淡光晕。
+            for (layer in 0 until 3) {
+                val count = 44 - layer * 9
+                val sizeScale = 0.55f + layer * 0.38f
+                val seedBase = 0x5EED + layer * 977
+                for (i in 0 until count) {
+                    val sx = hash01(seedBase + i * 31) * w
+                    val sy = hash01(seedBase + i * 57 + 13) * h
+                    val dx = (sx - lx) / w
+                    val dy = (sy - ly) / h
+                    val dist = sqrt(dx * dx + dy * dy)
+                    val near = (1f - dist / 1.05f).coerceIn(0f, 1f)
+                    val twinkle = 0.35f + 0.65f * hash01(seedBase + i * 13 + 7)
+                    val alpha = ((0.08f + 0.52f * near) * twinkle * gloss * (0.95f - 0.14f * layer))
+                        .coerceIn(0f, 0.72f)
+                    if (alpha <= 0.012f) continue
+                    val dotR = (0.55f + 0.95f * hash01(seedBase + i * 7 + 3)) * scale * sizeScale
+                    if (dotR > 0.95f * scale) {
+                        drawCircle(
+                            color = palette.accent.copy(alpha = alpha * 0.32f),
+                            radius = dotR * 2.8f,
+                            center = Offset(sx, sy),
+                        )
+                    }
+                    drawCircle(
+                        color = Color.White.copy(alpha = alpha),
+                        radius = dotR,
+                        center = Offset(sx, sy),
+                    )
+                }
+            }
+        }
+
+        HoloCardStyle.ETCHED -> {
+            // 哑光碳黑上再补一档更细的等高线，并只在光斑掠过处叠彩虹衍射。
+            val strength = (0.35f + 0.65f * gloss).coerceIn(0f, 1f)
+            drawEtchedRings(w, h, scale * 1.32f, Color.White.copy(alpha = 0.026f * strength))
+            val diffraction = Brush.radialGradient(
+                0f to Color(126, 220, 255).copy(alpha = 0.20f * strength),
+                0.42f to Color(196, 150, 255).copy(alpha = 0.12f * strength),
+                0.78f to Color(255, 214, 150).copy(alpha = 0.05f * strength),
+                1f to Color.Transparent,
+                center = Offset(lx, ly),
+                radius = 0.62f * diagonal,
+            )
+            drawIntoCanvas { canvas ->
+                canvas.saveLayer(Rect(0f, 0f, w, h), Paint())
+                drawRect(brush = diffraction, topLeft = Offset.Zero, size = Size(w, h))
+                canvas.drawEtchedRingMask(w, h, scale * 1.32f, Color.White.copy(alpha = 0.62f))
+                canvas.restore()
+            }
+        }
+
+        HoloCardStyle.PEARL -> {
+            // 奶油珍珠白：暖白高光压住粉气，再叠粉 / 薄荷 / 淡紫贝母薄纱。
+            drawRect(
+                Brush.linearGradient(
+                    0f to Color(255, 252, 246).copy(alpha = 0.30f * gloss),
+                    0.55f to Color(255, 248, 251).copy(alpha = 0.10f * gloss),
+                    1f to Color(248, 245, 255).copy(alpha = 0.18f * gloss),
+                    start = Offset(0f, 0f),
+                    end = Offset(w, h),
+                )
+            )
+            drawRect(
+                Brush.linearGradient(
+                    0f to Color(255, 205, 228).copy(alpha = 0.09f * gloss),
+                    0.35f to Color(201, 255, 232).copy(alpha = 0.09f * gloss),
+                    0.70f to Color(212, 200, 255).copy(alpha = 0.09f * gloss),
+                    1f to Color(255, 238, 214).copy(alpha = 0.07f * gloss),
+                    start = Offset(0f, h),
+                    end = Offset(w, 0f),
+                )
+            )
+        }
+
+        // 金属 / 玻璃系：一条随光源横移的斜向镜面亮带，紧邻一条暗带，把明暗过渡拉开。
+        HoloCardStyle.RAINBOW, HoloCardStyle.PRISM, HoloCardStyle.CHROME -> {
+            val centerX = w * (0.5f + (lx / w - 0.5f) * 0.55f)
+            val halfBand = w * 0.17f
+            val slant = h * 0.55f
+            drawRect(
+                Brush.linearGradient(
+                    0f to Color.Transparent,
+                    0.34f to Color.White.copy(alpha = 0.04f * gloss),
+                    0.50f to Color.White.copy(alpha = 0.24f * gloss),
+                    0.64f to Color.Black.copy(alpha = 0.16f * gloss),
+                    1f to Color.Transparent,
+                    start = Offset(centerX - halfBand, -slant),
+                    end = Offset(centerX + halfBand, h + slant),
+                )
+            )
+        }
+
+        else -> Unit
+    }
+}
+
+/** 确定性 0..1 噪声：星尘点位/闪烁相位用，避免每帧分配随机数生成器。 */
+private fun hash01(seed: Int): Float {
+    var x = seed * 374761393 + 668265263
+    x = (x xor (x shr 13)) * 1274126177
+    x = x xor (x shr 16)
+    return (x and 0x7FFFFFFF).toFloat() / 0x7FFFFFFF.toFloat()
 }
 
 private fun DrawScope.drawHoloGlare(

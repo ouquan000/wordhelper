@@ -3,6 +3,7 @@ package com.kaoyan.wordhelper.ui.component
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -10,8 +11,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -51,6 +53,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -162,22 +167,31 @@ fun AppDrawerContent(
     ) {
         // 模式状态栏：只显示当前模式，点它才展开
         val modeBarInteraction = remember { MutableInteractionSource() }
+        // 模式胶囊：透明 Surface + 白玻璃渐变 + 1dp 白描边。
+        // 抽屉底色永远是深色玻璃，这里不能再用 primaryContainer 之类的主题实心色。
+        val modeBarShape = RoundedCornerShape(18.dp)
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(58.dp)
                 .pressScaleModifier(modeBarInteraction)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.10f),
+                            Color.White.copy(alpha = 0.02f)
+                        )
+                    ),
+                    modeBarShape
+                )
+                .border(1.dp, Color.White.copy(alpha = 0.20f), modeBarShape)
                 .clickable(
                     interactionSource = modeBarInteraction,
                     indication = LocalIndication.current
                 ) { modeExpanded = !modeExpanded }
                 .testTag("learning_mode_toggle"),
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-            border = BorderStroke(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
-            )
+            shape = modeBarShape,
+            color = Color.Transparent
         ) {
             Row(
                 modifier = Modifier
@@ -189,13 +203,13 @@ fun AppDrawerContent(
                     text = currentMode.label,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = Color(0xFFF1F5F9),
                     modifier = Modifier.weight(1f)
                 )
                 Icon(
                     imageVector = Icons.Filled.KeyboardArrowDown,
                     contentDescription = if (modeExpanded) "收起模式" else "展开模式",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = Color(0xFFCBD5E1),
                     modifier = Modifier
                         .size(22.dp)
                         .rotate(arrowRotation)
@@ -285,31 +299,47 @@ private fun ModeOptionRow(
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val shape = RoundedCornerShape(14.dp)
+    // 选中项 = 蓝紫流光胶囊；未选中 = 极淡的白玻璃。两者都自带描边，
+    // 不再依赖主题色，亮色主题下也不会变成一块看不清的浅色实心块。
+    val fillBrush = if (selected) {
+        Brush.horizontalGradient(
+            listOf(
+                Color(0xFF7C9BFF).copy(alpha = 0.38f),
+                Color(0xFF9B7CFF).copy(alpha = 0.22f)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            listOf(
+                Color.White.copy(alpha = 0.05f),
+                Color.White.copy(alpha = 0.02f)
+            )
+        )
+    }
     Surface(
         modifier = Modifier
             .width(200.dp)
             .height(48.dp)
             .pressScaleModifier(interactionSource)
+            .background(fillBrush, shape)
+            .border(
+                width = 1.dp,
+                color = if (selected) {
+                    Color.White.copy(alpha = 0.24f)
+                } else {
+                    Color.White.copy(alpha = 0.10f)
+                },
+                shape = shape
+            )
             .clickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 onClick = onClick
             )
             .testTag(testTag),
-        shape = RoundedCornerShape(14.dp),
-        color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        },
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (selected) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-            } else {
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
-            }
-        )
+        shape = shape,
+        color = Color.Transparent
     ) {
         Row(
             modifier = Modifier
@@ -321,18 +351,14 @@ private fun ModeOptionRow(
                 text = text,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
+                color = if (selected) Color(0xFFF8FAFC) else Color(0xFFCBD5E1),
                 modifier = Modifier.weight(1f)
             )
             if (selected) {
                 Icon(
                     imageVector = Icons.Filled.Check,
                     contentDescription = "当前模式",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = Color(0xFFBFD0FF),
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -347,31 +373,49 @@ private fun DrawerNavRow(
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    // 选中态胶囊底色与文字 / 图标颜色都做 200ms 平滑过渡
-    val containerColor by animateColorAsState(
+    val shape = RoundedCornerShape(16.dp)
+    val primary = MaterialTheme.colorScheme.primary
+    // 玻璃行：未选中是 4% 白底 + 10% 白描边，选中是 primary→紫 的横向渐变 + 发光。
+    // 渐变两端、描边、辉光、文字/图标色都走 200ms 过渡，切换时不会硬切。
+    val fillStart by animateColorAsState(
         targetValue = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+            primary.copy(alpha = 0.34f)
         } else {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+            Color.White.copy(alpha = 0.04f)
         },
         animationSpec = tween(200),
-        label = "drawerNavContainer"
+        label = "drawerNavFillStart"
+    )
+    val fillEnd by animateColorAsState(
+        targetValue = if (selected) {
+            Color(0xFF9B7CFF).copy(alpha = 0.10f)
+        } else {
+            Color.White.copy(alpha = 0.04f)
+        },
+        animationSpec = tween(200),
+        label = "drawerNavFillEnd"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) {
+            primary.copy(alpha = 0.45f)
+        } else {
+            Color.White.copy(alpha = 0.10f)
+        },
+        animationSpec = tween(200),
+        label = "drawerNavBorder"
+    )
+    val glow by animateDpAsState(
+        targetValue = if (selected) 10.dp else 0.dp,
+        animationSpec = tween(200),
+        label = "drawerNavGlow"
     )
     val labelColor by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.onSurface
-        },
+        targetValue = if (selected) Color.White else Color(0xFFE2E8F0),
         animationSpec = tween(200),
         label = "drawerNavLabel"
     )
     val iconColor by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        },
+        targetValue = if (selected) Color(0xFFBFD0FF) else Color(0xFF94A3B8),
         animationSpec = tween(200),
         label = "drawerNavIcon"
     )
@@ -380,6 +424,9 @@ private fun DrawerNavRow(
             .fillMaxWidth()
             .height(56.dp)
             .pressScaleModifier(interactionSource)
+            .shadow(glow, shape, ambientColor = primary, spotColor = primary)
+            .background(Brush.horizontalGradient(listOf(fillStart, fillEnd)), shape)
+            .border(1.dp, borderColor, shape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
@@ -392,8 +439,8 @@ private fun DrawerNavRow(
                     DrawerDestination.PROFILE -> "drawer_nav_profile"
                 }
             ),
-        shape = RoundedCornerShape(16.dp),
-        color = containerColor
+        shape = shape,
+        color = Color.Transparent
     ) {
         Row(
             modifier = Modifier

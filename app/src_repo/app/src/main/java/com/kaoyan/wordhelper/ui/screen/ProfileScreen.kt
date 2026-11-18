@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
@@ -179,15 +180,16 @@ fun ProfileScreen(
 
     val pageBrush = Brush.verticalGradient(
         colors = listOf(
-            MaterialTheme.colorScheme.background,
+            Color.Transparent,
             MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
-            MaterialTheme.colorScheme.background
+            Color.Transparent
         )
     )
 
     Scaffold(
         // 状态栏内边距由外层 AppNavigation 统一处理，这里不再吃第二遍
-        contentWindowInsets = WindowInsets(0, 0, 0, 0)
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = Color.Transparent
     ) { innerPadding ->
         Column(
             modifier = Modifier

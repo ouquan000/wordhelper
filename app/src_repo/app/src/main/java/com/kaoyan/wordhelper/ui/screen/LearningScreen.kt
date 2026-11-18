@@ -10,6 +10,7 @@ import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -87,15 +88,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -144,8 +147,6 @@ import com.kaoyan.wordhelper.data.model.CardBackConfig
 import com.kaoyan.wordhelper.data.model.CardBackSize
 import com.kaoyan.wordhelper.data.model.StudyRating
 import com.kaoyan.wordhelper.ui.component.AnimatedStarToggle
-import com.kaoyan.wordhelper.ui.component.AmbientBackdrop
-import com.kaoyan.wordhelper.ui.component.AmbientBackdropMode
 import com.kaoyan.wordhelper.ui.component.CardEntrance
 import com.kaoyan.wordhelper.ui.component.CardStyleDrawer
 import com.kaoyan.wordhelper.ui.component.CardStyleDrawerState
@@ -177,7 +178,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -499,34 +502,19 @@ fun LearningScreen(
         return
     }
 
-    val pageBrush = Brush.verticalGradient(
-        colors = listOf(
-            MaterialTheme.colorScheme.background,
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.06f),
-            MaterialTheme.colorScheme.background
-        )
-    )
-
     // 全局全屏沉浸（状态栏）已上移到 AppNavigation 根层级统一控制，这里不再单独收放状态栏，
     // 避免「进入本页隐藏 / 离开恢复」造成切页时状态栏闪一下、页面上下跳。
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(pageBrush)
+            // 本页不再自铺背景：暗夜底与氛围层统一由 AppNavigation 根容器提供，
+            // 这里留透明，翻页/转场时才不会在页面之间叠出第二块底色。
             // 整页横向滑动控制卡片材质抽屉：关闭时从右侧 40% 起手左滑拉出，
             // 展开后整块面板都能右滑收回；左侧导航抽屉开着时本手势让位，
             // 保证同一时间只有一个抽屉跟手（以最后一次滑动方向为准）。
             .styleDrawerLeftSwipe(styleDrawerState, navDrawerOpen)
     ) {
-        // 整页最底层：暗夜烟雾。只绘制、不接手势，位于 Column / 卡片 / 抽屉之下。
-        AmbientBackdrop(
-            mode = AmbientBackdropMode.fromId(cardUiPrefs.ambientBackdropId),
-            cardStyle = cardStyle,
-            heat = learningPace.heat,
-            motionEnabled = cardUiPrefs.motionEnabled && systemAnimationsOn,
-            modifier = Modifier.fillMaxSize(),
-        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -786,13 +774,13 @@ fun LearningScreen(
                 tier = learningPace.tier,
                 elapsedMs = learningPace.elapsedMs,
                 motionEnabled = cardUiPrefs.motionEnabled,
-                barHeight = 18.dp,
+                barHeight = 10.dp,
                 sprintSize = 30,
                 heat = learningPace.heat,
-                // 整体上移 4dp，和底部手势区拉开呼吸间距
+                // 整体上移 2dp，和底部手势区拉开呼吸间距
                 modifier = Modifier
                     .fillMaxWidth()
-                    .offset(y = (-4).dp)
+                    .offset(y = (-2).dp)
             )
         }
 
@@ -828,7 +816,7 @@ fun LearningScreen(
 
 private const val SM2_DESCRIPTION =
     "SM-2 调度说明：不认识会在会话内重试，模糊保守推进，认识按记忆因子增长间隔。"
-private val RECOGNITION_SECTION_SPACING = 10.dp
+private val RECOGNITION_SECTION_SPACING = 8.dp
 
 /** 卡片材质的三个持久化开关，单独收敛成一个不可变快照，避免整页跟着 settingsFlow 抖。 */
 private data class CardUiPrefs(
@@ -1018,6 +1006,18 @@ private fun RecognitionActionPanel(
     val trackShape = RoundedCornerShape(50)
     var cursorIndex by remember { mutableIntStateOf(-1) }
     var trackWidthPx by remember { mutableFloatStateOf(0f) }
+    // 纵向越界作废：游标不是消失，而是平滑淡出 + 缩到 0.82（只改 layer，不重排）。
+    var gestureCanceled by remember { mutableStateOf(false) }
+    val cursorAlpha by animateFloatAsState(
+        targetValue = if (gestureCanceled) 0f else 1f,
+        animationSpec = tween(durationMillis = 160),
+        label = "recognitionCursorAlpha"
+    )
+    val cursorScale by animateFloatAsState(
+        targetValue = if (gestureCanceled) 0.82f else 1f,
+        animationSpec = tween(durationMillis = 180),
+        label = "recognitionCursorScale"
+    )
 
     fun indexAt(x: Float): Int {
         if (trackWidthPx <= 0f) return 0
@@ -1081,8 +1081,13 @@ private fun RecognitionActionPanel(
                 .onSizeChanged { trackWidthPx = it.width.toFloat() }
                 .pointerInput(isAnswering, trackWidthPx) {
                     if (isAnswering) return@pointerInput
+                    // 48dp 纵向越界阈值（PointerInputScope 本身就是 Density，可直接 toPx）
+                    val verticalCancelPx = 48.dp.toPx()
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        val startY = down.position.y
+                        var canceled = false
+                        gestureCanceled = false
                         var index = indexAt(down.position.x)
                         cursorIndex = index
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -1091,6 +1096,12 @@ private fun RecognitionActionPanel(
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             if (!change.pressed) break
+                            // 纵向越界：整场手势作废，停在当前 index，不再更新评分。
+                            if (!canceled && abs(change.position.y - startY) > verticalCancelPx) {
+                                canceled = true
+                                gestureCanceled = true
+                            }
+                            if (canceled) continue
                             if (!dragging &&
                                 (change.position - down.position).getDistance() > viewConfiguration.touchSlop
                             ) {
@@ -1107,7 +1118,8 @@ private fun RecognitionActionPanel(
                                 change.consume()
                             }
                         }
-                        submit(index)
+                        // 作废的手势抬手不提交任何评分；下一次按下时 canceled 会重置。
+                        if (!canceled) submit(index)
                     }
                 }
         ) {
@@ -1125,6 +1137,13 @@ private fun RecognitionActionPanel(
                         .offset(x = cursorOffset, y = 3.dp)
                         .width(cursorWidth)
                         .height(48.dp)
+                        // 作废时只做 layer 级淡出/缩小，不参与布局，也不改轨道外观
+                        .graphicsLayer {
+                            alpha = cursorAlpha
+                            scaleX = cursorScale
+                            scaleY = cursorScale
+                            transformOrigin = TransformOrigin.Center
+                        }
                         .shadow(
                             elevation = 14.dp,
                             shape = trackShape,
@@ -1175,12 +1194,16 @@ private fun RecognitionActionPanel(
                             color = Color.White.copy(
                                 alpha = when {
                                     isAnswering -> 0.55f
-                                    cursorIndex == index -> 1f
+                                    cursorIndex == index && !gestureCanceled -> 1f
                                     else -> 0.90f
                                 }
                             ),
                             style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (cursorIndex == index) FontWeight.SemiBold else FontWeight.Medium,
+                            fontWeight = if (cursorIndex == index && !gestureCanceled) {
+                                FontWeight.SemiBold
+                            } else {
+                                FontWeight.Medium
+                            },
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -1311,45 +1334,94 @@ private fun WordCard(
         backReady = true
     }
     val density = LocalDensity.current
+    // 高响应弹簧（dampingRatio = 0.74 / stiffness = 460）驱动 0° ↔ 180°：约 300ms
+    // 干脆甩翻，带一点轻微物理过冲后在 180° 站稳——像真卡被手指弹过去，而不是匀速转。
     val rotation = animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
-        animationSpec = tween(durationMillis = 300),
+        animationSpec = spring(dampingRatio = 0.74f, stiffness = 460f),
         label = "wordCardRotation"
     )
-    // 只在跨过 90° 时翻转一次，而不是每帧：composition 里读的是它，rotation 本体只进 layer lambda。
-    val showFront by remember { derivedStateOf { rotation.value <= 90f } }
+    // 只在跨过 90° 这一处切一次：composition 读的是它，rotation 本体只进 layer lambda。
+    // （弹簧过冲 >180° 时 showFront 仍为 false，照实渲染卡背，不会闪回正面。）
+    val showFront by remember { derivedStateOf { rotation.value < 90f } }
     val backVisible = !showFront
 
     val holoLight = rememberHoloLightState(motionEnabled)
     val tapMaxDragPx = with(density) { 4.dp.toPx() }
-    // 浅色金属/珠光款：给大单词与音标做雕刻凹陷（深色款用亮字，不加，避免糊边）。
-    val engraveShadow = if (
-        cardStyle == HoloCardStyle.CLASSIC ||
-        cardStyle == HoloCardStyle.PEARL ||
-        cardStyle == HoloCardStyle.CHROME
-    ) {
-        with(density) {
-            Shadow(
-                color = Color.Black.copy(alpha = 0.30f),
-                offset = Offset(0f, 1.4.dp.toPx()),
-                blurRadius = 1.1.dp.toPx()
-            )
-        }
-    } else {
-        null
-    }
 
     HoloCardTheme(cardStyle) {
-        // 整张卡是一个不可分割的实体：全息材质、边框、准星、正反面文字与暗化遮罩
+        // 卡面文字配色统一走全息调色板（必须在本层读：HoloCardTheme 才会 provide 对应肤色）。
+        val palette = LocalHoloCardPalette.current
+        val faceInk = palette.ink
+        val faceSoftInk = palette.subInk
+        // 整张卡是一个不可分割的实体：全息材质、边框、准星、正反面文字
         // 全挂在同一个 3D 旋转层上。翻面时整卡一起转，不再出现「卡内内容旋转门」；
         // 切卡快照抓到的也是这张会一起飞走/补位的整卡。
         Box(
-            modifier = modifier.graphicsLayer {
-                // 读值留在 layer lambda 里：翻面这 300ms 每帧只重画，不重组。
-                rotationY = rotation.value
-                cameraDistance = 12f * density.density
-                transformOrigin = TransformOrigin.Center
-            }
+            modifier = modifier
+                // 先裁到卡片自身 bounds，再进 3D 旋转层：否则透视投影会把侧翻到
+                // 90° 附近的卡面拉成一条白色细长刀片，越过布局边界画到 header 与
+                // 底部光谱滑轨上。卡片本体圆角已在 HoloCardSurface 内部裁过。
+                .clipToBounds()
+                .graphicsLayer {
+                    // 读值留在 layer lambda 里：整段翻面每帧只重画，不重组。
+                    rotationY = rotation.value
+                    // 卡片永远不俯仰：所有立体感来自 rotationY 与下面的描边。
+                    rotationX = 0f
+                    cameraDistance = 14f * density.density
+                    // 锚点正中心：卡片绕自身中轴甩翻，不做书脊铰链位移补偿。
+                    transformOrigin = TransformOrigin.Center
+                }
+                .drawWithContent {
+                    // 先画卡面（不裁切、不遮挡），再叠立体厚度棱边与镜面扫光。
+                    drawContent()
+                    val a = abs(rotation.value)
+                    if (a > 20f && a < 160f) {
+                        val rad = a * PI.toFloat() / 180f
+                        val t = a / 180f
+                        // 1) 4dp 立体厚度：卡片侧过时在迎风侧实时露出一条实体棱边。
+                        //    宽度 = 4dp * |sin|：90° 最厚，20°/160° 收窄，越过区间自然消失。
+                        val edgeW = 4.dp.toPx() * abs(sin(rad))
+                        val onLeft = a < 90f
+                        val edgeX = if (onLeft) 0f else size.width - edgeW
+                        drawRect(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.55f),
+                                    palette.panelBorder.copy(alpha = 0.9f),
+                                    Color.Black.copy(alpha = 0.35f)
+                                ),
+                                startX = edgeX,
+                                endX = edgeX + edgeW
+                            ),
+                            topLeft = Offset(edgeX, 0f),
+                            size = Size(edgeW, size.height)
+                        )
+                        val lineX = if (onLeft) 0.8.dp.toPx() else size.width - 0.8.dp.toPx()
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.5f),
+                            start = Offset(lineX, 0f),
+                            end = Offset(lineX, size.height),
+                            strokeWidth = 0.8.dp.toPx()
+                        )
+                        // 2) 镜面高光带：随 rotationY 角度横向扫过卡面，画在内容之上。
+                        val bandX = size.width * (0.1f + 0.8f * t)
+                        val bandW = size.width * 0.5f
+                        drawRoundRect(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.White.copy(alpha = 0.18f * (1f - t)),
+                                    Color.Transparent
+                                ),
+                                start = Offset(bandX - bandW, 0f),
+                                end = Offset(bandX + bandW, size.height)
+                            ),
+                            cornerRadius = CornerRadius(28.dp.toPx()),
+                            size = size
+                        )
+                    }
+                }
         ) {
             HoloCardSurface(
                 style = cardStyle,
@@ -1366,6 +1438,13 @@ private fun WordCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight()
+                // 玻璃夹层微视差：内容层随全息光斑做 ≤±2.5dp 的反向位移，
+                // 光斑移动时文字与卡面材质之间有一层薄薄的「夹层玻璃」感。
+                // 读的是 MutableFloatState，只在 layer lambda 里读，不触发重组。
+                .graphicsLayer {
+                    translationX = (holoLight.lightX.floatValue - 0.5f) * 5.dp.toPx()
+                    translationY = (holoLight.lightY.floatValue - 0.5f) * 5.dp.toPx()
+                }
                 .cardFlipTap(tapMaxDragPx) {
                     isFlipped = !isFlipped
                     onFlipChanged(isFlipped)
@@ -1376,10 +1455,10 @@ private fun WordCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // 顶栏也是卡的一部分：随整卡翻转；到卡背时反贴 180°，
-                    // 与外层旋转抵消，到期胶囊/发音/星标仍然读得正、点得准。
+                    // 顶栏也是卡的一部分：随整卡翻转；到卡背时（外层已转过 180°）
+                    // 用 scaleX = -1 抵消这次镜像，到期胶囊/发音/星标仍然读得正、点得准。
                     .graphicsLayer {
-                        rotationY = if (backVisible) 180f else 0f
+                        scaleX = if (backVisible) -1f else 1f
                         transformOrigin = TransformOrigin.Center
                     },
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1455,18 +1534,17 @@ private fun WordCard(
                                 .fillMaxWidth()
                                 .padding(horizontal = 2.dp),
                             textAlign = TextAlign.Center,
-                            maxLines = wordMaxLines,
-                            engraveShadow = engraveShadow
+                            maxLines = wordMaxLines
                         )
                         if (word.phonetic.isNotBlank()) {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)
+                                color = faceInk.copy(alpha = 0.10f)
                             ) {
                                 Text(
                                     text = word.phonetic,
-                                    style = MaterialTheme.typography.titleMedium.copy(shadow = engraveShadow),
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = faceInk,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
@@ -1474,7 +1552,7 @@ private fun WordCard(
                         Text(
                             text = "轻触卡片查看释义与例句",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = faceSoftInk,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -1504,7 +1582,8 @@ private fun WordCard(
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .graphicsLayer {
-                                rotationY = if (backVisible) 180f else 0f
+                                // 外层卡背已转过 180°，这里用 scaleX 反镜像，灯泡文字与图标不反。
+                                scaleX = if (backVisible) -1f else 1f
                                 transformOrigin = TransformOrigin.Center
                             }
                     ) {
@@ -1531,7 +1610,7 @@ private fun WordCard(
                                 Text(
                                     text = if (aiSuggested) "助记推荐" else "AI",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = faceInk
                                 )
                             }
                         }
@@ -1569,9 +1648,8 @@ private fun CardBackBlocks(
 ) {
     val palette = LocalHoloCardPalette.current
     // 1.4.7.4：卡背不再有任何内嵌「面板」——不 clip、不铺磨砂渐变底、不描边、不画高光。
-    // 文字直接落在 HoloCardSurface 的全息材质上；整块卡背的压暗统一交给
-    // HoloCardSurface(isBack = true) 那层同圆角、全幅均匀的暗化遮罩。
-    // 这样才彻底没有「卡片里又套了一个黑框/白磨砂盒」的观感。
+    // 文字直接落在 HoloCardSurface 的全息材质上（HoloCardSurface 也不再对卡背铺压暗遮罩），
+    // 只在滚动视口的上下沿做一层渐隐，避免内容被硬切一刀。
     val blocks = config.renderableBlocks
     Column(
         modifier = Modifier
@@ -1579,9 +1657,27 @@ private fun CardBackBlocks(
             .fillMaxHeight()
             .padding(horizontal = 4.dp, vertical = 8.dp)
             .graphicsLayer {
-                rotationY = 180f
+                // 外层整卡转到 180° 时，卡背内容会被水平镜像；用 scaleX 反镜像抵消，
+                // 文字仍是正的（绕 Y 轴翻转不影响上下，所以渐隐遮罩的顶部仍是视觉顶部）。
+                scaleX = if (interactive) -1f else 1f
                 // 不可见时只把 alpha 归零：它在树里但既不画、也不吃触摸。
                 alpha = if (interactive) 1f else 0f
+                // DstIn 遮罩要落在本层自己的离屏缓冲里，否则会去抠整张卡
+                compositingStrategy = CompositingStrategy.Offscreen
+            }
+            .drawWithContent {
+                drawContent()
+                // 顶部/底部渐隐：180° 是绕 Y 轴反贴，上下不翻转，所以本地顶部就是视觉顶部。
+                // 盖住的是滚动视口本身（Column 尺寸），滚到底也不会出现硬截断的白边。
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.06f to Color.Black,
+                        0.90f to Color.Black,
+                        1f to Color.Transparent
+                    ),
+                    blendMode = BlendMode.DstIn
+                )
             }
             .verticalScroll(scrollState, enabled = interactive)
             .padding(horizontal = 16.dp, vertical = 14.dp)
@@ -1645,29 +1741,19 @@ private fun CardBackBlockView(
     val palette = LocalHoloCardPalette.current
     val overrideColor = block.style.color.resolveCardBackColor()
     val bodyStyle = block.style.size
-    // 卡背没有底板了，文字直接压在全息流光上：统一加一层细腻深色投影保证可读性。
-    // 只给卡背正文用——正面文字与卡片底部的 RewriteBar 一律不加。
-    val backTextShadow = Shadow(
-        color = Color.Black.copy(alpha = 0.45f),
-        offset = Offset(0f, 1.5f),
-        blurRadius = 4f
-    )
-    // 卡背区块的小标：11sp、字距略开、哑光灰蓝；不再用 labelLarge 的大标题。
+    // 卡背区块的小标：11sp、字距略开；颜色统一取调色板的 subInk（亮皮肤深灰、暗皮肤亮灰）。
     val sectionLabelStyle = MaterialTheme.typography.labelSmall.copy(
         fontSize = 11.sp,
         lineHeight = 14.sp,
         fontWeight = FontWeight.Medium,
-        letterSpacing = 0.9.sp,
-        shadow = backTextShadow
+        letterSpacing = 0.9.sp
     )
-    val sectionLabelColor = overrideColor
-        ?: if (palette.dark) Color(0xFF93A9C4) else Color(0xFF5C718A)
+    val sectionLabelColor = overrideColor ?: palette.subInk
     when (block.type) {
         CardBackBlockType.TITLE -> {
             // 杂志级词头：与正面同一支 serif，32sp Medium；长词自动降档，最多 2 行。
             val titleStyle = backWordStyle.copy(
-                color = overrideColor ?: palette.ink,
-                shadow = backTextShadow
+                color = overrideColor ?: palette.ink
             )
             AdaptiveWordText(
                 text = displayWord,
@@ -1689,8 +1775,7 @@ private fun CardBackBlockView(
                 text = word.phonetic,
                 style = MaterialTheme.typography.bodyMedium.scaledBy(bodyStyle).copy(
                     lineHeight = 18.sp,
-                    letterSpacing = 0.3.sp,
-                    shadow = backTextShadow
+                    letterSpacing = 0.3.sp
                 ),
                 color = overrideColor ?: palette.subInk,
                 modifier = Modifier.fillMaxWidth()
@@ -1706,8 +1791,7 @@ private fun CardBackBlockView(
             MeaningBlock(
                 meaning = word.meaning,
                 bodyStyle = bodyStyle,
-                overrideColor = overrideColor,
-                textShadow = backTextShadow
+                overrideColor = overrideColor
             )
         }
 
@@ -1717,8 +1801,7 @@ private fun CardBackBlockView(
             titleColor = sectionLabelColor,
             titleStyle = sectionLabelStyle,
             contentStyle = MaterialTheme.typography.bodyMedium.scaledBy(bodyStyle).copy(
-                lineHeight = 24.sp,
-                shadow = backTextShadow
+                lineHeight = 24.sp
             ),
             // 角标只挂在「思路」这一块：unverified 说的是这一版重写结果，不是搭配。
             unverified = unverified,
@@ -1732,8 +1815,7 @@ private fun CardBackBlockView(
             titleColor = sectionLabelColor,
             titleStyle = sectionLabelStyle,
             contentStyle = MaterialTheme.typography.bodyMedium.scaledBy(bodyStyle).copy(
-                lineHeight = 23.sp,
-                shadow = backTextShadow
+                lineHeight = 23.sp
             ),
             bilingual = true
         )
@@ -1745,8 +1827,7 @@ private fun CardBackBlockView(
                 titleColor = sectionLabelColor,
                 titleStyle = sectionLabelStyle,
                 contentStyle = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle).copy(
-                    lineHeight = 21.sp,
-                    shadow = backTextShadow
+                    lineHeight = 21.sp
                 ),
                 overrideColor = overrideColor
             )
@@ -1757,9 +1838,7 @@ private fun CardBackBlockView(
             content = word.phrases,
             titleColor = sectionLabelColor,
             titleStyle = sectionLabelStyle,
-            contentStyle = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle).copy(
-                shadow = backTextShadow
-            )
+            contentStyle = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle)
         )
 
         CardBackBlockType.SYNONYMS -> WordExtraSection(
@@ -1767,9 +1846,7 @@ private fun CardBackBlockView(
             content = word.synonyms,
             titleColor = sectionLabelColor,
             titleStyle = sectionLabelStyle,
-            contentStyle = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle).copy(
-                shadow = backTextShadow
-            )
+            contentStyle = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle)
         )
 
         CardBackBlockType.REL_WORDS -> WordExtraSection(
@@ -1777,9 +1854,7 @@ private fun CardBackBlockView(
             content = word.relWords,
             titleColor = sectionLabelColor,
             titleStyle = sectionLabelStyle,
-            contentStyle = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle).copy(
-                shadow = backTextShadow
-            )
+            contentStyle = MaterialTheme.typography.bodySmall.scaledBy(bodyStyle)
         )
 
         // 1.4.3.1：EF 系数因子不再展示（easeFactor 的计算与存储不变）
@@ -2221,9 +2296,7 @@ private fun BilingualLine(
 private fun MeaningBlock(
     meaning: String,
     bodyStyle: CardBackSize?,
-    overrideColor: Color?,
-    /** 卡背统一文字投影；正面/其他调用方传 null 即完全不变。 */
-    textShadow: Shadow? = null
+    overrideColor: Color?
 ) {
     val palette = LocalHoloCardPalette.current
     val lines = remember(meaning) {
@@ -2232,10 +2305,9 @@ private fun MeaningBlock(
     val meaningStyle = MaterialTheme.typography.bodyLarge.copy(
         fontSize = 19.sp,
         lineHeight = 27.sp,
-        fontWeight = FontWeight.Medium,
-        shadow = textShadow
+        fontWeight = FontWeight.Medium
     ).scaledBy(bodyStyle)
-    val meaningColor = overrideColor ?: if (palette.dark) Color.White else palette.ink
+    val meaningColor = overrideColor ?: palette.ink
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         lines.forEach { line ->
             val match = MEANING_POS_LINE.find(line)
@@ -2326,9 +2398,7 @@ private fun AdaptiveWordText(
     fallbackStyles: List<TextStyle>,
     maxLines: Int,
     modifier: Modifier = Modifier,
-    textAlign: TextAlign = TextAlign.Start,
-    /** 金属冲压凹陷：深色微阴影 + 1dp 底部高光偏移。 */
-    engraveShadow: Shadow? = null
+    textAlign: TextAlign = TextAlign.Start
 ) {
     BoxWithConstraints(modifier = modifier) {
         val density = LocalDensity.current
@@ -2357,29 +2427,14 @@ private fun AdaptiveWordText(
             } ?: styleCandidates.lastOrNull() ?: preferredStyle
         }
 
-        Box(modifier = Modifier.fillMaxWidth()) {
-            if (engraveShadow != null) {
-                // 底部 1dp 白色高光边：和上面的深色微阴影一起做出金属冲压的凹陷感。
-                Text(
-                    text = text,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .offset(y = 1.dp),
-                    style = finalStyle.copy(color = Color.White.copy(alpha = 0.55f), shadow = null),
-                    textAlign = textAlign,
-                    maxLines = maxLines,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Text(
-                text = text,
-                modifier = Modifier.fillMaxWidth(),
-                style = if (engraveShadow != null) finalStyle.copy(shadow = engraveShadow) else finalStyle,
-                textAlign = textAlign,
-                maxLines = maxLines,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        Text(
+            text = text,
+            modifier = Modifier.fillMaxWidth(),
+            style = finalStyle,
+            textAlign = textAlign,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
