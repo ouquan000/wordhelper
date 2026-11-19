@@ -85,21 +85,22 @@ internal fun buildFsrsInsights(
         lapseTotals[dayIndex][hour] += row.fsrsLapses.coerceAtLeast(0)
     }
 
-    val fallbackEfficiency = averageRetrievability.coerceIn(0f, 1f)
     val heatmap = buildList(HEATMAP_DAYS * HEATMAP_HOURS) {
         for (day in 0 until HEATMAP_DAYS) {
             for (hour in 0 until HEATMAP_HOURS) {
                 val reviews = reviewTotals[day][hour]
-                val efficiency = if (reviews > 0) {
+                val hasData = reviews > 0
+                val efficiency = if (hasData) {
                     1f - lapseTotals[day][hour].toFloat() / reviews.toFloat()
                 } else {
-                    fallbackEfficiency
+                    0f
                 }
                 add(
                     MemoryHeatmapEntry(
                         dayOfWeek = day,
                         hour = hour,
-                        efficiency = efficiency.coerceIn(0f, 1f)
+                        efficiency = efficiency.coerceIn(0f, 1f),
+                        hasData = hasData
                     )
                 )
             }

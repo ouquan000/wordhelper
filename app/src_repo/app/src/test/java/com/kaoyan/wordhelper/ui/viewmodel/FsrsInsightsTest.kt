@@ -71,13 +71,15 @@ class FsrsInsightsTest {
         assertEquals(10f, insights.averageStability, 0.0001f)
         assertEquals(expectedR, insights.averageRetrievability, 0.0001f)
 
-        // 有复习记录的桶：效率 = 1 - 遗忘/复习（本例遗忘 0，故为 1）；空桶用平均 R 填充。
+        // 有复习记录的桶：效率 = 1 - 遗忘/复习（本例遗忘 0，故为 1）；空桶标 hasData=false，不着色。
         val reviewedAt = Instant.ofEpochMilli(lastReviewTime).atZone(zoneId)
         val bucketIndex = (reviewedAt.dayOfWeek.value - 1) * 24 + reviewedAt.hour
         val emptyIndex = if (bucketIndex == 0) 1 else 0
         assertEquals(7 * 24, insights.heatmap.size)
         assertEquals(1f, insights.heatmap[bucketIndex].efficiency, 0.0001f)
-        assertEquals(expectedR, insights.heatmap[emptyIndex].efficiency, 0.0001f)
+        assertTrue(insights.heatmap[bucketIndex].hasData)
+        assertFalse(insights.heatmap[emptyIndex].hasData)
+        assertEquals(0f, insights.heatmap[emptyIndex].efficiency, 0.0001f)
     }
 
     @Test
