@@ -454,6 +454,49 @@ fun AILabScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
+                                Text(text = "FSRS-5 记忆调度", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    text = if (uiState.fsrsEnabled) {
+                                        "已开启：按真实遗忘概率排复习"
+                                    } else {
+                                        "已关闭：沿用 SM-2 + ML 调度"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = uiState.fsrsEnabled,
+                                onCheckedChange = viewModel::updateFsrsEnabled,
+                                modifier = Modifier.testTag("lab_fsrs_switch")
+                            )
+                        }
+                        Text(
+                            text = "FSRS-5 按真实遗忘概率排复习；留存率越高，复习越密。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = uiState.desiredRetention < 0.92f,
+                                onClick = { viewModel.updateDesiredRetention(0.90f) },
+                                label = { Text("日常 90%") },
+                                modifier = Modifier.testTag("lab_retention_90")
+                            )
+                            FilterChip(
+                                selected = uiState.desiredRetention >= 0.92f,
+                                onClick = { viewModel.updateDesiredRetention(0.94f) },
+                                label = { Text("考前 94%") },
+                                modifier = Modifier.testTag("lab_retention_94")
+                            )
+                        }
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(text = "ML自适应学习", style = MaterialTheme.typography.titleSmall)
                                 Text(
                                     text = if (uiState.mlAdaptiveEnabled) {
