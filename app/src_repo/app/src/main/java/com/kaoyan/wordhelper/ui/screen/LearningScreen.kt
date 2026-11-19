@@ -69,6 +69,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -1393,6 +1394,22 @@ private fun WordCard(
                                     unverified = unverified,
                                     unverifiedReason = unverifiedReason,
                                     backActions = backActions
+                                )
+                            }
+                        }
+                        if (showBack) {
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 4.dp),
+                                shape = RoundedCornerShape(999.dp),
+                                color = palette.panelStrong
+                            ) {
+                                Text(
+                                    text = "上下滑动查看完整思路",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = faceSoftInk,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
                                 )
                             }
                         }

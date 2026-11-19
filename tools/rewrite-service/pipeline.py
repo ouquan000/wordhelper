@@ -239,6 +239,27 @@ def _method_key(value):
     return text
 
 
+_IPA_RE = re.compile(r"/[^/\n]{1,40}/")
+
+
+def _ensure_phonetic_warning(item, method, lines):
+    """拼写拆法必须给真读音：模型偶尔会漏，润色后在这里补一条，别让 judge 白判。"""
+    if _method_key(method) not in ("root", "shape"):
+        return lines
+    phonetic = str(item.get("phonetic") or "").strip()
+    if not phonetic or not lines:
+        return lines
+    if any(_IPA_RE.search(str(line)) for line in lines):
+        return lines
+    warning = "这个词真读 %s，上面的拆法只帮你看拼写，别按字母硬念。" % phonetic
+    lines = [str(line) for line in lines]
+    if len(lines) <= 4:
+        lines = lines[:-1] + [warning] + lines[-1:]
+    else:
+        lines[-2] = lines[-2].rstrip() + " " + warning
+    return normalize(lines) or lines
+
+
 def _has_instruction(item):
     return bool(str(item.get("instruction") or "").strip())
 
@@ -592,7 +613,7 @@ def polish(item, draft):
     )
     data = extract_json(text)
     polished = normalize((data or {}).get("derivation") or [])
-    return polished or draft_lines
+    return _ensure_phonetic_warning(item, draft.get("method"), polished or draft_lines)
 
 
 # 否定必须修饰当前动作：「不要用词根了换个方法」仍然要换，「特别」也不是「别」。
