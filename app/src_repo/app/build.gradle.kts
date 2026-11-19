@@ -21,8 +21,8 @@ android {
         applicationId = "com.kaoyan.wordhelper"
         minSdk = 26
         targetSdk = 34
-        versionCode = 22
-        versionName = "1.4.7v7-bugfix"
+        versionCode = 23
+        versionName = "1.4.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
