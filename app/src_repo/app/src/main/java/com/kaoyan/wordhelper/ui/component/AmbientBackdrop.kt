@@ -1,37 +1,37 @@
 package com.kaoyan.wordhelper.ui.component
 
+import android.graphics.Bitmap
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import com.kaoyan.wordhelper.data.model.CardMotionMode
 import com.kaoyan.wordhelper.ui.theme.LocalAppDarkTheme
-import kotlin.math.cos
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.floor
+import kotlin.math.roundToInt
 import kotlin.math.sin
-import kotlin.math.sqrt
+import kotlin.random.Random
 
-/**
- * 学习页最底层的「暗夜烟雾」氛围模式。
- *
- * AUTO 跟随当前卡片材质（一款皮肤一套色雾），另外四套是显式锁定的独立氛围：
- * 选独立模式后不再随皮肤变化。
- */
 enum class AmbientBackdropMode(val id: String, val label: String) {
     AUTO("auto", "跟随卡片"),
     AURORA("aurora", "极光暗雾"),
@@ -45,303 +45,185 @@ enum class AmbientBackdropMode(val id: String, val label: String) {
     }
 }
 
-/**
- * 一层烟雾：颜色索引 + 中心点（相对宽高）+ 半径（相对长边）+ 缓慢漂移轨道。
- * 全部是编译期常量，绘制时不会每帧新建对象。
- */
-private class AmbientLayer(
-    val colorIndex: Int,
-    val centerX: Float,
-    val centerY: Float,
-    val radius: Float,
-    val orbitX: Float,
-    val orbitY: Float,
-    val speed: Float,
-    val phase: Float,
-)
+private data class AtmospherePalette(val base: Color, val smoke: Color, val aurora: Color)
 
-private val AmbientLayers = listOf(
-    AmbientLayer(0, 0.20f, 0.14f, 1.05f, 0.060f, 0.045f, 0.020f, 0.0f),
-    AmbientLayer(1, 0.82f, 0.20f, 0.95f, 0.070f, 0.040f, 0.016f, 1.1f),
-    AmbientLayer(2, 0.48f, 0.56f, 1.15f, 0.090f, 0.060f, 0.012f, 2.3f),
-    AmbientLayer(3, 0.12f, 0.84f, 0.90f, 0.050f, 0.070f, 0.024f, 3.4f),
-    AmbientLayer(4, 0.88f, 0.86f, 1.00f, 0.060f, 0.050f, 0.018f, 4.6f),
-    AmbientLayer(5, 0.62f, 0.02f, 0.80f, 0.080f, 0.040f, 0.028f, 5.5f),
-)
+private fun atmospherePalette(
+    mode: AmbientBackdropMode,
+    style: HoloCardStyle,
+    night: Boolean
+): AtmospherePalette {
+    val colors = when (mode) {
+        AmbientBackdropMode.AUTO -> when (style) {
+            HoloCardStyle.CLASSIC -> 0xFF607DE7 to 0xFF6ACABD
+            HoloCardStyle.PRISM -> 0xFF5049EF to 0xFF8999FF
+            HoloCardStyle.RAINBOW -> 0xFFB755A8 to 0xFF62D7C6
+            HoloCardStyle.PEARL -> 0xFFAC86DE to 0xFFEBAFAE
+            HoloCardStyle.SPARKLE -> 0xFF5C63E3 to 0xFF60BCD6
+            HoloCardStyle.CHROME -> 0xFF8190C6 to 0xFF9BC9C4
+            HoloCardStyle.ETCHED -> 0xFF627696 to 0xFF659996
+        }
+        AmbientBackdropMode.AURORA -> 0xFF7755E8 to 0xFF57CBB9
+        AmbientBackdropMode.ABYSS -> 0xFF4C5CD6 to 0xFF5AABD5
+        AmbientBackdropMode.EMBER -> 0xFFB55588 to 0xFFE3A779
+        AmbientBackdropMode.VELVET -> 0xFF475063 to 0xFF718394
+    }
+    val base = if (night) Color(0xFF080D1A) else Color(0xFFFCF9F7)
+    val (smoke, aurora) = Color(colors.first) to Color(colors.second)
+    return if (night) {
+        AtmospherePalette(base, smoke, aurora)
+    } else {
+        AtmospherePalette(base, lerp(smoke, Color.White, 0.45f), lerp(aurora, Color.White, 0.30f))
+    }
+}
 
-/** 日间：极淡冰蓝/珍珠白/浅薰衣草，峰值 0.25–0.40，清爽通透。 */
-private val DayLayerAlphas = floatArrayOf(
-    0.34f, 0.26f, 0.38f, 0.30f, 0.40f, 0.32f,
-)
-
-/** 夜间：深靛蓝/幽紫/冷蓝，峰值略高于旧版以保住颜色存在感。 */
-private val NightLayerAlphas = floatArrayOf(
-    0.32f, 0.28f, 0.36f, 0.26f, 0.30f, 0.24f,
-)
-
-/** 整页最底层：日夜双模式底色 + 多层羽化径向烟雾 + 随模式变化的暗角。 */
 @Composable
 fun AmbientBackdrop(
     mode: AmbientBackdropMode,
     cardStyle: HoloCardStyle,
-    heat: Float,
-    motionEnabled: Boolean,
-    modifier: Modifier = Modifier,
+    motionMode: CardMotionMode,
+    timeSeconds: () -> Float,
+    modifier: Modifier = Modifier
 ) {
-    // 用 App 自己的明暗信号判断日夜，不能读 MaterialTheme.background（卡片主题会覆盖它）。
-    val darkTheme = LocalAppDarkTheme.current
-    val layerAlphas = if (darkTheme) NightLayerAlphas else DayLayerAlphas
-    val targetColors = remember(mode, cardStyle, darkTheme) {
-        ambientColors(mode, cardStyle, darkTheme)
-    }
-
-    // 六层颜色各自 600ms 过渡：旧色雾淡出、新色雾淡入同时发生，不会先闪黑再亮。
-    // 颜色数量固定为 6，组合调用顺序稳定。
-    val layerColors = targetColors.map { target ->
-        animateColorAsState(
-            targetValue = target,
-            animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
-            label = "ambientLayerColor",
-        )
-    }
-
-    // 热力：升温 420ms / 降温 4200ms，与卡面、进度条同一套视觉节奏。
-    val heatAnim = remember { Animatable(heat.coerceIn(0f, 1f)) }
-    LaunchedEffect(heat, motionEnabled) {
-        val target = heat.coerceIn(0f, 1f)
-        if (!motionEnabled) {
-            heatAnim.snapTo(target)
-            return@LaunchedEffect
-        }
-        val from = heatAnim.value
-        if (from == target) return@LaunchedEffect
-        val spec = if (target > from) {
-            tween<Float>(durationMillis = 420, easing = FastOutSlowInEasing)
-        } else {
-            tween<Float>(durationMillis = 4200, easing = LinearOutSlowInEasing)
-        }
-        heatAnim.animateTo(target, spec)
-    }
-
-    // 烟雾漂移时钟：只在 motionEnabled 时跑帧循环；关闭后停在当前相位（不跳变）。
-    var driftSeconds by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(motionEnabled) {
-        if (!motionEnabled) return@LaunchedEffect
-        var lastFrameNanos = 0L
-        while (true) {
-            withFrameNanos { now ->
-                if (lastFrameNanos != 0L) {
-                    val dt = ((now - lastFrameNanos) / 1_000_000_000f).coerceIn(0f, 0.05f)
-                    // heat=1 时 1.8×，其余线性过渡。
-                    driftSeconds += dt * (1f + 0.8f * heatAnim.value)
-                }
-                lastFrameNanos = now
-            }
-        }
-    }
-
-    // 重力微视差的光源：复用卡面同一套姿态状态；motionEnabled=false 时它是静态值，不注册传感器。
-    val light = rememberHoloLightState(motionEnabled)
-
-    // 只负责绘制，不挂任何 pointerInput，因此不会拦截学习页的点击 / 滑动。
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .drawWithCache {
-                val w = size.width
-                val h = size.height
-                val longSide = maxOf(w, h)
-
-                // 只有尺寸 / 颜色变化时重建 Brush；稳态每帧只做 translate + drawCircle。
-                val brushes = ArrayList<Brush>(AmbientLayers.size)
-                val radii = FloatArray(AmbientLayers.size)
-                val centers = ArrayList<Offset>(AmbientLayers.size)
-                AmbientLayers.forEachIndexed { index, layer ->
-                    val color = layerColors[index].value
-                    val alpha = layerAlphas[index]
-                    val radius = longSide * layer.radius
-                    radii[index] = radius
-                    centers.add(Offset(w * layer.centerX, h * layer.centerY))
-                    brushes.add(
-                        Brush.radialGradient(
-                            0f to color.copy(alpha = alpha),
-                            0.42f to color.copy(alpha = alpha * 0.62f),
-                            0.72f to color.copy(alpha = alpha * 0.24f),
-                            1f to Color.Transparent,
-                            center = centers[index],
-                            radius = radius,
-                        )
-                    )
-                }
-
-                // 日间用极淡白色提亮四角（不压黑），夜间保留收敛后的黑色暗角。
-                val vignetteEdge = if (darkTheme) {
-                    Color.Black.copy(alpha = 0.12f)
-                } else {
-                    Color.White.copy(alpha = 0.10f)
-                }
-                val vignetteCorner = if (darkTheme) {
-                    Color.Black.copy(alpha = 0.34f)
-                } else {
-                    Color.White.copy(alpha = 0.22f)
-                }
-                val vignette = Brush.radialGradient(
-                    0f to Color.Transparent,
-                    0.50f to Color.Transparent,
-                    0.78f to vignetteEdge,
-                    1f to vignetteCorner,
-                    center = Offset(w / 2f, h / 2f),
-                    radius = 0.50f * sqrt(w * w + h * h),
-                )
-
-                onDrawBehind {
-                    drawRect(if (darkTheme) Color(0xFF080C14) else Color(0xFFF4F6FA))
-
-                    // 沿重力反方向偏移：光源偏右，烟雾整体向左让，最多约 8.8dp（0.22 × 40dp）。
-                    val normalizedX =
-                        ((light.lightX.floatValue - 0.5f) / 0.42f).coerceIn(-1f, 1f)
-                    val normalizedY =
-                        ((light.lightY.floatValue - 0.5f) / 0.42f).coerceIn(-1f, 1f)
-                    val maxShift = 40.dp.toPx()
-                    val shiftX = -normalizedX * 0.22f * maxShift
-                    val shiftY = -normalizedY * 0.22f * maxShift
-
-                    val t = driftSeconds
-                    AmbientLayers.forEachIndexed { index, layer ->
-                        val phase = t * layer.speed * 2f * PI_FLOAT + layer.phase
-                        val orbitX = sin(phase) * layer.orbitX * w
-                        val orbitY = cos(phase * 0.83f) * layer.orbitY * h
-                        translate(shiftX + orbitX, shiftY + orbitY) {
-                            drawCircle(
-                                brush = brushes[index],
-                                radius = radii[index],
-                                center = centers[index],
-                            )
-                        }
-                    }
-
-                    drawRect(vignette)
-                }
-            }
+    val night = LocalAppDarkTheme.current
+    val target = atmospherePalette(mode, cardStyle, night)
+    val spec = tween<Color>(2400, easing = FastOutSlowInEasing)
+    val base = animateColorAsState(target.base, spec, label = "atmosphere base")
+    val smoke = animateColorAsState(target.smoke, spec, label = "atmosphere smoke")
+    val aurora = animateColorAsState(target.aurora, spec, label = "atmosphere aurora")
+    val depth = animateFloatAsState(
+        if (night) 1f else 0f, tween(2400), label = "atmosphere depth"
     )
+    val textures = produceState<AtmosphereTextures?>(null, motionMode) {
+        if (motionMode == CardMotionMode.FULL) {
+            value = withContext(Dispatchers.Default) { atmosphereTextures }
+        }
+    }
+    Box(modifier.drawWithCache {
+        val w = size.width
+        val h = size.height
+        val span = maxOf(w, h).coerceAtLeast(1f)
+        val maxShift = w * 0.15f
+        val gradientSize = Size(w + maxShift * 2f, h)
+        val fallback = Brush.linearGradient(
+            0f to smoke.value.copy(alpha = 0.07f),
+            0.38f to smoke.value.copy(alpha = 0.28f),
+            0.74f to aurora.value.copy(alpha = 0.19f),
+            1f to aurora.value.copy(alpha = 0.04f),
+            start = Offset(-maxShift, h * 0.16f), end = Offset(w, h * 0.96f)
+        )
+        val mask = textures.value
+        val smokeTint = ColorFilter.tint(smoke.value)
+        val auroraTint = ColorFilter.tint(aurora.value)
+        val imageSize = IntSize((w * 1.32f).roundToInt(), (h * 1.18f).roundToInt())
+        val vignette = Brush.radialGradient(
+            0f to Color.Transparent,
+            0.56f to Color.Transparent,
+            1f to Color(0xFF03060E).copy(alpha = 0.36f),
+            center = Offset(w * 0.50f, h * 0.45f), radius = span * 0.65f
+        )
+        onDrawBehind {
+            val t = if (motionMode == CardMotionMode.STATIC) 0f else timeSeconds()
+            val darkness = depth.value
+            drawRect(base.value)
+            if (motionMode == CardMotionMode.FULL && mask != null &&
+                imageSize.width > 0 && imageSize.height > 0
+            ) {
+                drawImage(
+                    mask.smoke,
+                    dstOffset = IntOffset(
+                        (w * (-0.16f + 0.095f * sin(t * 0.15f))).roundToInt(),
+                        (h * (-0.10f + 0.048f * sin(t * 0.11f + 1.2f))).roundToInt()
+                    ),
+                    dstSize = imageSize,
+                    alpha = 0.49f + 0.39f * darkness,
+                    colorFilter = smokeTint
+                )
+                drawImage(
+                    mask.smoke,
+                    dstOffset = IntOffset(
+                        (w * (-0.15f - 0.081f * sin(t * 0.129f + 1.6f))).roundToInt(),
+                        (h * (-0.06f - 0.055f * sin(t * 0.151f))).roundToInt()
+                    ),
+                    dstSize = imageSize,
+                    alpha = (0.12f + 0.18f * darkness) * (0.83f + 0.17f * sin(t * 0.21f + 1.8f)),
+                    colorFilter = auroraTint
+                )
+                drawImage(
+                    mask.aurora,
+                    dstOffset = IntOffset(
+                        (w * (-0.16f + 0.12f * sin(t * 0.107f + 1.2f))).roundToInt(),
+                        (h * (-0.095f + 0.055f * sin(t * 0.093f))).roundToInt()
+                    ),
+                    dstSize = imageSize,
+                    alpha = (0.30f + 0.30f * darkness) * (0.89f + 0.11f * sin(t * 0.27f)),
+                    colorFilter = auroraTint
+                )
+            } else {
+                val x = maxShift * sin(t * 0.13f)
+                translate(x, 0f) {
+                    drawRect(fallback, Offset(-maxShift, 0f), gradientSize)
+                }
+            }
+            if (darkness > 0f) drawRect(vignette, alpha = darkness)
+        }
+    })
 }
 
-private const val PI_FLOAT = 6.2831855f
+private data class AtmosphereTextures(val smoke: ImageBitmap, val aurora: ImageBitmap)
 
-private fun ambientColors(
-    mode: AmbientBackdropMode,
-    style: HoloCardStyle,
-    darkTheme: Boolean,
-): List<Color> = if (darkTheme) nightAmbientColors(mode, style) else dayAmbientColors(mode, style)
-
-/**
- * 日间：冰蓝 / 珍珠白 / 浅薰衣草，AUTO 仍按皮肤微调色相但统一压成淡彩。
- * 色值只做低饱和提亮，叠在 0xFFF4F6FA 基底上保持清爽通透。
- */
-private fun dayAmbientColors(mode: AmbientBackdropMode, style: HoloCardStyle): List<Color> =
-    when (mode) {
-        AmbientBackdropMode.AUTO -> when (style) {
-            HoloCardStyle.PEARL -> listOf(
-                Color(0xFFDDE6F5), Color(0xFFE8DDF7), Color(0xFFD6E6F7),
-                Color(0xFFEDF0F7), Color(0xFFDDE6F2), Color(0xFFD8E4F5),
-            )
-            HoloCardStyle.RAINBOW -> listOf(
-                Color(0xFFFFD9D9), Color(0xFFFFE6C7), Color(0xFFD5F0DD),
-                Color(0xFFD2E2FF), Color(0xFFE4D6FF), Color(0xFFFFD6EE),
-            )
-            HoloCardStyle.PRISM -> listOf(
-                Color(0xFFCBEDEA), Color(0xFFD2E2FF), Color(0xFFFFD6EE),
-                Color(0xFFD6F0FA), Color(0xFFDDD6FF), Color(0xFFFFE0F2),
-            )
-            HoloCardStyle.SPARKLE -> listOf(
-                Color(0xFFE4D6FF), Color(0xFFFFEFC7), Color(0xFFEDD6FF),
-                Color(0xFFFFF2D2), Color(0xFFD8D2FF), Color(0xFFFFE8C2),
-            )
-            HoloCardStyle.CHROME -> listOf(
-                Color(0xFFE6EBF2), Color(0xFFD2E0EE), Color(0xFFDDE6EE),
-                Color(0xFFCADBE8), Color(0xFFEDF1F5), Color(0xFFD6E4EF),
-            )
-            HoloCardStyle.ETCHED -> listOf(
-                Color(0xFFF0DFCB), Color(0xFFD6E4D8), Color(0xFFE8D8C2),
-                Color(0xFFD0E0D4), Color(0xFFF5E6D2), Color(0xFFDDE8DE),
-            )
-            HoloCardStyle.CLASSIC -> listOf(
-                Color(0xFFF5EEDC), Color(0xFFD6DEF0), Color(0xFFEFE6D2),
-                Color(0xFFD2DCF0), Color(0xFFE8DFC8), Color(0xFFDDE4F5),
-            )
+private val atmosphereTextures: AtmosphereTextures by lazy {
+    val width = 280
+    val height = 480
+    val smoke = IntArray(width * height)
+    val aurora = IntArray(width * height)
+    val noise = CloudNoise()
+    for (j in 0 until height) {
+        val y = j.toFloat() / (height - 1)
+        for (i in 0 until width) {
+            val x = i.toFloat() / (width - 1)
+            val wx = x * 3.7f + 1.76f * noise.fractal(x * 2.6f + 1f, y * 4.1f + 3f)
+            val wy = y * 6.4f + 1.67f * noise.fractal(x * 3.2f + 6f, y * 4.7f + 1f)
+            val veil = noise.fractal(wx, wy)
+            val ridge = 1f - abs(noise.fractal(wx * 1.43f + 4f, wy * 1.43f + 3f) * 2f - 1f)
+            val density = ((veil - 0.27f) * 1.58f).coerceIn(0f, 1f)
+            val surround = exp(-3.5f * (y - 0.45f) * (y - 0.45f))
+            val ash = density * density * (0.34f + 0.66f * ridge) * surround
+            val ribbonY = 0.44f + 0.15f * sin(x * 6.7f - 0.41f) + 0.18f * (veil - 0.5f)
+            val distance = (y - ribbonY) / (0.20f - 0.04f * sin(x * 5.5f))
+            val ribbon = exp(-distance * distance * 2.1f) * (0.19f + density * ridge * 0.74f)
+            val index = j * width + i
+            smoke[index] = whiteMask(ash * 1.46f)
+            aurora[index] = whiteMask(ribbon * (0.63f + 0.37f * sin(x * 2.9f)))
         }
-        AmbientBackdropMode.AURORA -> listOf(
-            Color(0xFFBFE8E0), Color(0xFFC7D4FF), Color(0xFFD8F0E4),
-            Color(0xFFCDE8F2), Color(0xFFE0D8FF), Color(0xFFD5EDE8),
-        )
-        AmbientBackdropMode.ABYSS -> listOf(
-            Color(0xFFC7E4FF), Color(0xFFCDEFF2), Color(0xFFC2D8F5),
-            Color(0xFFD5F0F2), Color(0xFFCFE2FF), Color(0xFFD8EDF8),
-        )
-        AmbientBackdropMode.EMBER -> listOf(
-            Color(0xFFFFD9CC), Color(0xFFFFE4CC), Color(0xFFF5D2C8),
-            Color(0xFFFFEBD6), Color(0xFFF0D4CE), Color(0xFFFFE0D0),
-        )
-        AmbientBackdropMode.VELVET -> listOf(
-            Color(0xFFE4D6FF), Color(0xFFF0D6F0), Color(0xFFD8D8FF),
-            Color(0xFFEAD8FF), Color(0xFFF2D8E8), Color(0xFFDDD6FA),
-        )
+    }
+    fun bitmap(pixels: IntArray) =
+        Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888).asImageBitmap()
+    AtmosphereTextures(bitmap(smoke), bitmap(aurora))
+}
+
+private fun whiteMask(alpha: Float): Int =
+    ((255f * alpha.coerceIn(0f, 1f)).roundToInt() shl 24) or 0x00FFFFFF
+
+private class CloudNoise {
+    private val samples = Random(37).let { random -> FloatArray(32 * 32) { random.nextFloat() } }
+
+    fun fractal(x: Float, y: Float): Float =
+        0.56f * sample(x, y) +
+            0.28f * sample(x * 2.07f + 3f, y * 2.07f) +
+            0.12f * sample(x * 4.19f, y * 4.19f + 3f) +
+            0.04f * sample(x * 8.31f, y * 8.31f)
+
+    private fun sample(x: Float, y: Float): Float {
+        val i = floor(x).toInt()
+        val j = floor(y).toInt()
+        val u = smooth(x - i)
+        val v = smooth(y - j)
+        val a = mix(value(i, j), value(i + 1, j), u)
+        val b = mix(value(i, j + 1), value(i + 1, j + 1), u)
+        return mix(a, b, v)
     }
 
-/**
- * 夜间：深靛蓝 / 幽紫 / 冷蓝，彻底移除旧版的偏绿、偏褐、品红。
- * 各模式之间只保留色相上的差别，整体压在深色域里；唯一例外是「星云余烬」——
- * 它必须留在暖色余烬里，否则夜间和「纯黑丝绒」是同一片紫雾，模式等于失效。
- */
-private fun nightAmbientColors(mode: AmbientBackdropMode, style: HoloCardStyle): List<Color> =
-    when (mode) {
-        AmbientBackdropMode.AUTO -> when (style) {
-            HoloCardStyle.PEARL -> listOf(
-                Color(0xFF1E2A5A), Color(0xFF2A1F55), Color(0xFF16305A),
-                Color(0xFF232B66), Color(0xFF33245E), Color(0xFF1B2F5E),
-            )
-            HoloCardStyle.RAINBOW -> listOf(
-                Color(0xFF232B66), Color(0xFF33245E), Color(0xFF1E2A5A),
-                Color(0xFF2A1F55), Color(0xFF16305A), Color(0xFF3A2A66),
-            )
-            HoloCardStyle.PRISM -> listOf(
-                Color(0xFF16305A), Color(0xFF2A1F55), Color(0xFF232B66),
-                Color(0xFF1E2A5A), Color(0xFF33245E), Color(0xFF1B2F5E),
-            )
-            HoloCardStyle.SPARKLE -> listOf(
-                Color(0xFF33245E), Color(0xFF2A1F55), Color(0xFF232B66),
-                Color(0xFF3A2A66), Color(0xFF1E2A5A), Color(0xFF2A1F55),
-            )
-            HoloCardStyle.CHROME -> listOf(
-                Color(0xFF1B2F5E), Color(0xFF232B66), Color(0xFF16305A),
-                Color(0xFF1E2A5A), Color(0xFF2A3A6A), Color(0xFF1B2F5E),
-            )
-            HoloCardStyle.ETCHED -> listOf(
-                Color(0xFF1E2A5A), Color(0xFF2A1F55), Color(0xFF16305A),
-                Color(0xFF232B66), Color(0xFF2A2A5E), Color(0xFF1B2F5E),
-            )
-            HoloCardStyle.CLASSIC -> listOf(
-                Color(0xFF1E2A5A), Color(0xFF232B66), Color(0xFF16305A),
-                Color(0xFF2A1F55), Color(0xFF1B2F5E), Color(0xFF33245E),
-            )
-        }
-        AmbientBackdropMode.AURORA -> listOf(
-            Color(0xFF1E2A5A), Color(0xFF24406E), Color(0xFF2A1F55),
-            Color(0xFF16305A), Color(0xFF2E3A7A), Color(0xFF1B2F5E),
-        )
-        AmbientBackdropMode.ABYSS -> listOf(
-            Color(0xFF16305A), Color(0xFF1E2A5A), Color(0xFF123A66),
-            Color(0xFF232B66), Color(0xFF1B2F5E), Color(0xFF24406E),
-        )
-        // 星云余烬：夜间必须是暖色余烬（深琥珀/暗赭），不能跟「纯黑丝绒」共用同一组紫蓝，
-        // 否则选中余烬时看到的还是丝绒的紫雾，等于这个模式在夜里没有分支。
-        AmbientBackdropMode.EMBER -> listOf(
-            Color(0xFF4A2118), Color(0xFF5A2A1B), Color(0xFF3A1A20),
-            Color(0xFF6A3320), Color(0xFF42201A), Color(0xFF52271C),
-        )
-        // 丝绒：幽紫为主，保持最暗、最收敛。
-        AmbientBackdropMode.VELVET -> listOf(
-            Color(0xFF33245E), Color(0xFF2A1F55), Color(0xFF232B66),
-            Color(0xFF3A2A66), Color(0xFF1E2A5A), Color(0xFF2A1F55),
-        )
-    }
+    private fun value(x: Int, y: Int): Float = samples[(y and 31) * 32 + (x and 31)]
+    private fun smooth(x: Float): Float = x * x * (3f - 2f * x)
+    private fun mix(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+}

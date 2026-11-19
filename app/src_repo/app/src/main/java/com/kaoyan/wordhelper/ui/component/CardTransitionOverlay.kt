@@ -36,7 +36,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.kaoyan.wordhelper.data.model.StudyRating
-import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**
@@ -267,35 +266,32 @@ private fun ExitGhost(
 @Composable
 @Suppress("UNUSED_PARAMETER") // cornerRadius 仅为保持既有调用签名（UI 实验页传 28dp）。
 fun CardEntrance(
-    controller: CardTransitionController,
     contentKey: Any?,
     motionEnabled: Boolean,
-    cornerRadius: Dp = 24.dp,
     modifier: Modifier = Modifier,
+    controller: CardTransitionController? = null,
     content: @Composable () -> Unit
 ) {
-    val generation = controller.entranceGeneration
-    val fade = remember(contentKey, generation) {
-        Animatable(if (generation == 0 || !motionEnabled) 1f else 0f)
+    var previousKey by remember { mutableStateOf(contentKey) }
+    val generation = controller?.entranceGeneration ?: 0
+    val progress = remember(contentKey, generation) {
+        Animatable(if (motionEnabled && (previousKey != contentKey || generation > 0)) 0f else 1f)
     }
-    LaunchedEffect(contentKey, generation) {
-        if (generation == 0 || !motionEnabled) {
-            fade.snapTo(1f)
-            return@LaunchedEffect
+    LaunchedEffect(contentKey, generation, motionEnabled) {
+        previousKey = contentKey
+        if (motionEnabled && progress.value < 1f) {
+            progress.animateTo(1f, tween(ENTRANCE_DURATION_MS, easing = LinearOutSlowInEasing))
+        } else {
+            progress.snapTo(1f)
         }
-        val delayMs = controller.entranceDelayMs
-        if (delayMs > 0L) delay(delayMs)
-        fade.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(
-                durationMillis = ENTRANCE_DURATION_MS,
-                easing = LinearOutSlowInEasing
-            )
-        )
     }
 
     Box(
-        modifier = modifier.graphicsLayer { alpha = fade.value }
+        modifier = modifier.graphicsLayer {
+            // A newly presented word stays readable on the first frame.
+            scaleX = 0.988f + 0.012f * progress.value
+            scaleY = scaleX
+        }
     ) {
         content()
     }

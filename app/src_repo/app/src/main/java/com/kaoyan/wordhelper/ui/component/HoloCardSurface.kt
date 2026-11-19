@@ -1,111 +1,63 @@
 package com.kaoyan.wordhelper.ui.component
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
+import android.view.Surface
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Canvas as GraphicsCanvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.PaintingStyle
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.kaoyan.wordhelper.ui.theme.LocalAppDarkTheme
-import kotlin.math.PI
+import kotlinx.coroutines.awaitCancellation
 import kotlin.math.abs
-import kotlin.math.ceil
-import kotlin.math.cos
-import kotlin.math.max
-import kotlin.math.min
+import kotlin.math.exp
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.random.Random
 
-/** 全息卡统一圆角：卡面、溢光、棱边与快照全部对齐 24dp，避免多层圆角错位。 */
-private val HoloCardCorner = 24.dp
-
-/**
- * 从传入的 [Shape] 解析绘制用圆角像素值。
- * 默认卡面是 RoundedCornerShape(HoloCardCorner)，这里直接跟随调用方传入的 shape，
- * 避免出现「外层按 24dp 裁、内层材质按 28dp 画」的错位。
- */
-private fun Shape.cornerPx(size: Size, density: Density): Float {
-    val rounded = this as? RoundedCornerShape
-    return if (rounded != null) {
-        rounded.topStart.toPx(size, density)
-    } else {
-        with(density) { HoloCardCorner.toPx() }
-    }
-}
-
-/**
- * 7 款卡片材质。id 与 DataStore 里持久化的 cardStyleId 一一对应。
- *
- * 注意：CLASSIC / PEARL / CHROME 是浅色底板，PRISM / RAINBOW / SPARKLE / ETCHED
- * 是深色底板；`dark` 只描述底板，CLASSIC 在深色模式下会额外自适应（见 [rememberHoloPalette]）。
- */
 enum class HoloCardStyle(
     val id: String,
     val label: String,
@@ -201,10 +153,10 @@ fun rememberHoloPalette(style: HoloCardStyle): HoloCardPalette {
                 frontBottom = Color(0xFFFBFDFF),
             )
 
-            HoloCardStyle.PRISM -> darkPalette(style, accent = Color(0xFF9DB8FF))
-            HoloCardStyle.RAINBOW -> darkPalette(style, accent = Color(0xFFFFD9F0))
-            HoloCardStyle.SPARKLE -> darkPalette(style, accent = Color(0xFF8BF3FF))
-            HoloCardStyle.ETCHED -> darkPalette(style, accent = Color(0xFFE6E6EA))
+            HoloCardStyle.PRISM -> darkPalette(style, themeDark, accent = Color(0xFF9DB8FF))
+            HoloCardStyle.RAINBOW -> darkPalette(style, themeDark, accent = Color(0xFFFFD9F0))
+            HoloCardStyle.SPARKLE -> darkPalette(style, themeDark, accent = Color(0xFF8BF3FF))
+            HoloCardStyle.ETCHED -> darkPalette(style, themeDark, accent = Color(0xFFE6E6EA))
             HoloCardStyle.PEARL -> HoloCardPalette(
                 style = style,
                 dark = false,
@@ -214,8 +166,8 @@ fun rememberHoloPalette(style: HoloCardStyle): HoloCardPalette {
                 panel = LightSkinPanel,
                 panelStrong = LightSkinPanelStrong,
                 panelBorder = LightSkinPanelBorder,
-                frontTop = Color(0xFFFDFCFF),
-                frontBottom = Color(0xFFF1EEF8),
+                frontTop = if (themeDark) Color(0xFFEDEAF7) else Color(0xFFFFFAFC),
+                frontBottom = if (themeDark) Color(0xFFDCE4F2) else Color(0xFFF5F4FB),
             )
 
             // chrome 现在是亮银皮肤：归亮色组，不能按「深色款」压成白字。
@@ -228,25 +180,26 @@ fun rememberHoloPalette(style: HoloCardStyle): HoloCardPalette {
                 panel = LightSkinPanel,
                 panelStrong = LightSkinPanelStrong,
                 panelBorder = LightSkinPanelBorder,
-                frontTop = Color(0xFFEFF1F4),
-                frontBottom = Color(0xFFC9CDD4),
+                frontTop = if (themeDark) Color(0xFFE1E8F1) else Color(0xFFF2F6FB),
+                frontBottom = if (themeDark) Color(0xFFB7C4D5) else Color(0xFFD3DAE7),
             )
         }
     }
 }
 
-private fun darkPalette(style: HoloCardStyle, accent: Color) = HoloCardPalette(
-    style = style,
-    dark = true,
-    ink = DarkSkinInk,
-    subInk = DarkSkinSubInk,
-    accent = accent,
-    panel = DarkSkinPanel,
-    panelStrong = DarkSkinPanelStrong,
-    panelBorder = DarkSkinPanelBorder,
-    frontTop = Color(0xFF18213A),
-    frontBottom = Color(0xFF0C1120),
-)
+private fun darkPalette(style: HoloCardStyle, themeDark: Boolean, accent: Color): HoloCardPalette {
+    val (top, bottom) = when (style) {
+        HoloCardStyle.PRISM -> Color(0xFF202C83) to Color(0xFF101647)
+        HoloCardStyle.RAINBOW -> Color(0xFF26303C) to Color(0xFF141923)
+        HoloCardStyle.SPARKLE -> Color(0xFF161F43) to Color(0xFF0A1429)
+        else -> Color(0xFF252A34) to Color(0xFF121820)
+    }
+    return HoloCardPalette(
+        style, true, DarkSkinInk, DarkSkinSubInk, accent, DarkSkinPanel,
+        DarkSkinPanelStrong, DarkSkinPanelBorder,
+        if (themeDark) top else lerp(top, Color(0xFF697A9B), 0.13f), bottom
+    )
+}
 
 /**
  * 卡片内部的 MaterialTheme 覆盖：把 onSurface / surface / primary 全部换成本款材质
@@ -311,291 +264,123 @@ fun HoloCardTheme(style: HoloCardStyle, content: @Composable () -> Unit) {
     }
 }
 
-/** 灵敏度：相对基准倾斜 ±22°（sin 22° ≈ 0.375）即打满整段光程。 */
-private const val SENSOR_FULL_TILT_SIN = 0.375f
 
-/** 光源映射跨度：以 0.5 为中心 ±0.42，恰好落在 0.08..0.92。 */
-private const val SENSOR_LIGHT_SPAN = 0.42f
-private const val SENSOR_LIGHT_MIN = 0.08f
-private const val SENSOR_LIGHT_MAX = 0.92f
-
-/** 一阶低通系数：SENSOR_DELAY_GAME（≈50Hz）下约 0.1s 收敛，压手抖但不拖泥带水。 */
-private const val SENSOR_LOW_PASS_ALPHA = 0.28f
-
-/**
- * 二阶弹簧惯性：stiffness 160，阻尼 = 2√k·0.72（欠阻尼）——会被手指的倾斜「推」出惯性，
- * 松手后带回一点点过冲再收住，而不是一阶低通那种「贴着目标滑」。
- */
-private const val SENSOR_SPRING_STIFFNESS = 160f
-private val SENSOR_SPRING_DAMPING = 2f * sqrt(SENSOR_SPRING_STIFFNESS) * 0.72f
-
-/** 常驻呼吸：就算手机平放不动，光斑也永不静止（X 12% / Y 9.3% 两个互质周期）。 */
-private const val SENSOR_DRIFT_X_AMPLITUDE = 0.035f
-private const val SENSOR_DRIFT_X_OMEGA = 0.12f
-private const val SENSOR_DRIFT_Y_AMPLITUDE = 0.030f
-private const val SENSOR_DRIFT_Y_OMEGA = 0.093f
-
-/**
- * 虚拟光源。卡片本身永远水平（rotationX = 0），所有「流光」都来自这里。
- *
- * - cardMotionEnabled = true：设备重力矢量相对基准的偏移驱动光源，叠加极微弱呼吸微动；
- * - cardMotionEnabled = false：锁定 (0.34, 0.22)，不注册传感器、也不启动帧循环。
- *
- * 姿态一律用「重力矢量投影」表达，不再解算欧拉角，因此竖屏 / 斜握 / 躺卧都不会出现万向节死锁。
- */
 @Stable
 class HoloLightState {
-    val lightX = mutableFloatStateOf(0.34f)
-    val lightY = mutableFloatStateOf(0.22f)
-    val hover = mutableFloatStateOf(0f)
-    val breath = mutableFloatStateOf(0f)
+    var tiltX by mutableFloatStateOf(0f)
+        internal set
+    var tiltY by mutableFloatStateOf(0f)
+        internal set
+    internal var timeSeconds: () -> Float = StillLight
+}
 
-    // 用 snapshot state 暴露：HoloCardSurface 里据此决定是否启动 flowPhase 的 infinite transition，
-    // 运行时切换到「省电静止」时必须能触发重组把无限动画真正停掉。
-    internal var motionEnabled by mutableStateOf(true)
-        private set
-    private var velocityX = 0f
-    private var velocityY = 0f
-    private var time = 0f
+private val StillLight: () -> Float = { 0f }
 
-    /** 相对基准姿态的重力分量偏移（单位重力，约 -1..1）：gx 管左右、gy 管前后。 */
-    private var gravityDeltaX = 0f
-    private var gravityDeltaY = 0f
-
-    /** 是否已有有效姿态；没有时退回极微弱呼吸，保证老设备观感不变。 */
-    private var hasTilt = false
-
-    internal fun setMotionEnabled(enabled: Boolean) {
-        motionEnabled = enabled
-        if (!enabled) {
-            clearTilt()
-            lightX.floatValue = 0.34f
-            lightY.floatValue = 0.22f
-            hover.floatValue = 0f
-            breath.floatValue = 0f
-            velocityX = 0f
-            velocityY = 0f
+/** One elapsed-time source for the background, main card, and visible preview. */
+@Composable
+fun rememberCardLightTime(enabled: Boolean): () -> Float {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val seconds = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(lifecycle, enabled) {
+        if (!enabled) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            var previous = 0L
+            while (true) {
+                withFrameNanos { now ->
+                    if (previous == 0L) previous = now
+                    val elapsed = now - previous
+                    // Slow optical effects are independent of the 60 Hz flip transform.
+                    if (elapsed >= 31_000_000L) {
+                        seconds.floatValue += (elapsed / 1_000_000_000f).coerceAtMost(0.08f)
+                        previous = now
+                    }
+                }
+            }
         }
     }
-
-    /**
-     * 传感器回调入口（已在回调侧做过低通滤波）。
-     * 这里只登记「相对基准的重力偏移」，真正的位置变化仍然交给 [step] 里的弹簧，避免跳变。
-     */
-    internal fun onGravityDelta(dx: Float, dy: Float) {
-        gravityDeltaX = dx.coerceIn(-1f, 1f)
-        gravityDeltaY = dy.coerceIn(-1f, 1f)
-        hasTilt = true
-    }
-
-    /** 注销监听 / 关闭动效 / 重置基准时清空姿态，避免残留偏移把光源钉在一边。 */
-    internal fun clearTilt() {
-        gravityDeltaX = 0f
-        gravityDeltaY = 0f
-        hasTilt = false
-    }
-
-    internal fun step(dt: Float) {
-        time += dt
-        // 常驻微漂移：以 0.5 为基线、永不静止的双轴呼吸（X≈±0.035 / Y≈±0.030）。
-        // 没有传感器时它就是唯一位移来源；有传感器时它就是倾斜的底座。
-        val driftX = 0.5f + SENSOR_DRIFT_X_AMPLITUDE * sin(time * SENSOR_DRIFT_X_OMEGA)
-        val driftY = 0.5f + SENSOR_DRIFT_Y_AMPLITUDE * sin(time * SENSOR_DRIFT_Y_OMEGA + 1.1f)
-
-        val targetX: Float
-        val targetY: Float
-        if (hasTilt) {
-            // 重力偏移 → 归一化倾斜量 → ±0.42 光程，叠在呼吸基线之上，整体仍落在 0.08..0.92。
-            val baseX = (gravityDeltaX / SENSOR_FULL_TILT_SIN).coerceIn(-1f, 1f) * SENSOR_LIGHT_SPAN
-            val baseY = (gravityDeltaY / SENSOR_FULL_TILT_SIN).coerceIn(-1f, 1f) * SENSOR_LIGHT_SPAN
-            targetX = (driftX + baseX).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
-            targetY = (driftY + baseY).coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
-        } else {
-            targetX = driftX.coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
-            targetY = driftY.coerceIn(SENSOR_LIGHT_MIN, SENSOR_LIGHT_MAX)
-        }
-        // 半隐式欧拉：先更新速度、再用新速度更新位置，dt 已由调用方夹在 0..50ms。
-        velocityX += ((targetX - lightX.floatValue) * SENSOR_SPRING_STIFFNESS -
-            velocityX * SENSOR_SPRING_DAMPING) * dt
-        lightX.floatValue = (lightX.floatValue + velocityX * dt).coerceIn(0f, 1f)
-        velocityY += ((targetY - lightY.floatValue) * SENSOR_SPRING_STIFFNESS -
-            velocityY * SENSOR_SPRING_DAMPING) * dt
-        lightY.floatValue = (lightY.floatValue + velocityY * dt).coerceIn(0f, 1f)
-        breath.floatValue = 0.5f + 0.5f * sin(2f * PI.toFloat() * time / 6.4f)
-    }
+    return remember(seconds) { { seconds.floatValue } }
 }
 
 @Composable
-fun rememberHoloLightState(motionEnabled: Boolean): HoloLightState {
+fun rememberHoloLightState(
+    motionEnabled: Boolean,
+    timeSeconds: (() -> Float)? = null
+): HoloLightState {
     val state = remember { HoloLightState() }
-    LaunchedEffect(motionEnabled) {
-        state.setMotionEnabled(motionEnabled)
-        if (!motionEnabled) return@LaunchedEffect
-        var last = 0L
-        while (true) {
-            withFrameNanos { now ->
-                if (last != 0L) {
-                    val dt = ((now - last) / 1_000_000_000f).coerceIn(0f, 0.05f)
-                    state.step(dt)
-                }
-                last = now
-            }
-        }
-    }
-
-    // 重力传感器：只有开启卡片动效时才注册；跟随宿主生命周期，离开前台即注销，回来重新学习基准。
+    val clock = timeSeconds ?: rememberCardLightTime(motionEnabled)
+    SideEffect { state.timeSeconds = clock }
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(motionEnabled, context, lifecycleOwner) {
-        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-        val sensor = sensorManager?.let(::pickTiltSensor)
-        if (!motionEnabled || sensorManager == null || sensor == null) {
-            // 关闭动效 / 没有传感器服务 / 设备缺这两种传感器：静默降级为极微弱呼吸，不注册任何监听。
-            state.clearTilt()
-            return@DisposableEffect onDispose { }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val screenRotation = LocalView.current.display?.rotation ?: Surface.ROTATION_0
+    LaunchedEffect(motionEnabled, lifecycle, context, screenRotation) {
+        if (!motionEnabled) {
+            state.tiltX = 0f
+            state.tiltY = 0f
+            return@LaunchedEffect
         }
-        val listener = HoloTiltSensorListener(sensor.type, state)
-        // registered 标记：ON_RESUME 与「创建时已处于 RESUMED」两条路径只会注册一次，避免重复注册。
-        var registered = false
-        val register = {
-            if (!registered) {
-                listener.resetBaseline()
-                registered = sensorManager.registerListener(
-                    listener,
-                    sensor,
-                    SensorManager.SENSOR_DELAY_GAME,
-                )
+        val manager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+            ?: return@LaunchedEffect
+        val sensor = manager.getDefaultSensor(Sensor.TYPE_GRAVITY)
+            ?: manager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+            ?: return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            val listener = CardTiltListener(state, screenRotation)
+            try {
+                manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
+                awaitCancellation()
+            } finally {
+                manager.unregisterListener(listener)
+                state.tiltX = 0f
+                state.tiltY = 0f
             }
-        }
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                // 回到前台：重新注册并重置重力基准，避免暂停期间累积的偏移。
-                Lifecycle.Event.ON_RESUME -> register()
-                // 退到后台：立刻注销，省电且不让后台数据继续推光源。
-                Lifecycle.Event.ON_PAUSE -> {
-                    if (registered) {
-                        sensorManager.unregisterListener(listener)
-                        registered = false
-                    }
-                    listener.resetBaseline()
-                }
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            register()
-        }
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            sensorManager.unregisterListener(listener)
-            state.clearTilt()
         }
     }
     return state
 }
 
-/** 按优先级挑选重力传感器：重力计 → 游戏旋转矢量，全部缺失时返回 null。 */
-private fun pickTiltSensor(manager: SensorManager): Sensor? =
-    manager.getDefaultSensor(Sensor.TYPE_GRAVITY)
-        ?: manager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
-
-/**
- * 重力监听器：把设备坐标系下的重力矢量相对基准的偏移交给 [HoloLightState.onGravityDelta]。
- *
- * - 首选 TYPE_GRAVITY；缺失时退到 TYPE_GAME_ROTATION_VECTOR，取旋转矩阵第三行 [R6,R7,R8]
- *   （即世界竖直方向在设备坐标系中的投影，等价于单位重力）；
- * - 恢复注册后的首个有效事件只记基准（gx0, gy0），之后输出 dx = gx-gx0、dy = gy-gy0；
- * - 一阶低通 alpha = 0.28（SENSOR_DELAY_GAME ≈ 50Hz）；
- * - values 长度不足、矩阵不可用、全零向量等异常输入一律静默丢弃，绝不抛异常。
- */
-private class HoloTiltSensorListener(
-    private val sensorType: Int,
-    private val state: HoloLightState,
+private class CardTiltListener(
+    private val light: HoloLightState,
+    private val screenRotation: Int
 ) : SensorEventListener {
+    private val matrix = FloatArray(9)
+    private var baseline: Offset? = null
 
-    private val rotationMatrix = FloatArray(9)
-    private var hasBase = false
-    private var baseGx = 0f
-    private var baseGy = 0f
-    private var hasFiltered = false
-    private var filteredDx = 0f
-    private var filteredDy = 0f
+    override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) = Unit
 
-    /** 重置重力基准：重新注册 / 回到前台时调用，把当前姿态认成新的中立位。 */
-    fun resetBaseline() {
-        hasBase = false
-        hasFiltered = false
-        filteredDx = 0f
-        filteredDy = 0f
-        state.clearTilt()
+    override fun onSensorChanged(event: SensorEvent) {
+        val v = event.values
+        if (v.size < 3) return
+        val gravity = if (event.sensor.type == Sensor.TYPE_GAME_ROTATION_VECTOR) {
+            SensorManager.getRotationMatrixFromVector(matrix, v)
+            Offset(matrix[6], matrix[7])
+        } else {
+            val length = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+            if (!length.isFinite() || length < 1e-3f) return
+            Offset(v[0] / length, v[1] / length)
+        }
+        if (!gravity.x.isFinite() || !gravity.y.isFinite()) return
+        val oriented = when (screenRotation) {
+            Surface.ROTATION_90 -> Offset(-gravity.y, gravity.x)
+            Surface.ROTATION_180 -> -gravity
+            Surface.ROTATION_270 -> Offset(gravity.y, -gravity.x)
+            else -> gravity
+        }
+        val neutral = baseline ?: run {
+            baseline = oriented
+            return
+        }
+        val delta = (oriented - neutral) / 0.29f
+        light.tiltX = settleTilt(light.tiltX, delta.x)
+        light.tiltY = settleTilt(light.tiltY, delta.y)
     }
 
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-
-    override fun onSensorChanged(event: SensorEvent?) {
-        val e = event ?: return
-        if (e.sensor?.type != sensorType) return
-        val values = e.values ?: return
-        if (!readGravityDelta(values)) return
-        if (!hasFiltered) {
-            // 首帧直接对齐，避免从 0 缓慢爬升造成「回前台先偏一下」。
-            filteredDx = rawDx
-            filteredDy = rawDy
-            hasFiltered = true
-        } else {
-            filteredDx += (rawDx - filteredDx) * SENSOR_LOW_PASS_ALPHA
-            filteredDy += (rawDy - filteredDy) * SENSOR_LOW_PASS_ALPHA
-        }
-        state.onGravityDelta(filteredDx, filteredDy)
-    }
-
-    private var rawDx = 0f
-    private var rawDy = 0f
-
-    /** 读取相对基准的重力偏移到 [rawDx]/[rawDy]；返回 false 表示本帧不可用（含基准帧 / 坏帧）。 */
-    private fun readGravityDelta(values: FloatArray): Boolean {
-        if (values.size < 3) return false
-        val gx: Float
-        val gy: Float
-        if (sensorType == Sensor.TYPE_GAME_ROTATION_VECTOR) {
-            val ok = runCatching {
-                SensorManager.getRotationMatrixFromVector(rotationMatrix, values)
-            }.isSuccess
-            if (!ok) return false
-            // R 是 device→world 的旋转：世界 Z 轴（竖直）在设备系的投影 = 第三行 R[6..8]。
-            // 直接用它当单位重力，天然没有欧拉角、也没有万向节死锁。
-            gx = rotationMatrix[6]
-            gy = rotationMatrix[7]
-        } else {
-            var ax = values[0]
-            var ay = values[1]
-            val az = values[2]
-            val norm = sqrt(ax * ax + ay * ay + az * az)
-            // 全零 / 接近失重：归一化会放大噪声，直接丢帧。
-            if (!norm.isFinite() || norm < 1e-3f) return false
-            ax /= norm
-            ay /= norm
-            gx = ax
-            gy = ay
-        }
-        if (!gx.isFinite() || !gy.isFinite()) return false
-        if (!hasBase) {
-            baseGx = gx
-            baseGy = gy
-            hasBase = true
-            return false
-        }
-        rawDx = (gx - baseGx).coerceIn(-1f, 1f)
-        rawDy = (gy - baseGy).coerceIn(-1f, 1f)
-        return true
+    private fun settleTilt(current: Float, raw: Float): Float {
+        val target = if (abs(raw) < 0.035f) 0f else raw.coerceIn(-1f, 1f)
+        val next = current + 0.14f * (target - current)
+        return if (abs(target - next) < 0.002f) target else next
     }
 }
 
-/**
- * 悬浮全息卡面。只负责材质 + 阴影 + 装饰；内容通过 [content] 叠在上面，
- * 因此不会吞掉任何触摸事件（所有手势都来自 content / 外部 Modifier）。
- */
 @Composable
 fun HoloCardSurface(
     style: HoloCardStyle,
@@ -603,1304 +388,242 @@ fun HoloCardSurface(
     isBack: Boolean,
     glossHigh: Boolean,
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(HoloCardCorner),
-    /** 心流档位 0..4 与连续热力 0..1：驱动外框微光晕、流光与暖色氛围。 */
-    paceTier: Int = 1,
-    paceHeat: Float = 0f,
-    content: @Composable BoxScope.() -> Unit = {},
+    shape: Shape = RoundedCornerShape(19.dp),
+    motionAmount: Float = 1f,
+    turn: () -> Float = StillLight,
+    content: @Composable BoxScope.() -> Unit
 ) {
     val palette = rememberHoloPalette(style)
-    val dots = remember(style) { makeHoloDots(950, 0xC0FFEE) }
-    val gloss = if (glossHigh) 1f else 0.55f
-    val baseColor = if (palette.dark) Color(0xFF10142B) else palette.frontBottom
-
-    // 卡面与进度条共用同一套 420ms 升温 / 4200ms 降温节奏。
-    val paceTierAnim = remember { Animatable(paceTier.coerceIn(0, 4).toFloat()) }
-    LaunchedEffect(paceTier, light.motionEnabled) {
-        val target = paceTier.coerceIn(0, 4).toFloat()
-        if (!light.motionEnabled) {
-            paceTierAnim.snapTo(target)
-            return@LaunchedEffect
-        }
-        val from = paceTierAnim.value
-        if (from == target) return@LaunchedEffect
-        val spec = if (target > from) {
-            tween<Float>(durationMillis = 420, easing = FastOutSlowInEasing)
-        } else {
-            tween<Float>(durationMillis = 4200, easing = LinearOutSlowInEasing)
-        }
-        paceTierAnim.animateTo(target, spec)
-    }
-    val paceHeatAnim = remember { Animatable(paceHeat.coerceIn(0f, 1f)) }
-    LaunchedEffect(paceHeat, light.motionEnabled) {
-        val target = paceHeat.coerceIn(0f, 1f)
-        if (!light.motionEnabled) {
-            paceHeatAnim.snapTo(target)
-            return@LaunchedEffect
-        }
-        val from = paceHeatAnim.value
-        if (from == target) return@LaunchedEffect
-        val spec = if (target > from) {
-            tween<Float>(durationMillis = 420, easing = FastOutSlowInEasing)
-        } else {
-            tween<Float>(durationMillis = 4200, easing = LinearOutSlowInEasing)
-        }
-        paceHeatAnim.animateTo(target, spec)
-    }
-
-    // 七款材质的缓慢流光：只有开启卡片动效时才跑 infinite transition，关闭时 phase 恒为 0，
-    // 不注册任何动画帧回调（省电）。这里只持有 State、不读 .value —— 相位在 Canvas 的
-    // draw lambda 里读取，所以每帧只触发重绘，不会重组整张卡片。
-    val flowPhase: State<Float>? = if (light.motionEnabled) {
-        val infinite = rememberInfiniteTransition(label = "holoFlow")
-        infinite.animateFloat(
-            initialValue = 0f,
-            targetValue = (2f * PI).toFloat(),
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 7200, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart,
-            ),
-            label = "holoFlowPhase",
-        )
-    } else {
-        null
-    }
-
-    Box(modifier = modifier) {
-        // 心流暖色外发光：卡背自动收敛，只做氛围不抢文字。
-        // 用 foundation 的 Modifier.shadow（按 shape 生成圆角轮廓），不再用
-        // graphicsLayer.shadowElevation —— 后者在没有背景的图层上会沿矩形边界漏光，
-        // 在四个圆角外侧留下方形残影。抬升量取固定值：逐帧读 pace 会让整卡重组，
-        // 心流的动态部分交给下方 Canvas 溢光。
-        Box(
-            Modifier
-                .matchParentSize()
-                .shadow(
-                    elevation = 12.dp,
-                    shape = shape,
-                    clip = false,
-                    ambientColor = Color(0xFFFFB066).copy(alpha = 0.24f),
-                    spotColor = Color(0xFFFFB066).copy(alpha = 0.30f),
-                )
-        )
-        // 双层弥散阴影：底层大范围环境软投影 alpha .14，近景接触投影 alpha .08。
-        // 同样交给 Modifier.shadow，阴影轮廓跟随圆角 shape，四角不再出现直角光斑。
-        Box(
-            Modifier
-                .matchParentSize()
-                .shadow(
-                    elevation = 18.dp,
-                    shape = shape,
-                    clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.14f),
-                    spotColor = Color.Black.copy(alpha = 0.14f),
-                )
-        )
-        Box(
-            Modifier
-                .matchParentSize()
-                .shadow(
-                    elevation = 4.dp,
-                    shape = shape,
-                    clip = false,
-                    ambientColor = Color.Black.copy(alpha = 0.08f),
-                    spotColor = Color.Black.copy(alpha = 0.08f),
-                )
-        )
-        // 卡面环境溢光：略大于卡片轮廓的柔光，颜色由本款材质的 accent/frontTop 混合，
-        // 常态约 0.14、心流高燃约 0.21。放在三层阴影与卡面之间，只在卡外缘发光，
-        // 不裁切也不遮挡卡面任何内容。
-        // 裁剪 Path 在 drawWithCache 里按尺寸建一次，逐帧只读光源状态重绘。
-        Spacer(
-            Modifier
-                .matchParentSize()
-                .graphicsLayer { clip = false }
-                .drawWithCache {
-                    val corner = shape.cornerPx(size, this)
-                    // 画布本身是矩形，若直接画外晕会在四个圆角外侧留下方形光斑。
-                    // 这里先用「比卡片大 4dp 的圆角矩形」裁剪，光晕只沿圆角边缘露出。
-                    val spillExpand = 4.dp.toPx()
-                    val spillClip = Path().apply {
-                        addRoundRect(
-                            RoundRect(
-                                -spillExpand,
-                                -spillExpand,
-                                size.width + spillExpand,
-                                size.height + spillExpand,
-                                CornerRadius(corner + spillExpand, corner + spillExpand),
-                            )
-                        )
-                    }
-                    onDrawBehind {
-                        clipPath(spillClip) {
-                            drawAmbientSpill(
-                                palette = palette,
-                                lightX = light.lightX.floatValue,
-                                lightY = light.lightY.floatValue,
-                                pace = (
-                                    paceTierAnim.value / 4f * 0.42f +
-                                        paceHeatAnim.value * 0.58f
-                                    ).coerceIn(0f, 1f) * if (isBack) 0.62f else 1f,
-                                isBack = isBack,
-                                corner = corner,
-                            )
-                        }
-                    }
-                }
-        )
-        // 注意：这一层不能用 matchParentSize —— 全 matchParentSize 的 Box 量出来是 0 宽，
-        // 内容会被压成一条缝。让它由 content 决定尺寸，Canvas 再 matchParentSize 铺满。
-        Box(
-            Modifier
-                // 翻面/旋转时让整张卡面先离屏合成：SweepGradient、DstIn/DstOut 遮罩与
-                // 半透明面板都在独立缓冲里算完再一次性上屏，避免翻转过程中与背景互相串色。
-                // 只加在卡面本体上（阴影/溢光在它外层），24dp 圆角与三层阴影结构不变。
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                .clip(shape)
-                .background(baseColor)
-        ) {
-            Spacer(
-                Modifier
-                    .matchParentSize()
-                    .drawWithCache {
-                        val w = size.width
-                        val h = size.height
-                        // 内层材质圆角直接跟随传入 shape（默认 24dp），与外层 clip 完全一致。
-                        val corner = shape.cornerPx(size, this)
-                        val cardClip = Path().apply {
-                            addRoundRect(RoundRect(0f, 0f, w, h, CornerRadius(corner, corner)))
-                        }
-                        // 暗刻同心纹 / 流光扇面按当前像素尺寸建一次，尺寸不变就一直复用。
-                        val renderCache = buildHoloRenderCache(size, this, style)
-                        onDrawBehind {
-                            clipPath(cardClip) {
-                                drawHoloMaterial(
-                                    style = style,
-                                    palette = palette,
-                                    lightX = if (isBack) 1f - light.lightX.floatValue else light.lightX.floatValue,
-                                    lightY = light.lightY.floatValue,
-                                    hover = light.hover.floatValue,
-                                    gloss = gloss,
-                                    w = w,
-                                    h = h,
-                                    corner = corner,
-                                    dots = dots,
-                                    pace = (
-                                        paceTierAnim.value / 4f * 0.42f +
-                                            paceHeatAnim.value * 0.58f
-                                        ).coerceIn(0f, 1f) * if (isBack) 0.62f else 1f,
-                                    flowPhase = flowPhase?.value ?: 0f,
-                                    renderCache = renderCache,
-                                )
-                            }
-                        }
-                    }
-            )
-            // 卡背不再铺任何暗化/磨砂遮罩：文字直接印在全息材质上，
-            // 材质本身（drawHoloMaterial）照旧绘制，只是不再压一层黑。
-            content()
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// 材质绘制
-// ---------------------------------------------------------------------------
-
-private fun DrawScope.drawHoloMaterial(
-    style: HoloCardStyle,
-    palette: HoloCardPalette,
-    lightX: Float,
-    lightY: Float,
-    hover: Float,
-    gloss: Float,
-    w: Float,
-    h: Float,
-    corner: Float,
-    dots: List<HoloDot>,
-    pace: Float = 0f,
-    /** 0..2π 的流光相位：只在绘制阶段读取，驱动扫光/扇面旋转，不重建任何位图。 */
-    flowPhase: Float = 0f,
-    /** 按尺寸预生成的位图/画刷缓存（暗刻同心纹 + CD 扇形高光）。 */
-    renderCache: HoloRenderCache? = null,
-) {
-    val lx = lightX * w
-    val ly = lightY * h
-    val scale = w / 440f
-    val diagonal = sqrt(w * w + h * h)
-
-    // 陀螺仪光源仍是主光源；相位只叠一圈极小的椭圆轨道漂移（约 ±4.5% 卡宽），
-    // 让高光在没有倾斜输入时也缓慢流动，且不会把实时倾斜「吃掉」。
-    val flowLx = lx + cos(flowPhase) * w * 0.045f
-    val flowLy = ly + sin(flowPhase) * h * 0.045f
-
-    drawHoloBase(style, palette, lx, ly, w, h, scale, diagonal, flowPhase, renderCache)
-    drawHoloFoil(style, flowLx, flowLy, hover, gloss, w, h, scale, diagonal, dots, flowPhase, renderCache)
-    // 逐帧微纹理：星尘闪烁 / 等高线衍射 / 贝母薄纱 / 斜向镜面亮带。
-    // 全部读实时光源坐标，所以只重绘、不重组，也不会让任何缓存失效。
-    drawSkinMicroDetail(style, palette, flowLx, flowLy, w, h, scale, diagonal, gloss, flowPhase, renderCache)
-    drawHoloGlare(style, flowLx, flowLy, hover, gloss, w, h, diagonal)
-    // CD 各向异性扇形高光：缓存好的 SweepGradient，每帧只改旋转角。
-    drawHoloFlowSheen(renderCache?.sheenBrush, flowPhase, gloss, palette.dark, w, h)
-    drawHoloPaceAmbience(palette, lx, ly, pace, w, h)
-    drawHoloRim(palette, lx, ly, hover, w, h, corner, pace)
-}
-
-/**
- * 心流氛围：底部暖色漫反射 + 跟随光源的一抹暖金。只叠低透明度颜色，
- * 不改变底层材质本身，所以深色不脏、浅色不黄。
- */
-private fun DrawScope.drawHoloPaceAmbience(
-    palette: HoloCardPalette,
-    lx: Float,
-    ly: Float,
-    pace: Float,
-    w: Float,
-    h: Float,
-) {
-    val strength = pace.coerceIn(0f, 1f)
-    if (strength <= 0.01f) return
-    val warm = if (palette.dark) Color(0xFFFFA95E) else Color(0xFFFFC98A)
-    drawRect(
-        brush = Brush.radialGradient(
-            colors = listOf(
-                warm.copy(alpha = 0.13f * strength),
-                Color.Transparent
-            ),
-            center = Offset(w * 0.5f, h * 1.04f),
-            radius = max(w, h) * 0.92f
-        )
-    )
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(
-                Color(0xFFFFE3B8).copy(alpha = 0.10f * strength),
-                Color.Transparent
-            ),
-            center = Offset(lx, ly),
-            radius = w * 0.55f
+    Box(
+        modifier.clip(shape).holoFinish(
+            palette = palette,
+            intensity = if (glossHigh) 1f else 0.62f,
+            cornerSize = (shape as? RoundedCornerShape)?.topStart ?: CornerSize(19.dp),
+            motionAmount = motionAmount,
+            timeSeconds = { light.timeSeconds() },
+            lightX = { light.tiltX },
+            lightY = { light.tiltY },
+            turn = turn,
+            back = isBack,
         ),
-        radius = w * 0.55f,
-        center = Offset(lx, ly)
+        content = content,
     )
 }
-
-private fun DrawScope.drawHoloBase(
-    style: HoloCardStyle,
-    palette: HoloCardPalette,
-    lx: Float,
-    ly: Float,
-    w: Float,
-    h: Float,
-    scale: Float,
-    diagonal: Float,
-    flowPhase: Float = 0f,
-    renderCache: HoloRenderCache? = null,
-) {
-    when (style) {
-        HoloCardStyle.CLASSIC -> {
-            drawRect(
-                Brush.linearGradient(
-                    colors = listOf(palette.frontTop, palette.frontBottom),
-                    start = Offset(0f, 0f),
-                    end = Offset(w, h),
-                )
-            )
-            drawRect(
-                Brush.radialGradient(
-                    0f to Color(0xFF6E88E8).copy(alpha = if (palette.dark) 0.22f else 0.16f),
-                    1f to Color.Transparent,
-                    center = Offset(w * 0.18f, 0f),
-                    radius = w * 0.9f,
-                )
-            )
-        }
-
-        HoloCardStyle.PRISM -> {
-            // 170deg 深蓝底：0D23A8 -> 081266 -> 160F5C
-            drawRect(
-                angleGradient(
-                    170f, w, h,
-                    stops = listOf(
-                        0f to Color(0xFF0D23A8),
-                        0.55f to Color(0xFF081266),
-                        1f to Color(0xFF160F5C),
-                    )
-                )
-            )
-            // 中央偏内缩 14dp 的「深海玻璃视窗」
-            val inset = 14.dp.toPx()
-            val winLeft = inset
-            val winTop = inset
-            val winW = (w - inset * 2f).coerceAtLeast(1f)
-            val winH = (h - inset * 2f).coerceAtLeast(1f)
-            val winRadius = CornerRadius(22.dp.toPx())
-            drawRoundRect(
-                brush = Brush.linearGradient(
-                    0f to Color(0xFF3B62E6),
-                    0.55f to Color(0xFF2A3FBF),
-                    1f to Color(0xFF3A2FA8),
-                    start = Offset(winLeft, winTop),
-                    end = Offset(winLeft + winW, winTop + winH),
-                ),
-                topLeft = Offset(winLeft, winTop),
-                size = Size(winW, winH),
-                cornerRadius = winRadius,
-            )
-            val windowPath = Path().apply {
-                addRoundRect(
-                    RoundRect(
-                        winLeft, winTop, winLeft + winW, winTop + winH,
-                        CornerRadius(winRadius.x, winRadius.y)
-                    )
-                )
-            }
-            clipPath(windowPath) {
-                // 粉紫 / 冰青 / 薄荷三团随光源游走的柔光
-                drawRect(
-                    Brush.radialGradient(
-                        0f to Color(255, 175, 235).copy(alpha = 0.55f),
-                        0.35f to Color(255, 175, 235).copy(alpha = 0.20f),
-                        1f to Color(255, 175, 235).copy(alpha = 0f),
-                        center = Offset(lx, ly),
-                        radius = diagonal * 0.52f,
-                    )
-                )
-                drawRect(
-                    Brush.radialGradient(
-                        0f to Color(125, 225, 255).copy(alpha = 0.42f),
-                        0.40f to Color(125, 225, 255).copy(alpha = 0.14f),
-                        1f to Color(125, 225, 255).copy(alpha = 0f),
-                        center = Offset(w - lx, h * 0.72f),
-                        radius = diagonal * 0.50f,
-                    )
-                )
-                drawRect(
-                    Brush.radialGradient(
-                        0f to Color(150, 255, 210).copy(alpha = 0.34f),
-                        1f to Color(150, 255, 210).copy(alpha = 0f),
-                        center = Offset(w * 0.32f, h),
-                        radius = diagonal * 0.62f,
-                    )
-                )
-            }
-            // 冰蓝亮线 rgba(170,200,255,0.28)
-            drawRoundRect(
-                color = Color(170, 200, 255).copy(alpha = 0.28f),
-                topLeft = Offset(winLeft, winTop),
-                size = Size(winW, winH),
-                cornerRadius = winRadius,
-                style = Stroke(1.dp.toPx()),
-            )
-        }
-
-        HoloCardStyle.RAINBOW -> {
-            drawRect(
-                Brush.radialGradient(
-                    0f to Color(0xFF5A5F72),
-                    0.62f to Color(0xFF2A2C38),
-                    1f to Color(0xFF20222B),
-                    center = Offset(w * 0.25f, 0f),
-                    radius = w * 1.3f,
-                )
-            )
-        }
-
-        HoloCardStyle.PEARL -> {
-            drawRect(
-                angleGradient(
-                    160f, w, h,
-                    stops = listOf(
-                        0f to Color(0xFFFDFCFF),
-                        1f to Color(0xFFF1EEF8),
-                    )
-                )
-            )
-        }
-
-        HoloCardStyle.SPARKLE -> {
-            drawRect(
-                Brush.radialGradient(
-                    0f to Color(0xFF28336A),
-                    0.65f to Color(0xFF10142B),
-                    1f to Color(0xFF10142B),
-                    center = Offset(w * 0.75f, h * 0.05f),
-                    radius = w * 1.2f,
-                )
-            )
-        }
-
-        HoloCardStyle.CHROME -> {
-            // 银灰拉丝：随光源反向位移（1f - lightX）
-            val shiftX = (0.5f - (1f - lx / w)) * w * 0.55f
-            val shiftY = (0.5f - ly / h) * h * 0.25f
-            drawRect(
-                angleGradient(
-                    125f, w, h,
-                    shift = Offset(shiftX, shiftY),
-                    stops = listOf(
-                        0f to Color(0xFFE4E6EA),
-                        0.16f to Color(0xFF8D939E),
-                        0.30f to Color(0xFFF6F7F9),
-                        0.46f to Color(0xFF7C828D),
-                        0.60f to Color(0xFFD9DCE1),
-                        0.76f to Color(0xFF949AA5),
-                        1f to Color(0xFFF1F2F4),
-                    )
-                )
-            )
-            // 细拉丝纹
-            var x = -h
-            val step = 2.6f * scale
-            while (x < w + h) {
-                drawLine(
-                    color = Color.White.copy(alpha = 0.05f),
-                    start = Offset(x, 0f),
-                    end = Offset(x + h * 0.45f, h),
-                    strokeWidth = 0.8f * scale,
-                )
-                x += step
-            }
-        }
-
-        HoloCardStyle.ETCHED -> {
-            drawRect(Color(0xFF121214))
-            // 同心刻纹走预渲染的 ImageBitmap（尺寸不变就一直复用），不再逐帧循环描圆。
-            drawEtchedRings(w, h, scale, Color.White.copy(alpha = 0.05f), renderCache?.etchedRings)
-            drawRect(
-                Brush.radialGradient(
-                    0f to Color(0xFF1D1D21),
-                    1f to Color(0xFF0E0E10),
-                    center = Offset(w * 0.5f, h * 0.35f),
-                    radius = w * 0.7f,
-                )
-            )
-        }
-    }
-}
-
-private fun DrawScope.drawHoloFoil(
-    style: HoloCardStyle,
-    lx: Float,
-    ly: Float,
-    hover: Float,
-    gloss: Float,
-    w: Float,
-    h: Float,
-    scale: Float,
-    diagonal: Float,
-    dots: List<HoloDot>,
-    flowPhase: Float = 0f,
-    renderCache: HoloRenderCache? = null,
-) {
-    when (style) {
-        HoloCardStyle.CLASSIC -> {
-            // 内发光玻璃细框下的极淡蓝紫箔
-            val op = (0.10f + hover * 0.18f) * gloss
-            drawRect(
-                Brush.linearGradient(
-                    0f to Color(110, 136, 232).copy(alpha = op),
-                    0.55f to Color.Transparent,
-                    1f to Color(160, 120, 255).copy(alpha = op * 0.7f),
-                    start = Offset(0f, 0f),
-                    end = Offset(w, h),
-                )
-            )
-        }
-
-        HoloCardStyle.PRISM -> {
-            val op = (0.10f + hover * 0.20f) * gloss
-            drawRect(
-                Brush.radialGradient(
-                    0f to Color(170, 220, 255).copy(alpha = op),
-                    1f to Color.Transparent,
-                    center = Offset(lx, ly),
-                    radius = diagonal * 0.55f,
-                )
-            )
-        }
-
-        HoloCardStyle.RAINBOW -> {
-            val op = (0.82f + hover * 0.18f) * gloss
-            val raw = listOf(
-                Color(255, 95, 126), Color(255, 184, 107), Color(244, 255, 107),
-                Color(107, 255, 181), Color(95, 210, 255), Color(139, 123, 255),
-                Color(255, 107, 214), Color(255, 95, 126),
-            ).map { purified(it, op) }
-            val foil = angleGradient(
-                115f, w, h,
-                shift = Offset((lx - 0.5f * w) * 0.45f, (ly - 0.5f * h) * 0.45f),
-                period = 0.34f * max(w, h),
-                stops = raw.mapIndexed { index, color -> index / (raw.size - 1f) to color },
-            )
-            val mask = Brush.radialGradient(
-                0f to Color.Black,
-                0.62f to Color.Black.copy(alpha = 0.72f),
-                1f to Color.Black.copy(alpha = 0.34f),
-                center = Offset(lx, ly),
-                radius = 0.92f * diagonal,
-            )
-            drawIntoCanvas { canvas ->
-                val paint = Paint().apply { blendMode = BlendMode.ColorDodge }
-                canvas.saveLayer(Rect(0f, 0f, w, h), paint)
-                drawRect(brush = foil, topLeft = Offset.Zero, size = Size(w, h))
-                drawRect(
-                    brush = mask, topLeft = Offset.Zero, size = Size(w, h),
-                    blendMode = BlendMode.DstIn,
-                )
-                canvas.restore()
-            }
-            // 光栅斜纹独立于 ColorDodge 图层：SrcOver 半透明暗线，修复过曝后仍清晰可见。
-            var x = -h * 0.8f
-            val gap = 3.2f * scale
-            while (x < w + h * 0.8f) {
-                drawLine(
-                    color = Color.Black.copy(alpha = 0.20f),
-                    start = Offset(x, h),
-                    end = Offset(x + h * 0.70f, 0f),
-                    strokeWidth = 1f * scale,
-                )
-                x += gap
-            }
-        }
-
-        HoloCardStyle.PEARL -> {
-            val op = (0.55f + hover * 0.18f) * gloss
-            val foil = angleGradient(
-                115f, w, h,
-                shift = Offset((lx - 0.5f * w) * 0.6f, (ly - 0.5f * h) * 0.6f),
-                period = 0.34f * max(w, h),
-                stops = listOf(
-                    0f to Color(255, 196, 225).copy(alpha = op),
-                    0.2f to Color(201, 184, 255).copy(alpha = op),
-                    0.4f to Color(180, 233, 255).copy(alpha = op),
-                    0.6f to Color(194, 255, 216).copy(alpha = op),
-                    0.8f to Color(255, 243, 184).copy(alpha = op),
-                    1f to Color(255, 196, 225).copy(alpha = op),
-                ),
-            )
-            // 中心保持干净通透（alpha .08），只在四周边缘浓郁成珍珠母贝光
-            val mask = Brush.radialGradient(
-                0f to Color.Black.copy(alpha = 0.08f),
-                0.55f to Color.Black.copy(alpha = 0.28f),
-                0.85f to Color.Black.copy(alpha = 0.70f),
-                1f to Color.Black,
-                center = Offset(w * 0.5f, h * 0.45f),
-                radius = 0.70f * max(w, h),
-            )
-            maskedHoloFoil(BlendMode.Multiply, foil, mask, w, h)
-        }
-
-        HoloCardStyle.SPARKLE -> {
-            val op = (0.55f + hover * 0.35f) * gloss
-            val foil1 = angleGradient(
-                60f, w, h,
-                shift = Offset((lx * 1.6f - 0.5f * w) * 0.5f, (ly - 0.5f * h) * 0.5f),
-                period = 0.36f * max(w, h),
-                stops = listOf(
-                    0.00f to Color(255, 139, 210).copy(alpha = op),
-                    0.10f to Color(255, 139, 210).copy(alpha = op),
-                    0.18f to Color.Transparent,
-                    0.28f to Color.Transparent,
-                    0.36f to Color(139, 243, 255).copy(alpha = op),
-                    0.46f to Color(139, 243, 255).copy(alpha = op),
-                    0.54f to Color.Transparent,
-                    0.64f to Color.Transparent,
-                    0.71f to Color(255, 243, 139).copy(alpha = op),
-                    0.82f to Color(255, 243, 139).copy(alpha = op),
-                    0.89f to Color.Transparent,
-                    1.00f to Color.Transparent,
-                ),
-            )
-            val foil2 = angleGradient(
-                -35f, w, h,
-                shift = Offset(((1f - lx / w) - 0.5f) * w * 0.5f, (ly * 1.4f / h - 0.5f) * h * 0.5f),
-                period = 0.36f * max(w, h),
-                stops = listOf(
-                    0.00f to Color(169, 139, 255).copy(alpha = op),
-                    0.10f to Color(169, 139, 255).copy(alpha = op),
-                    0.17f to Color.Transparent,
-                    0.30f to Color.Transparent,
-                    0.37f to Color(139, 255, 196).copy(alpha = op),
-                    0.47f to Color(139, 255, 196).copy(alpha = op),
-                    0.53f to Color.Transparent,
-                    0.67f to Color.Transparent,
-                    0.73f to Color(255, 255, 255).copy(alpha = op),
-                    0.80f to Color(255, 255, 255).copy(alpha = op),
-                    0.87f to Color.Transparent,
-                    1.00f to Color.Transparent,
-                ),
-            )
-            val radialMask = Brush.radialGradient(
-                0f to Color.Black,
-                0.45f to Color.Black.copy(alpha = 0.30f),
-                1f to Color.Black.copy(alpha = 0.10f),
-                center = Offset(lx, ly),
-                radius = 0.78f * diagonal,
-            )
-            drawIntoCanvas { canvas ->
-                val paint = Paint().apply { blendMode = BlendMode.Screen }
-                canvas.saveLayer(Rect(0f, 0f, w, h), paint)
-                drawRect(brush = foil1, topLeft = Offset.Zero, size = Size(w, h))
-                drawRect(brush = radialMask, topLeft = Offset.Zero, size = Size(w, h), blendMode = BlendMode.DstIn)
-                canvas.drawHoloDots(dots, 0f, 0f, w, h, scale)
-                drawRect(brush = foil2, topLeft = Offset.Zero, size = Size(w, h))
-                drawRect(brush = radialMask, topLeft = Offset.Zero, size = Size(w, h), blendMode = BlendMode.DstIn)
-                canvas.drawHoloDots(dots, 117f * scale, 71f * scale, w, h, scale)
-                canvas.restore()
-            }
-        }
-
-        HoloCardStyle.CHROME -> {
-            val op = (0.30f + hover * 0.35f) * gloss
-            val foil = angleGradient(
-                115f, w, h,
-                shift = Offset(lx - 0.5f * w, ly - 0.5f * h),
-                period = 0.34f * max(w, h),
-                stops = listOf(
-                    0f to Color(255, 143, 199).copy(alpha = op),
-                    0.2f to Color(255, 226, 143).copy(alpha = op),
-                    0.4f to Color(149, 255, 208).copy(alpha = op),
-                    0.6f to Color(143, 214, 255).copy(alpha = op),
-                    0.8f to Color(192, 155, 255).copy(alpha = op),
-                    1f to Color(255, 143, 199).copy(alpha = op),
-                ),
-            )
-            drawIntoCanvas { canvas ->
-                val paint = Paint().apply { blendMode = BlendMode.Overlay }
-                canvas.saveLayer(Rect(0f, 0f, w, h), paint)
-                drawRect(brush = foil, topLeft = Offset.Zero, size = Size(w, h))
-                canvas.restore()
-            }
-        }
-
-        HoloCardStyle.ETCHED -> {
-            val op = (0.30f + hover * 0.70f) * gloss
-            // 暗刻反射随流光缓慢平移：相位只改渐变起点偏移，不重建任何纹理。
-            val flowShift = cos(flowPhase) * max(w, h) * 0.05f
-            val foil = angleGradient(
-                115f, w, h,
-                shift = Offset(
-                    (lx - 0.5f * w) * 1.2f + flowShift,
-                    (ly - 0.5f * h) * 1.2f + sin(flowPhase) * max(w, h) * 0.03f,
-                ),
-                period = 0.34f * max(w, h),
-                stops = listOf(
-                    0f to Color(255, 95, 126).copy(alpha = op),
-                    0.17f to Color(255, 184, 107).copy(alpha = op),
-                    0.33f to Color(244, 255, 107).copy(alpha = op),
-                    0.5f to Color(107, 255, 181).copy(alpha = op),
-                    0.67f to Color(95, 210, 255).copy(alpha = op),
-                    0.83f to Color(139, 123, 255).copy(alpha = op),
-                    1f to Color(255, 95, 126).copy(alpha = op),
-                ),
-            )
-            drawIntoCanvas { canvas ->
-                canvas.saveLayer(Rect(0f, 0f, w, h), Paint())
-                drawRect(brush = foil, topLeft = Offset.Zero, size = Size(w, h))
-                // 关键修复：遮罩用 White alpha 0.85，而不是看不见的 0.05。
-                // 同心刻纹遮罩走缓存的 ImageBitmap（内部 DstOut），不再逐帧循环描圆。
-                drawEtchedRingMaskBitmap(renderCache?.etchedRings, w, h, scale, 0.85f)
-                // 光源径向衰减：亮在光附近，远处保持哑光黑。
-                drawRect(
-                    brush = Brush.radialGradient(
-                        0f to Color.Black,
-                        0.30f to Color.Black.copy(alpha = 0.55f),
-                        1f to Color.Black.copy(alpha = 0.10f),
-                        center = Offset(lx, ly),
-                        radius = 0.62f * max(w, h),
-                    ),
-                    topLeft = Offset.Zero,
-                    size = Size(w, h),
-                    blendMode = BlendMode.DstIn,
-                )
-                canvas.restore()
-            }
-        }
-    }
-}
-
-/**
- * 六款皮肤的逐帧微纹理补强（在 base / foil 之上、glare 之下）。
- *
- * 全部现画现算：点位用确定性哈希（无分配、无随机源），亮度由光斑到该点的距离决定，
- * 因此光源一动纹理就跟着活，但整个过程只发生在 draw 阶段，不会触发重组。
- */
-private fun DrawScope.drawSkinMicroDetail(
-    style: HoloCardStyle,
-    palette: HoloCardPalette,
-    lx: Float,
-    ly: Float,
-    w: Float,
-    h: Float,
-    scale: Float,
-    diagonal: Float,
-    gloss: Float,
-    flowPhase: Float = 0f,
-    renderCache: HoloRenderCache? = null,
-) {
-    when (style) {
-        HoloCardStyle.SPARKLE -> {
-            // 深午夜蓝上的三层错位星尘：离光斑越近越亮，大颗粒补一圈极淡光晕。
-            for (layer in 0 until 3) {
-                val count = 44 - layer * 9
-                val sizeScale = 0.55f + layer * 0.38f
-                val seedBase = 0x5EED + layer * 977
-                for (i in 0 until count) {
-                    val sx = hash01(seedBase + i * 31) * w
-                    val sy = hash01(seedBase + i * 57 + 13) * h
-                    val dx = (sx - lx) / w
-                    val dy = (sy - ly) / h
-                    val dist = sqrt(dx * dx + dy * dy)
-                    val near = (1f - dist / 1.05f).coerceIn(0f, 1f)
-                    // 闪烁相位随流光慢转：每颗星自己的相位固定，整体随 phase 缓慢起伏，
-                    // 只做三角函数运算，不分配对象也不重建纹理。
-                    val twinkle = 0.35f + 0.65f * (
-                        0.5f + 0.5f * sin(
-                            flowPhase + hash01(seedBase + i * 13 + 7) * 6.2831855f
-                        )
-                        )
-                    val alpha = ((0.08f + 0.52f * near) * twinkle * gloss * (0.95f - 0.14f * layer))
-                        .coerceIn(0f, 0.72f)
-                    if (alpha <= 0.012f) continue
-                    val dotR = (0.55f + 0.95f * hash01(seedBase + i * 7 + 3)) * scale * sizeScale
-                    if (dotR > 0.95f * scale) {
-                        drawCircle(
-                            color = palette.accent.copy(alpha = alpha * 0.32f),
-                            radius = dotR * 2.8f,
-                            center = Offset(sx, sy),
-                        )
-                    }
-                    drawCircle(
-                        color = Color.White.copy(alpha = alpha),
-                        radius = dotR,
-                        center = Offset(sx, sy),
-                    )
-                }
-            }
-        }
-
-        HoloCardStyle.ETCHED -> {
-            // 哑光碳黑上再补一档更细的等高线，并只在光斑掠过处叠彩虹衍射。
-            val strength = (0.35f + 0.65f * gloss).coerceIn(0f, 1f)
-            drawEtchedRings(
-                w, h, scale * 1.32f,
-                Color.White.copy(alpha = 0.026f * strength),
-                renderCache?.etchedRingsDetail,
-            )
-            val diffraction = Brush.radialGradient(
-                0f to Color(126, 220, 255).copy(alpha = 0.20f * strength),
-                0.42f to Color(196, 150, 255).copy(alpha = 0.12f * strength),
-                0.78f to Color(255, 214, 150).copy(alpha = 0.05f * strength),
-                1f to Color.Transparent,
-                center = Offset(lx, ly),
-                radius = 0.62f * diagonal,
-            )
-            drawIntoCanvas { canvas ->
-                canvas.saveLayer(Rect(0f, 0f, w, h), Paint())
-                drawRect(brush = diffraction, topLeft = Offset.Zero, size = Size(w, h))
-                drawEtchedRingMaskBitmap(renderCache?.etchedRingsDetail, w, h, scale * 1.32f, 0.62f)
-                canvas.restore()
-            }
-        }
-
-        HoloCardStyle.PEARL -> {
-            // 奶油珍珠白：暖白高光压住粉气，再叠粉 / 薄荷 / 淡紫贝母薄纱。
-            drawRect(
-                Brush.linearGradient(
-                    0f to Color(255, 252, 246).copy(alpha = 0.30f * gloss),
-                    0.55f to Color(255, 248, 251).copy(alpha = 0.10f * gloss),
-                    1f to Color(248, 245, 255).copy(alpha = 0.18f * gloss),
-                    start = Offset(0f, 0f),
-                    end = Offset(w, h),
-                )
-            )
-            drawRect(
-                Brush.linearGradient(
-                    0f to Color(255, 205, 228).copy(alpha = 0.09f * gloss),
-                    0.35f to Color(201, 255, 232).copy(alpha = 0.09f * gloss),
-                    0.70f to Color(212, 200, 255).copy(alpha = 0.09f * gloss),
-                    1f to Color(255, 238, 214).copy(alpha = 0.07f * gloss),
-                    start = Offset(0f, h),
-                    end = Offset(w, 0f),
-                )
-            )
-        }
-
-        // 金属 / 玻璃系：一条随光源横移的斜向镜面亮带，紧邻一条暗带，把明暗过渡拉开。
-        HoloCardStyle.RAINBOW, HoloCardStyle.PRISM, HoloCardStyle.CHROME -> {
-            val centerX = w * (0.5f + (lx / w - 0.5f) * 0.55f)
-            val halfBand = w * 0.17f
-            val slant = h * 0.55f
-            drawRect(
-                Brush.linearGradient(
-                    0f to Color.Transparent,
-                    0.34f to Color.White.copy(alpha = 0.04f * gloss),
-                    0.50f to Color.White.copy(alpha = 0.24f * gloss),
-                    0.64f to Color.Black.copy(alpha = 0.16f * gloss),
-                    1f to Color.Transparent,
-                    start = Offset(centerX - halfBand, -slant),
-                    end = Offset(centerX + halfBand, h + slant),
-                )
-            )
-        }
-
-        else -> Unit
-    }
-}
-
-/** 确定性 0..1 噪声：星尘点位/闪烁相位用，避免每帧分配随机数生成器。 */
-private fun hash01(seed: Int): Float {
-    var x = seed * 374761393 + 668265263
-    x = (x xor (x shr 13)) * 1274126177
-    x = x xor (x shr 16)
-    return (x and 0x7FFFFFFF).toFloat() / 0x7FFFFFFF.toFloat()
-}
-
-private fun DrawScope.drawHoloGlare(
-    style: HoloCardStyle,
-    lx: Float,
-    ly: Float,
-    hover: Float,
-    gloss: Float,
-    w: Float,
-    h: Float,
-    diagonal: Float,
-) {
-    when (style) {
-        HoloCardStyle.PEARL -> {
-            val op = (0.45f + hover * 0.45f) * gloss
-            drawRect(
-                Brush.radialGradient(
-                    0f to Color.White.copy(alpha = 0.80f * op),
-                    0.55f to Color.White.copy(alpha = 0f),
-                    center = Offset(lx, ly),
-                    radius = diagonal * 0.55f,
-                ),
-                blendMode = BlendMode.Softlight,
-            )
-        }
-
-        HoloCardStyle.CHROME -> {
-            val op = (0.35f + hover * 0.55f) * gloss
-            drawRect(
-                Brush.radialGradient(
-                    0f to Color.White.copy(alpha = 0.85f * op),
-                    0.30f to Color.White.copy(alpha = 0.10f * op),
-                    0.95f to Color.Black.copy(alpha = 0.16f * op),
-                    center = Offset(lx, ly),
-                    radius = diagonal,
-                ),
-                blendMode = BlendMode.Softlight,
-            )
-        }
-
-        else -> {
-            val op = when (style) {
-                HoloCardStyle.PRISM -> (0.22f + hover * 0.38f) * gloss
-                HoloCardStyle.ETCHED -> (0.16f + hover * 0.30f) * gloss
-                else -> (0.30f + hover * 0.55f) * gloss
-            }
-            drawRect(
-                Brush.radialGradient(
-                    0f to Color.White.copy(alpha = 0.55f * op),
-                    0.28f to Color.White.copy(alpha = 0.12f * op),
-                    0.95f to Color.Black.copy(alpha = 0.26f * op),
-                    center = Offset(lx, ly),
-                    radius = diagonal,
-                ),
-                blendMode = BlendMode.Overlay,
-            )
-        }
-    }
-}
-
-/**
- * 卡面环境溢光：三层由宽到窄的圆角描边叠出羽化外晕，重心跟随光源。
- * 常态 alpha 0.14，心流高燃最高 0.21；卡背自动收敛到约 62%。
- */
-private fun DrawScope.drawAmbientSpill(
-    palette: HoloCardPalette,
-    lightX: Float,
-    lightY: Float,
-    pace: Float,
-    isBack: Boolean,
-    corner: Float,
-) {
-    val w = size.width
-    val h = size.height
-    if (w <= 0f || h <= 0f) return
-    val heat = pace.coerceIn(0f, 1f) * if (isBack) 0.62f else 1f
-    val alpha = (0.14f + 0.07f * heat).coerceIn(0f, 0.21f)
-    // 颜色来自当前皮肤，而不是写死一层白/蓝。
-    val tint = lerp(palette.accent, palette.frontTop, 0.45f)
-    val lx = lightX.coerceIn(0f, 1f) * w
-    val ly = lightY.coerceIn(0f, 1f) * h
-    val expand = 3.dp.toPx()
-    val radius = 1.15f * sqrt(w * w + h * h)
-    val strokeWidths = floatArrayOf(22f, 13f, 6f)
-    strokeWidths.forEachIndexed { index, widthDp ->
-        val falloff = 1f - index * 0.22f
-        drawRoundRect(
-            brush = Brush.radialGradient(
-                0f to tint.copy(alpha = alpha * falloff),
-                0.50f to tint.copy(alpha = alpha * falloff * 0.62f),
-                0.82f to tint.copy(alpha = alpha * falloff * 0.25f),
-                1f to Color.Transparent,
-                center = Offset(lx, ly),
-                radius = radius,
-            ),
-            topLeft = Offset(-expand, -expand),
-            size = Size(w + expand * 2f, h + expand * 2f),
-            cornerRadius = CornerRadius(corner + expand, corner + expand),
-            style = Stroke(widthDp.dp.toPx()),
-        )
-    }
-}
-
-/**
- * 外缘高光：全息卡只保留这一条 1px 的「白 → accent → 透明」渐变描边。
- * 旧版的 1.5px 双层描边、距边缘 14dp 的极细内框和四角星芒都已移除，
- * 避免出现厚重深蓝玻璃外壳 / 双层边框的观感。
- */
-private fun DrawScope.drawHoloRim(
-    palette: HoloCardPalette,
-    lx: Float,
-    ly: Float,
-    hover: Float,
-    w: Float,
-    h: Float,
-    corner: Float,
-    pace: Float = 0f,
-) {
-    val op = (0.55f + hover * 0.45f + 0.30f * pace.coerceIn(0f, 1f)) *
-        if (palette.dark) 1f else 0.85f
-    // 1px 外缘高光：accent 染色 + 重心随 lightX/lightY 游走，不是固定白边。
-    val rimStroke = 1.dp.toPx()
-    drawRoundRect(
-        brush = Brush.radialGradient(
-            0f to Color.White.copy(alpha = 0.38f * op),
-            0.30f to palette.accent.copy(alpha = 0.30f * op),
-            0.72f to palette.accent.copy(alpha = 0.10f * op),
-            1f to Color.Transparent,
-            center = Offset(lx, ly),
-            radius = 0.60f * sqrt(w * w + h * h),
-        ),
-        topLeft = Offset(rimStroke / 2f, rimStroke / 2f),
-        size = Size(w - rimStroke, h - rimStroke),
-        cornerRadius = CornerRadius(corner, corner),
-        style = Stroke(rimStroke),
-    )
-}
-
-// ---------------------------------------------------------------------------
-// 小预览色块（样式抽屉用；静态光源，不跑帧循环）
-// ---------------------------------------------------------------------------
 
 @Composable
-fun HoloStyleSwatch(style: HoloCardStyle, modifier: Modifier = Modifier) {
-    val palette = rememberHoloPalette(style)
-    val dots = remember(style) { makeHoloDots(140, 0xBEEF) }
-    Spacer(
-        modifier
-            .clip(RoundedCornerShape(12.dp))
-            .drawWithCache {
-                val w = size.width
-                val h = size.height
-                val corner = 12.dp.toPx()
-                val path = Path().apply { addRoundRect(RoundRect(0f, 0f, w, h, CornerRadius(corner, corner))) }
-                // 预览块与实卡共用同一套缓存：ETCHED 的同心纹同样走烘焙位图，
-                // 不在抽屉滚动时逐帧循环描圆。
-                val renderCache = buildHoloRenderCache(size, this, style)
-                onDrawBehind {
-                    clipPath(path) {
-                        drawHoloMaterial(
-                            style = style,
-                            palette = palette,
-                            lightX = 0.34f,
-                            lightY = 0.22f,
-                            hover = 0f,
-                            gloss = 1f,
-                            w = w,
-                            h = h,
-                            corner = corner,
-                            dots = dots,
-                            renderCache = renderCache,
-                        )
-                    }
-                }
-            }
-    )
-}
-
-// ---------------------------------------------------------------------------
-// 工具
-// ---------------------------------------------------------------------------
-
-private fun c(r: Int, g: Int, b: Int, a: Float = 1f): Color =
-    Color(r / 255f, g / 255f, b / 255f, a)
-
-/** 等价于 brightness(0.72) saturate(1.25)：降低明度、提高饱和度，避免 ColorDodge 过曝发白。 */
-private fun purified(color: Color, alpha: Float): Color {
-    val lum = 0.299f * color.red + 0.587f * color.green + 0.114f * color.blue
-    return Color(
-        red = ((lum + (color.red - lum) * 1.25f) * 0.72f).coerceIn(0f, 1f),
-        green = ((lum + (color.green - lum) * 1.25f) * 0.72f).coerceIn(0f, 1f),
-        blue = ((lum + (color.blue - lum) * 1.25f) * 0.72f).coerceIn(0f, 1f),
-        alpha = color.alpha * alpha,
-    )
-}
-
-/**
- * 按像素尺寸烘焙的昂贵静态纹理缓存。
- *
- * 暗刻同心纹在 440dp 卡面下是 100+ 圈描边，原本每帧在 Canvas 里循环 drawCircle，
- * 翻转时等于每帧重画上百条弧线。这里把它烘焙成 ImageBitmap：
- *  - [etchedRings]       基准密度（scale = w / 440f），base 层与箔片遮罩共用
- *  - [etchedRingsDetail] 1.32 倍密度，微纹理补强与细遮罩共用
- * 位图只在 size / density / 款式变化时由 drawWithCache 在主线程重建一次，
- * 之后每帧只做一次 drawImage。
- * [sheenBrush] 是 CD 各向异性扇形高光的 SweepGradient：ShaderBrush 自己按尺寸
- * 缓存 Shader，所以每帧只改旋转角，不会重新生成渐变对象。
- */
-@Immutable
-private class HoloRenderCache(
-    val etchedRings: ImageBitmap?,
-    val etchedRingsDetail: ImageBitmap?,
-    val sheenBrush: Brush?,
-)
-
-/** 主线程（draw 阶段）构建一次；非 ETCHED 皮肤只缓存扇光画刷，不占位图内存。 */
-private fun buildHoloRenderCache(
-    size: Size,
-    density: Density,
+fun HoloStyleSwatch(
     style: HoloCardStyle,
-): HoloRenderCache {
-    val sheen = buildFlowSheenBrush(size)
-    if (style != HoloCardStyle.ETCHED) return HoloRenderCache(null, null, sheen)
-    val wPx = size.width.roundToInt().coerceAtLeast(1)
-    val hPx = size.height.roundToInt().coerceAtLeast(1)
-    val scale = wPx / 440f
-    return HoloRenderCache(
-        etchedRings = renderEtchedRingBitmap(wPx, hPx, density, scale),
-        etchedRingsDetail = renderEtchedRingBitmap(wPx, hPx, density, scale * 1.32f),
-        sheenBrush = sheen,
-    )
-}
-
-/** 把同心刻纹一次性画进 ImageBitmap（白线 + 透明底），失败时返回 null 走矢量兜底。 */
-private fun renderEtchedRingBitmap(
-    wPx: Int,
-    hPx: Int,
-    density: Density,
-    scale: Float,
-): ImageBitmap? = runCatching {
-    val bitmap = ImageBitmap(wPx, hPx)
-    CanvasDrawScope().draw(
-        density = density,
-        layoutDirection = LayoutDirection.Ltr,
-        canvas = GraphicsCanvas(bitmap),
-        size = Size(wPx.toFloat(), hPx.toFloat()),
-    ) {
-        drawEtchedRings(wPx.toFloat(), hPx.toFloat(), scale, Color.White, null)
-    }
-    bitmap
-}.getOrNull()
-
-/** CD 扇面画刷：一圈窄亮带 + 两侧冷暖偏色，alpha 交给绘制时的 alpha 参数控制。 */
-private fun buildFlowSheenBrush(size: Size): Brush? {
-    if (size.width <= 1f || size.height <= 1f) return null
-    val center = Offset(size.width / 2f, size.height / 2f)
-    return Brush.sweepGradient(
-        0f to Color.Transparent,
-        0.05f to Color(0xFFEAF5FF),
-        0.11f to Color(0xFF9FD0FF).copy(alpha = 0.55f),
-        0.18f to Color.Transparent,
-        0.30f to Color.Transparent,
-        0.37f to Color(0xFFFFE9C4).copy(alpha = 0.75f),
-        0.44f to Color.Transparent,
-        0.56f to Color.Transparent,
-        0.63f to Color(0xFFD8C8FF).copy(alpha = 0.70f),
-        0.70f to Color.Transparent,
-        1f to Color.Transparent,
-        center = center,
-    )
-}
-
-/**
- * CD 各向异性扇形高光：椭圆扇面沿卡面中心缓慢旋转。
- * 每帧只有一次画布旋转 + 一次非等比缩放，画刷与 Path 全部复用，不分配大对象。
- */
-private fun DrawScope.drawHoloFlowSheen(
-    brush: Brush?,
-    flowPhase: Float,
-    gloss: Float,
-    dark: Boolean,
-    w: Float,
-    h: Float,
+    modifier: Modifier = Modifier,
+    timeSeconds: () -> Float = StillLight,
+    glossHigh: Boolean = true
 ) {
-    if (brush == null) return
-    val shortSide = min(w, h)
-    val longSide = max(w, h)
-    val anisotropy = (shortSide / longSide).coerceIn(0.35f, 1f)
-    val alpha = (0.10f + gloss * 0.09f) * (if (dark) 1f else 0.62f)
-    val center = Offset(w / 2f, h / 2f)
-    rotate(degrees = flowPhase * (180f / PI.toFloat()), pivot = center) {
-        scale(scaleX = 1f, scaleY = anisotropy, pivot = center) {
-            drawCircle(brush = brush, radius = longSide * 0.62f, center = center, alpha = alpha)
+    val palette = rememberHoloPalette(style)
+    Box(
+        modifier.clip(RoundedCornerShape(7.dp)).holoFinish(
+            palette, if (glossHigh) 1f else 0.62f, CornerSize(7.dp), 1f, timeSeconds
+        )
+    )
+}
+
+private data class FoilGrain(val x: Float, val y: Float, val radius: Float, val phase: Float)
+private val diamondGrain = Random(73).let { random ->
+    List(185) {
+        FoilGrain(random.nextFloat(), random.nextFloat(), random.nextFloat(), random.nextFloat())
+    }
+}
+
+private fun Modifier.holoFinish(
+    palette: HoloCardPalette,
+    intensity: Float,
+    cornerSize: CornerSize,
+    motionAmount: Float,
+    timeSeconds: () -> Float,
+    lightX: () -> Float = StillLight,
+    lightY: () -> Float = StillLight,
+    turn: () -> Float = StillLight,
+    back: Boolean = false
+): Modifier = drawWithCache {
+    val w = size.width
+    val h = size.height
+    if (w < 1f || h < 1f) return@drawWithCache onDrawBehind {}
+    val style = palette.style
+    val bleed = maxOf(w, h)
+    val overscan = Offset(-bleed, -bleed)
+    val fill = Size(w + 2f * bleed, h + 2f * bleed)
+    val dark = palette.dark
+    val base = Brush.linearGradient(
+        listOf(palette.frontTop, lerp(palette.frontTop, palette.frontBottom, 0.55f), palette.frontBottom),
+        end = Offset(w * 0.8f, h)
+    )
+    fun mist(color: Color, x: Float, y: Float, radius: Float) = Brush.radialGradient(
+        0f to color, 0.54f to color.copy(alpha = color.alpha * 0.34f),
+        1f to color.copy(alpha = 0f),
+        center = Offset(w * x, h * y), radius = bleed * radius
+    )
+    val rim = Brush.linearGradient(
+        0f to Color.White.copy(alpha = if (dark) 0.43f else 0.92f),
+        0.46f to palette.accent.copy(alpha = if (dark) 0.12f else 0.15f),
+        1f to palette.accent.copy(alpha = 0.50f),
+        end = Offset(w * 0.85f, h)
+    )
+
+    val fields = when (style) {
+        HoloCardStyle.CLASSIC -> listOf(
+            mist(Color(0xFF82AFEA).copy(alpha = if (dark) 0.26f else 0.37f), 0.09f, 0.13f, 0.62f),
+            mist(Color.White.copy(alpha = if (dark) 0.080f else 0.83f), 0.78f, 0.72f, 0.59f)
+        )
+        HoloCardStyle.PRISM -> listOf(
+            mist(Color(0xFF385BF3).copy(alpha = 0.68f), 0.18f, 0.10f, 0.63f),
+            mist(Color(0xFF7E58F9).copy(alpha = 0.39f), 0.91f, 0.75f, 0.54f),
+            Brush.linearGradient(
+                0f to Color.Transparent, 0.38f to Color.Transparent,
+                0.52f to Color(0xFF6FCEFF).copy(alpha = 0.20f),
+                0.65f to Color(0xFF8497FF).copy(alpha = 0.10f), 1f to Color.Transparent,
+                start = Offset(w * 0.51f, -h * 0.13f), end = Offset(w * 0.86f, h * 0.95f)
+            )
+        )
+        HoloCardStyle.RAINBOW -> listOf(
+            Brush.linearGradient(
+                0f to Color.Transparent,
+                0.21f to Color.Transparent,
+                0.31f to Color(0xFFDB76C8).copy(alpha = 0.46f),
+                0.39f to Color(0xFFEB9F68).copy(alpha = 0.49f),
+                0.48f to Color(0xFFADC865).copy(alpha = 0.40f),
+                0.55f to Color(0xFF47C9C3).copy(alpha = 0.41f),
+                0.63f to Color(0xFF647CE7).copy(alpha = 0.43f),
+                0.75f to Color.Transparent, 1f to Color.Transparent,
+                start = Offset(-w * 0.40f, h * 0.44f), end = Offset(w * 1.40f, h * 0.69f)
+            )
+        )
+        HoloCardStyle.PEARL -> listOf(
+            mist(Color(0xFFF1CBEC).copy(alpha = if (back) 0.58f else 0.70f), 0.91f, 0.24f, 0.66f),
+            mist(Color(0xFFBCE7DE).copy(alpha = 0.65f), 0.12f, 0.70f, 0.65f),
+            mist(Color(0xFFF7DCBC).copy(alpha = 0.60f), 0.86f, 0.94f, 0.57f)
+        )
+        HoloCardStyle.SPARKLE -> listOf(
+            mist(Color(0xFF4F5BBE).copy(alpha = 0.43f), 0.78f, 0.18f, 0.65f),
+            mist(Color(0xFF308CB1).copy(alpha = 0.30f), 0.17f, 0.92f, 0.50f)
+        )
+        HoloCardStyle.CHROME -> listOf(
+            mist(Color.White.copy(alpha = 0.88f), 0.36f, 0.12f, 0.53f),
+            mist(Color(0xFFA6B4D3).copy(alpha = 0.57f), 0.93f, 0.85f, 0.60f)
+        )
+        HoloCardStyle.ETCHED -> listOf(
+            mist(Color(0xFFA7AFBE).copy(alpha = 0.23f), 0.77f, 0.77f, 0.49f),
+            mist(Color(0xFF7693AA).copy(alpha = 0.17f), 0.14f, 0.21f, 0.38f)
+        )
+    }
+
+    val silver = if (style == HoloCardStyle.CHROME) liquidSilver else null
+    val silverShade = if (silver != null) ColorFilter.tint(Color(0xFF5D738E)) else null
+    val reflectionSpan = IntSize((w * 1.36f).roundToInt(), (h * 1.28f).roundToInt())
+    val engraving = if (style == HoloCardStyle.ETCHED) {
+        Path().apply {
+            val origin = Offset(w * 0.81f, h * 0.73f)
+            val step = maxOf(2.dp.toPx(), w * 0.012f)
+            for (ring in 0..44) {
+                val r = w * 0.02f + step * ring
+                addOval(Rect(center = origin, radius = r))
+            }
+        }
+    } else null
+    val engraveInk = Brush.linearGradient(
+        listOf(Color.Transparent, Color(0xFFB2BBD4).copy(alpha = 0.28f), Color.Transparent),
+        start = Offset(w * 0.40f, h * 0.52f), end = Offset(w, h * 0.99f)
+    )
+    val rimInset = 0.7.dp.toPx()
+    val corner = (cornerSize.toPx(size, this) - rimInset).coerceIn(0f, minOf(w, h) * 0.5f)
+    val rimSize = Size((w - 2 * rimInset).coerceAtLeast(0f), (h - 2 * rimInset).coerceAtLeast(0f))
+
+    onDrawBehind {
+        val t = if (motionAmount == 0f) 0f else timeSeconds()
+        val sensorX = lightX()
+        val sensorY = lightY()
+        val tiltSweep = turn()
+        val drift = sin(t * 0.29f + 0.38f) * motionAmount
+        val swell = sin(t * 0.19f + 1.7f) * motionAmount
+        val dx = w * (sensorX * 0.14f + tiltSweep * 0.21f)
+        val dy = h * sensorY * 0.10f
+
+        drawRect(base)
+        if (engraving != null) {
+            drawPath(engraving, engraveInk, alpha = 0.70f, style = Stroke(0.52.dp.toPx()))
+        }
+        fields.forEachIndexed { index, brush ->
+            val direction = if (index % 2 == 0) 1f else -1f
+            val x = dx + drift * w * (if (style == HoloCardStyle.RAINBOW) 0.19f else 0.09f) * direction
+            val y = dy + swell * h * (if (style == HoloCardStyle.CHROME) 0.12f else 0.07f) * direction
+            val alpha = intensity * (0.90f + 0.10f * swell * direction)
+            translate(x, y) {
+                drawRect(brush, topLeft = overscan, size = fill, alpha = alpha)
+            }
+        }
+        if (silver != null) {
+            val position = IntOffset(
+                (-0.18f * w + dx * 0.56f + drift * w * 0.06f).roundToInt(),
+                (-0.14f * h + dy * 0.52f + swell * h * 0.07f).roundToInt()
+            )
+            drawImage(silver.shade, dstOffset = position, dstSize = reflectionSpan,
+                alpha = intensity * 0.70f, colorFilter = silverShade)
+            drawImage(silver.gloss, dstOffset = position, dstSize = reflectionSpan,
+                alpha = intensity)
+        }
+        if (style == HoloCardStyle.SPARKLE) {
+            val glintX = 0.69f + drift * 0.12f + sensorX * 0.19f
+            val glintY = 0.73f + swell * 0.08f + sensorY * 0.15f
+            for (grain in diamondGrain) {
+                val distance = abs(grain.x - glintX) + abs(grain.y - glintY)
+                val focus = (1f - distance * 2.4f).coerceIn(0f, 1f)
+                val shimmer = 0.70f + 0.30f * sin(t * 0.58f + grain.phase * 6.28f)
+                val alpha = (0.091f + focus * grain.phase * shimmer * 0.64f) * intensity
+                val radius = minOf(w * 0.008f, (0.26f + grain.radius * 0.71f).dp.toPx())
+                drawCircle(
+                    color = if (grain.phase < 0.42f) Color(0xFFC2CDFF) else Color(0xFFF5FBFF),
+                    radius = radius,
+                    center = Offset(grain.x * w, grain.y * h),
+                    alpha = alpha,
+                )
+            }
+        }
+        drawRoundRect(
+            brush = rim, topLeft = Offset(rimInset, rimInset), size = rimSize,
+            cornerRadius = CornerRadius(corner), style = Stroke(rimInset)
+        )
+    }
+}
+
+private data class SilverOptics(val gloss: ImageBitmap, val shade: ImageBitmap)
+
+// Neutral masks keep the reflected highlights independent of the card's day/night pigment.
+private val liquidSilver: SilverOptics by lazy {
+    val width = 144
+    val height = 224
+    val gloss = IntArray(width * height)
+    val shade = IntArray(width * height)
+    for (j in 0 until height) {
+        val y = j.toFloat() / (height - 1)
+        for (i in 0 until width) {
+            val x = i.toFloat() / (width - 1)
+            val curve = 0.67f + 0.109f * sin(x * 6.65f + 0.84f) +
+                0.026f * sin(x * 13.9f - 0.45f)
+            val distance = y - curve
+            val widthAtX = 0.046f + 0.017f * sin(x * 5.8f + 0.63f)
+            val primary = bell((distance - 0.027f) / widthAtX)
+            val highlightTail = bell((distance - 0.066f) / 0.10f) * 0.37f
+            val secondary = bell((y - 0.23f - 0.040f * sin(x * 5.2f)) / 0.078f) * 0.36f
+            val darkShoulder = bell((distance + 0.050f) / (widthAtX * 1.36f)) * 0.70f
+            val lowerShoulder = bell((distance - 0.191f) / 0.084f) * 0.37f
+            val index = j * width + i
+            gloss[index] = silverMask(primary * 0.88f + highlightTail + secondary)
+            shade[index] = silverMask(darkShoulder + lowerShoulder)
         }
     }
+    fun bitmap(pixels: IntArray) =
+        Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888).asImageBitmap()
+    SilverOptics(bitmap(gloss), bitmap(shade))
 }
 
-private fun DrawScope.drawEtchedRings(
-    w: Float,
-    h: Float,
-    scale: Float,
-    color: Color,
-    bitmap: ImageBitmap? = null,
-) {
-    if (bitmap != null) {
-        // 位图里是纯白刻纹，用 tint 换色 + 换透明度，1:1 贴回去。
-        drawImage(
-            image = bitmap,
-            colorFilter = ColorFilter.tint(color),
-            filterQuality = FilterQuality.Low,
-        )
-        return
-    }
-    val center = Offset(w / 2f, h / 2f)
-    val maxR = sqrt(w * w + h * h) / 2f
-    var r = 1.2f * scale
-    while (r < maxR) {
-        drawCircle(color = color, radius = r, center = center, style = Stroke(1.2f * scale))
-        r += 7f * scale
-    }
-}
+private fun bell(value: Float): Float = exp(-value * value)
 
-/**
- * 用缓存位图做暗刻纹遮罩。
- *
- * 语义与旧的逐圆 DstIn 一致：`strength` 是压在底色上的强度（0.85 / 0.62），
- * 结果 = 底色 × (1 - strength) 仅发生在刻纹线上，线外底色不变。
- * 位图按整卡尺寸绘制，DstIn 会把透明区域（线外）的 dst 乘 0 直接擦掉箔片，
- * 所以这里改用 DstOut：src.alpha = 0 处 dst 原样保留，线条处 dst × (1 - srcAlpha)。
- */
-private fun DrawScope.drawEtchedRingMaskBitmap(
-    bitmap: ImageBitmap?,
-    w: Float,
-    h: Float,
-    scale: Float,
-    strength: Float,
-) {
-    if (bitmap != null) {
-        drawImage(
-            image = bitmap,
-            alpha = (1f - strength).coerceIn(0f, 1f),
-            colorFilter = ColorFilter.tint(Color.White),
-            blendMode = BlendMode.DstOut,
-            filterQuality = FilterQuality.Low,
-        )
-        return
-    }
-    drawIntoCanvas { canvas ->
-        canvas.drawEtchedRingMask(w, h, scale, Color.White.copy(alpha = strength))
-    }
-}
-
-private fun GraphicsCanvas.drawEtchedRingMask(w: Float, h: Float, scale: Float, color: Color) {
-    val center = Offset(w / 2f, h / 2f)
-    val maxR = sqrt(w * w + h * h) / 2f
-    val paint = Paint().apply {
-        this.color = color
-        style = PaintingStyle.Stroke
-        strokeWidth = 1.2f * scale
-        blendMode = BlendMode.DstIn
-    }
-    var r = 1.2f * scale
-    while (r < maxR) {
-        drawCircle(center, r, paint)
-        r += 7f * scale
-    }
-}
-
-private fun DrawScope.maskedHoloFoil(
-    blend: BlendMode,
-    foil: Brush,
-    mask: Brush,
-    w: Float,
-    h: Float,
-) {
-    drawIntoCanvas { canvas ->
-        val paint = Paint().apply { blendMode = blend }
-        canvas.saveLayer(Rect(0f, 0f, w, h), paint)
-        drawRect(brush = foil, topLeft = Offset.Zero, size = Size(w, h))
-        drawRect(brush = mask, topLeft = Offset.Zero, size = Size(w, h), blendMode = BlendMode.DstIn)
-        canvas.restore()
-    }
-}
-
-private data class HoloDot(val x: Float, val y: Float, val r: Float, val a: Float)
-
-private fun makeHoloDots(count: Int, seed: Int): List<HoloDot> {
-    var s = seed
-    fun rnd(): Float {
-        s = (s * 1103515245 + 12345) and 0x7fffffff
-        return (s % 100000) / 100000f
-    }
-    return List(count) {
-        HoloDot(
-            x = rnd(),
-            y = rnd(),
-            r = 0.45f + rnd() * rnd() * 1.4f,
-            a = 0.30f + rnd() * 0.70f,
-        )
-    }
-}
-
-private fun GraphicsCanvas.drawHoloDots(
-    dots: List<HoloDot>,
-    offX: Float,
-    offY: Float,
-    w: Float,
-    h: Float,
-    scale: Float,
-) {
-    val paint = Paint().apply { blendMode = BlendMode.DstIn }
-    for (dot in dots) {
-        paint.color = Color.White.copy(alpha = dot.a)
-        drawCircle(
-            Offset((dot.x + offX / w) * w, (dot.y + offY / h) * h),
-            dot.r * scale,
-            paint,
-        )
-    }
-}
-
-private fun cardPath(w: Float, h: Float, corner: Float): Path =
-    Path().apply { addRoundRect(RoundRect(0f, 0f, w, h, CornerRadius(corner, corner))) }
-
-private fun angleGradient(
-    angleDeg: Float,
-    w: Float,
-    h: Float,
-    shift: Offset = Offset.Zero,
-    period: Float = -1f,
-    stops: List<Pair<Float, Color>>,
-): Brush {
-    val rad = (angleDeg - 90f) * (PI.toFloat() / 180f)
-    val dirX = cos(rad)
-    val dirY = sin(rad)
-    val cx = w / 2f
-    val cy = h / 2f
-    val needed = abs(w * dirX) + abs(h * dirY)
-    val halfLen = if (period > 0f) {
-        val reps = ceil(needed / period) + 1f
-        period * reps / 2f
-    } else {
-        needed / 2f
-    }
-    val tile = if (period > 0f) TileMode.Repeated else TileMode.Clamp
-    val start = Offset(cx - dirX * halfLen + shift.x, cy - dirY * halfLen + shift.y)
-    val end = Offset(cx + dirX * halfLen + shift.x, cy + dirY * halfLen + shift.y)
-    return Brush.linearGradient(*stops.toTypedArray(), start = start, end = end, tileMode = tile)
-}
+private fun silverMask(alpha: Float): Int =
+    ((alpha.coerceIn(0f, 1f) * 255f).roundToInt() shl 24) or 0x00FFFFFF

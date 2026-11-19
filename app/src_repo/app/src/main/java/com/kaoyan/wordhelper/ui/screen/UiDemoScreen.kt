@@ -328,7 +328,6 @@ fun UiDemoScreen(onBack: () -> Unit) {
                         controller = cardTransition,
                         contentKey = previewKey,
                         motionEnabled = true,
-                        cornerRadius = 28.dp,
                         modifier = Modifier.fillMaxSize()
                     ) {
                         HoloCardTheme(style = HoloCardStyle.PEARL) {

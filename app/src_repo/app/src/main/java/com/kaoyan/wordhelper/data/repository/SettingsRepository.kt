@@ -1,13 +1,14 @@
 package com.kaoyan.wordhelper.data.repository
 
 import android.content.Context
-import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.kaoyan.wordhelper.data.model.CardMotionMode
 import com.kaoyan.wordhelper.data.model.PronunciationSource
 import com.kaoyan.wordhelper.data.network.CardBackAddress
 import com.kaoyan.wordhelper.data.network.NetworkAvailability
@@ -28,15 +29,14 @@ private const val DEFAULT_RECOGNITION_AUTO_PRONOUNCE_ENABLED = false
 private const val DEFAULT_NEW_WORDS_SHUFFLE_ENABLED = false
 private const val DEFAULT_ML_ADAPTIVE_ENABLED = false
 private const val DEFAULT_PLANNED_NEW_WORDS_ENABLED = false
-private const val DEFAULT_CARD_STYLE_ID = "pearl"
+private const val DEFAULT_CARD_STYLE_ID = "random"
 private const val DEFAULT_CARD_GLOSS_HIGH = true
-private const val DEFAULT_CARD_MOTION_ENABLED = true
 // 1.4.7.4：学习页背景氛围；auto 跟随卡片材质，其余为显式锁定的独立氛围。
 private const val DEFAULT_AMBIENT_BACKDROP_ID = "auto"
 private val AMBIENT_BACKDROP_IDS = setOf("auto", "aurora", "abyss", "ember", "velvet")
 // 1.4.7.4：三大主页默认全局全屏沉浸（隐藏系统状态栏），可由「我的 → 设置」显式关闭。
 private const val DEFAULT_IMMERSIVE_FULLSCREEN_ENABLED = true
-private val CARD_STYLE_IDS = setOf("classic", "prism", "rainbow", "pearl", "sparkle", "chrome", "etched")
+private val CARD_STYLE_IDS = setOf("random", "classic", "prism", "rainbow", "pearl", "sparkle", "chrome", "etched")
 private const val DEFAULT_CARD_BACK_URL = ""
 private const val DEFAULT_CARD_BACK_TOKEN = ""
 private const val DEFAULT_CARD_BACK_LAST_GOOD_URL = ""
@@ -64,12 +64,11 @@ data class UserSettings(
     val newWordsShuffleEnabled: Boolean = DEFAULT_NEW_WORDS_SHUFFLE_ENABLED,
     val mlAdaptiveEnabled: Boolean = DEFAULT_ML_ADAPTIVE_ENABLED,
     val plannedNewWordsEnabled: Boolean = DEFAULT_PLANNED_NEW_WORDS_ENABLED,
-    /** 学习主卡片材质：classic / prism / rainbow / pearl / sparkle / chrome / etched。 */
+    /** 学习主卡片材质，random 表示每次展示独立选取。 */
     val cardStyleId: String = DEFAULT_CARD_STYLE_ID,
     /** true = 璀璨炫光（1.0x），false = 柔和护眼（0.55x）。 */
     val cardGlossHigh: Boolean = DEFAULT_CARD_GLOSS_HIGH,
-    /** true = 自动呼吸 + 姿态追光；false = 锁定光源、静止省电。 */
-    val cardMotionEnabled: Boolean = DEFAULT_CARD_MOTION_ENABLED,
+    val cardMotionMode: CardMotionMode = CardMotionMode.FULL,
     /** 1.4.7.4：三大主页全局全屏沉浸（隐藏系统状态栏）；false = 恢复系统状态栏。 */
     val immersiveFullscreenEnabled: Boolean = DEFAULT_IMMERSIVE_FULLSCREEN_ENABLED,
     /** 卡背结构地址；空 = 没配，刷新时提示去设置里填。 */
@@ -183,7 +182,8 @@ class SettingsRepository(private val context: Context) {
             cardStyleId = (prefs[KEY_CARD_STYLE_ID] ?: DEFAULT_CARD_STYLE_ID)
                 .takeIf { it in CARD_STYLE_IDS } ?: DEFAULT_CARD_STYLE_ID,
             cardGlossHigh = prefs[KEY_CARD_GLOSS_HIGH] ?: DEFAULT_CARD_GLOSS_HIGH,
-            cardMotionEnabled = prefs[KEY_CARD_MOTION_ENABLED] ?: DEFAULT_CARD_MOTION_ENABLED,
+            cardMotionMode = prefs[KEY_CARD_MOTION_MODE]?.let(CardMotionMode::fromId)
+                ?: if (prefs[KEY_CARD_MOTION_ENABLED] == false) CardMotionMode.STATIC else CardMotionMode.FULL,
             immersiveFullscreenEnabled =
                 prefs[KEY_IMMERSIVE_FULLSCREEN_ENABLED] ?: DEFAULT_IMMERSIVE_FULLSCREEN_ENABLED,
             cardBackUrl = prefs[KEY_CARD_BACK_URL] ?: DEFAULT_CARD_BACK_URL,
@@ -268,8 +268,8 @@ class SettingsRepository(private val context: Context) {
         dataStore.edit { prefs -> prefs[KEY_CARD_GLOSS_HIGH] = enabled }
     }
 
-    suspend fun updateCardMotionEnabled(enabled: Boolean) {
-        dataStore.edit { prefs -> prefs[KEY_CARD_MOTION_ENABLED] = enabled }
+    suspend fun updateCardMotionMode(mode: CardMotionMode) {
+        dataStore.edit { prefs -> prefs[KEY_CARD_MOTION_MODE] = mode.id }
     }
 
     /** 背景氛围写入；未知 id 落回 auto（跟随卡片），不让脏数据把背景画空。 */
@@ -519,6 +519,7 @@ class SettingsRepository(private val context: Context) {
         private val KEY_PLANNED_NEW_WORDS_ENABLED = booleanPreferencesKey("planned_new_words_enabled")
         private val KEY_CARD_STYLE_ID = stringPreferencesKey("card_style_id")
         private val KEY_CARD_GLOSS_HIGH = booleanPreferencesKey("card_gloss_high")
+        private val KEY_CARD_MOTION_MODE = stringPreferencesKey("card_motion_mode")
         private val KEY_CARD_MOTION_ENABLED = booleanPreferencesKey("card_motion_enabled")
         private val KEY_AMBIENT_BACKDROP_ID = stringPreferencesKey("ambient_backdrop_id")
         private val KEY_IMMERSIVE_FULLSCREEN_ENABLED =

@@ -17,14 +17,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MenuBook
@@ -72,6 +71,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.kaoyan.wordhelper.KaoyanWordApp
+import com.kaoyan.wordhelper.data.model.CardMotionMode
 import com.kaoyan.wordhelper.data.repository.UserSettings
 import com.kaoyan.wordhelper.ui.component.AmbientBackdrop
 import com.kaoyan.wordhelper.ui.component.AmbientBackdropMode
@@ -79,6 +79,7 @@ import com.kaoyan.wordhelper.ui.component.AppDrawerContent
 import com.kaoyan.wordhelper.ui.component.DrawerDestination
 import com.kaoyan.wordhelper.ui.component.HoloCardStyle
 import com.kaoyan.wordhelper.ui.component.rememberCardStyleDrawerState
+import com.kaoyan.wordhelper.ui.component.studyContentInsets
 import com.kaoyan.wordhelper.ui.screen.AILabScreen
 import com.kaoyan.wordhelper.ui.screen.BookBuildGuideScreen
 import com.kaoyan.wordhelper.ui.screen.BookManageScreen
@@ -183,6 +184,15 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
     // 只在「开/关」真正翻转时重组，拖动过程中不逐帧重组
     val drawerOpen by remember { derivedStateOf { drawerProgress.value > 0.01f } }
 
+    // 左抽屉景深缩放的唯一公式：1f - 0.032f * progress。
+    // 二级页由 Scaffold 整层缩；学习页不缩整根 Scaffold（否则 AmbientBackdrop 与
+    // 圆角背板会一起缩、四周露出未缩放的根底色，形成矩形接缝），改为把这个
+    // 同一 lambda 传给 LearningScreen，只乘到它自己的内容层上。
+    // 抽屉全关时恒为 1f，等于什么都没做。
+    val drawerDepthScale: () -> Float = remember {
+        { 1f - 0.032f * drawerProgress.value }
+    }
+
     val navigateFromDrawer: (DrawerDestination) -> Unit = { destination ->
         closeDrawer()
         val route = when (destination) {
@@ -230,16 +240,20 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
                 }
             )
     ) {
-        // 全局暗夜烟雾：整个导航树只挂这一次（每帧绘制很重，不能每个页面各挂一份），
-        // 放在根 Box 的最底层、Scaffold 之前，因此所有页面和抽屉都在它之上。
-        // heat 恒为 0：这是全局静态氛围，升温效果只属于学习页的卡面。
-        AmbientBackdrop(
-            mode = AmbientBackdropMode.fromId(uiSettings.ambientBackdropId),
-            cardStyle = HoloCardStyle.fromId(uiSettings.cardStyleId),
-            heat = 0f,
-            motionEnabled = uiSettings.cardMotionEnabled,
-            modifier = Modifier.fillMaxSize()
-        )
+        // 学习页：Scaffold 不再整层缩放，学习页自己的 AmbientBackdrop 铺满整屏，
+        // 这里只留一层静态底色兜底（帧间切换时那一瞬）。不再挂第二份 AmbientBackdrop，
+        // 也就没有「缩了一层、根底另一套」的色差接缝。
+        if (isLearningRoute) {
+            Box(Modifier.fillMaxSize().background(if (darkTheme) Color(0xFF080D1A) else Color(0xFFFCF9F7)))
+        } else {
+            AmbientBackdrop(
+                mode = AmbientBackdropMode.fromId(uiSettings.ambientBackdropId),
+                cardStyle = HoloCardStyle.fromId(uiSettings.cardStyleId),
+                motionMode = CardMotionMode.STATIC,
+                timeSeconds = { 0f },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         // 屏幕最左边缘那条窄带会被系统的「返回」手势抢走，导致从这里起手右滑直接退出 App。
         // 申请一段系统手势排除区（系统上限 200dp 高），这一段里的横向滑动交给抽屉。
@@ -253,19 +267,17 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
         Scaffold(
             modifier = Modifier
                 .fillMaxSize()
-                // 底层主屏景深微退：在绘制阶段读 progress，拖动时只重绘、不重组
+                // 底层主屏景深微退（拖动时只重绘、不重组）。
+                // 学习页在这里不缩：缩放交给 LearningScreen 的内容层，让
+                // AmbientBackdrop 与圆角背板始终铺满全屏，杜绝四周露底接缝。
+                // 其他路由照旧整层缩。
                 .graphicsLayer {
-                    val progress = drawerProgress.value
-                    val depthScale = 1f - 0.032f * progress
+                    val depthScale = if (isLearningRoute) 1f else drawerDepthScale()
                     scaleX = depthScale
                     scaleY = depthScale
                     transformOrigin = TransformOrigin.Center
                 },
-            // 学习页不消费底部系统栏 inset：Scaffold 默认 contentWindowInsets = systemBars，
-            // 从底部上滑呼出手势条 / 进多任务时，navigationBars 会瞬时从 0 跳到 ~48dp，
-            // innerPadding 跟着变 → NavHost 的 padding 变 → 学习页卡片被「压短」一下。
-            // 学习页自带 statusBarsPadding / displayCutoutPadding 与底部 16dp 留白，
-            // 拼写页另有 navigationBarsPadding，所以这里给 0 即可；其余路由保持默认行为。
+            // The learning content and both drawers apply their own safe areas.
             contentWindowInsets = if (isLearningRoute) {
                 WindowInsets(0, 0, 0, 0)
             } else {
@@ -285,7 +297,8 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
                             initialMode = learningMode,
                             onOpenDrawer = openDrawer,
                             styleDrawerState = styleDrawerState,
-                            navDrawerOpen = drawerOpen
+                            navDrawerOpen = drawerOpen,
+                            navDrawerDepthScale = drawerDepthScale
                         )
                     }
                     composable(Screen.Search.route) { SearchScreen() }
@@ -371,7 +384,13 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
             modifier = Modifier
                 .width(drawerWidth)
                 .fillMaxHeight()
-                .graphicsLayer { translationX = -size.width * (1f - drawerProgress.value) }
+                // 展示位置按钳到 0..1 的开度算：甩动时弹簧会过冲（progress > 1），
+                // 不钳的话抽屉会越过屏幕左边缘，在边缝露出一条未缩放的根底色。
+                // 弹簧参数 / 手势输入 / 阴影圆角都不动，只修这个露底。
+                .graphicsLayer {
+                    val shown = drawerProgress.value.coerceIn(0f, 1f)
+                    translationX = -size.width * (1f - shown)
+                }
         ) {
             ModalDrawerSheet(
                 modifier = Modifier
@@ -431,7 +450,7 @@ fun AppNavigation(immersiveFullscreenEnabled: Boolean = true) {
                             )
                     )
                     AppDrawerContent(
-                        modifier = Modifier.statusBarsPadding().navigationBarsPadding(),
+                        modifier = Modifier.windowInsetsPadding(studyContentInsets()),
                         currentMode = learningMode,
                         currentRoute = currentRoute,
                         onModeChange = { learningMode = it },

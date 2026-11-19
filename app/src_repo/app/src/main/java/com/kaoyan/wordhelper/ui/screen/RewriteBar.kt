@@ -22,7 +22,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -30,7 +29,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -354,8 +352,6 @@ internal fun RewriteFeedbackRow(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var showDownDialog by remember { mutableStateOf(false) }
-    var downReason by remember { mutableStateOf("") }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -382,51 +378,9 @@ internal fun RewriteFeedbackRow(
             selected = feedback == RewriteFeedbackRating.DOWN,
             enabled = enabled && feedback != RewriteFeedbackRating.DOWN,
             tag = "rewrite_feedback_down",
-            onClick = {
-                downReason = ""
-                showDownDialog = true
-            }
-        )
-    }
-
-    // 点踩时顺手问一句「哪里没帮上」。不写也能记，写了下一版会当硬约束。
-    if (showDownDialog) {
-        AlertDialog(
-            onDismissRequest = { showDownDialog = false },
-            title = { Text("哪里没帮上？") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "可以写具体一点，比如「谐音太牵强」「画面和词义对不上」。留空就直接记下。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    OutlinedTextField(
-                        value = downReason,
-                        onValueChange = { if (it.length <= MAX_INSTRUCTION) downReason = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("rewrite_feedback_reason"),
-                        placeholder = { Text("哪里没帮上？（可不填）", style = MaterialTheme.typography.bodySmall) },
-                        textStyle = MaterialTheme.typography.bodySmall,
-                        minLines = 2,
-                        maxLines = 4
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val reason = downReason.trim()
-                        showDownDialog = false
-                        onFeedback(RewriteFeedbackRating.DOWN, reason)
-                    },
-                    modifier = Modifier.testTag("rewrite_feedback_down_confirm")
-                ) { Text("记下") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDownDialog = false }) { Text("取消") }
-            }
+            // 点踩直接记一条空原因的差评：不再弹「哪里没帮上？」，
+            // 少一次输入就能留下机器可用的负样本；原因可选项由重写指令框承担。
+            onClick = { onFeedback(RewriteFeedbackRating.DOWN, "") }
         )
     }
 }

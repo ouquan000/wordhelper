@@ -1,53 +1,35 @@
 package com.kaoyan.wordhelper.ui.screen
 
-import android.content.Context
 import android.provider.Settings
 import android.widget.Toast
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ContentTransform
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -55,7 +37,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -68,44 +49,32 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -135,7 +104,6 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kaoyan.wordhelper.KaoyanWordApp
-import com.kaoyan.wordhelper.R
 import com.kaoyan.wordhelper.data.entity.RewriteStatus
 import com.kaoyan.wordhelper.data.entity.Word
 import com.kaoyan.wordhelper.data.model.AIContentType
@@ -144,41 +112,46 @@ import com.kaoyan.wordhelper.data.model.CardBackBlockType
 import com.kaoyan.wordhelper.data.model.CardBackColor
 import com.kaoyan.wordhelper.data.model.CardBackConfig
 import com.kaoyan.wordhelper.data.model.CardBackSize
+import com.kaoyan.wordhelper.data.model.CardMotionMode
 import com.kaoyan.wordhelper.data.model.StudyRating
+import com.kaoyan.wordhelper.ui.component.AmbientBackdrop
+import com.kaoyan.wordhelper.ui.component.AmbientBackdropMode
 import com.kaoyan.wordhelper.ui.component.AnimatedStarToggle
+import com.kaoyan.wordhelper.ui.component.AppMenuButton
 import com.kaoyan.wordhelper.ui.component.CardEntrance
 import com.kaoyan.wordhelper.ui.component.CardStyleDrawer
 import com.kaoyan.wordhelper.ui.component.CardStyleDrawerState
 import com.kaoyan.wordhelper.ui.component.CardStyleEntryButton
-import com.kaoyan.wordhelper.ui.component.CardTransitionOverlay
-import com.kaoyan.wordhelper.ui.component.DeckStackUnderlay
 import com.kaoyan.wordhelper.ui.component.FlowBurnProgressBar
 import com.kaoyan.wordhelper.ui.component.HoloCardStyle
 import com.kaoyan.wordhelper.ui.component.HoloCardSurface
 import com.kaoyan.wordhelper.ui.component.HoloCardTheme
+import com.kaoyan.wordhelper.ui.component.HoloLightState
 import com.kaoyan.wordhelper.ui.component.LocalHoloCardPalette
+import com.kaoyan.wordhelper.ui.component.StudyCardBody
+import com.kaoyan.wordhelper.ui.component.StudyCardShape
+import com.kaoyan.wordhelper.ui.component.rememberCardLightTime
 import com.kaoyan.wordhelper.ui.component.rememberCardStyleDrawerState
-import com.kaoyan.wordhelper.ui.component.rememberCardTransitionController
 import com.kaoyan.wordhelper.ui.component.rememberHoloLightState
+import com.kaoyan.wordhelper.ui.component.studyContentInsets
+import com.kaoyan.wordhelper.ui.component.turnExposure
 import com.kaoyan.wordhelper.ui.theme.AlertRed
 import com.kaoyan.wordhelper.ui.theme.FuzzyYellow
 import com.kaoyan.wordhelper.ui.theme.KnownGreen
 import com.kaoyan.wordhelper.ui.viewmodel.LearningCheckInUiState
 import com.kaoyan.wordhelper.ui.viewmodel.LearningViewModel
-import com.kaoyan.wordhelper.ui.component.AppMenuButton
-import com.kaoyan.wordhelper.util.PronunciationPlayer
-import com.kaoyan.wordhelper.util.rememberPronunciationPlayer
+import com.kaoyan.wordhelper.ui.viewmodel.SkipRewriteAvailability
 import com.kaoyan.wordhelper.util.DateUtils
+import com.kaoyan.wordhelper.util.PronunciationPlayer
 import com.kaoyan.wordhelper.util.Sm2Scheduler
+import com.kaoyan.wordhelper.util.rememberPronunciationPlayer
+import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -187,11 +160,18 @@ fun LearningScreen(
     initialMode: LearningMode = LearningMode.RECOGNITION,
     onOpenDrawer: () -> Unit = {},
     styleDrawerState: CardStyleDrawerState = rememberCardStyleDrawerState(),
-    navDrawerOpen: Boolean = false
+    navDrawerOpen: Boolean = false,
+    /**
+     * 左抽屉展开时的景深缩放（AppNavigation 的 1f - 0.032f * progress 同一 lambda）。
+     * 学习页由这里缩放内容层，而不是整根 Scaffold，好让 AmbientBackdrop 和抽屉的
+     * 圆角背板始终铺满全屏，不会在四周露一条未缩放的根底色接缝。
+     */
+    navDrawerDepthScale: () -> Float = { 1f }
 ) {
     val activeBook by viewModel.activeBook.collectAsStateWithLifecycle()
     val cardBackConfig by viewModel.cardBackConfig.collectAsStateWithLifecycle()
-    val currentWord by viewModel.currentWord.collectAsStateWithLifecycle()
+    val presentedCard by viewModel.cardPresentation.collectAsStateWithLifecycle()
+    val currentWord = presentedCard.word
     // 卡背正文直接订阅库里的思路：电脑端结果一落库就换文，不依赖词对象什么时候被刷新
     val liveApproach by viewModel.liveApproach.collectAsStateWithLifecycle()
     // 方法标签也订阅库：重写落地后胶囊立刻换，不等下一次翻面
@@ -220,7 +200,9 @@ fun LearningScreen(
     val checkInState by viewModel.checkInState.collectAsStateWithLifecycle()
     val waitingRewriteCount by viewModel.waitingRewriteCount.collectAsStateWithLifecycle()
     val rewriteMark by viewModel.currentRewriteMark.collectAsStateWithLifecycle()
-    val skipRewriteLatchedWordId by viewModel.skipRewriteLatchedWordId.collectAsStateWithLifecycle()
+    // 1.4.7v7-bugfix：显示/可用与 ViewModel 的点击判定同源（含「这次停留」锁存），
+    // 不再由页面另拼一套 showSkip/skipEnabled 条件。
+    val skipAvailability by viewModel.currentRewriteSkipAvailability.collectAsStateWithLifecycle()
     val rewriteModels by viewModel.rewriteModels.collectAsStateWithLifecycle()
     val rewriteModelId by viewModel.rewriteModelId.collectAsStateWithLifecycle()
     val rewriteProgress by viewModel.rewriteProgress.collectAsStateWithLifecycle()
@@ -250,42 +232,36 @@ fun LearningScreen(
     // 卡片材质三件套：单独订阅，避免整页跟着 settingsFlow 里其它字段一起重组。
     val cardUiPrefs by remember(appContext) {
         appContext.settingsRepository.settingsFlow
-            .map { CardUiPrefs(it.cardStyleId, it.cardGlossHigh, it.cardMotionEnabled, it.ambientBackdropId) }
+            .map { CardUiPrefs(it.cardStyleId, it.cardGlossHigh, it.cardMotionMode, it.ambientBackdropId) }
             .distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = CardUiPrefs())
-    val cardStyle = HoloCardStyle.fromId(cardUiPrefs.styleId)
+    val presentation = presentedCard.generation
+    val cardStyle = if (cardUiPrefs.styleId == "random") {
+        val index = rememberSaveable(presentation) {
+            HoloCardStyle.entries.indices.random()
+        }
+        HoloCardStyle.entries[index]
+    } else {
+        HoloCardStyle.fromId(cardUiPrefs.styleId)
+    }
 
-    // 轻量切卡转场：控制器只记卡片 bounds 与方向，不抓像素、不参与评分提交（零阻塞）。
-    val cardTransition = rememberCardTransitionController()
-    var cardBounds by remember { mutableStateOf<Rect?>(null) }
     val systemAnimationsOn = rememberSystemAnimationsEnabled()
-    val transitionEnabled = cardUiPrefs.motionEnabled && systemAnimationsOn
+    val motionEnabled = cardUiPrefs.motionMode != CardMotionMode.STATIC && systemAnimationsOn
+    val lightTime = rememberCardLightTime(motionEnabled)
 
     var showRemoveDialog by remember { mutableStateOf(false) }
     var showReviewDialog by remember { mutableStateOf(false) }
     var showAiAssistantPage by rememberSaveable { mutableStateOf(false) }
     var showAiGuideDialog by remember { mutableStateOf(false) }
     var isCardFlipped by remember { mutableStateOf(false) }
-    // 翻面期间把牌堆底牌淡出：底牌只负责「牌堆厚度」，卡片侧过来时它会整块露出来，
-    // 在卡后留下一块静止的深色板（用户报的「中央静止黑框」）。翻面这 300ms 先让位，
-    // 翻完再淡回来——正面/背面平放时它本来就被主卡完全盖住，观感不变。
-    var flipDeckPulse by remember { mutableStateOf(0) }
-    var deckUnderlayVisible by remember { mutableStateOf(true) }
-    LaunchedEffect(flipDeckPulse) {
-        if (flipDeckPulse == 0) return@LaunchedEffect
-        deckUnderlayVisible = false
-        delay(420)
-        deckUnderlayVisible = true
-    }
-    val deckUnderlayAlpha by animateFloatAsState(
-        targetValue = if (deckUnderlayVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = 90),
-        label = "deckUnderlayAlpha"
-    )
     var pronouncingWordId by remember { mutableStateOf<Long?>(null) }
     var learningMode by rememberSaveable { mutableStateOf(initialMode) }
+    val holoLight = rememberHoloLightState(
+        motionEnabled && currentWord != null && learningMode == LearningMode.RECOGNITION && !showAiAssistantPage,
+        lightTime
+    )
 
-    LaunchedEffect(currentWord?.id) {
+    LaunchedEffect(presentation) {
         showReviewDialog = false
         showAiGuideDialog = false
         showAiAssistantPage = false
@@ -305,7 +281,8 @@ fun LearningScreen(
         rewriteMark?.status == RewriteStatus.PENDING || rewriteMark?.status == RewriteStatus.QUEUED
         )
     // W3：点过重写就锁存，生成完成也不收起；换词后 currentWord 变了才失效。
-    val showSkipRewrite = skipRewriteLatchedWordId != null && skipRewriteLatchedWordId == currentWord?.id
+    // 1.4.7v7-bugfix：这份「本次停留」锁存已并入 ViewModel 的 currentRewriteSkipAvailability，
+    // 页面不再单独推导 showSkip，避免两处条件漂移。
     LifecycleStartEffect(shouldPollRewrite) {
         if (shouldPollRewrite) {
             viewModel.startRewriteProgressPolling()
@@ -332,18 +309,6 @@ fun LearningScreen(
 
     fun handleAnswer(rating: StudyRating, removeFromNewWords: Boolean = false) {
         if (isAnswering) return
-        // 1) 先把当前卡片的 bounds 交给过场层（此刻界面还没换词），退场 ghost 与卡片同位置同尺寸。
-        // 2) 再提交评分：ViewModel 立即切词，不等任何动画。
-        cardTransition.launchAnswer(
-            rating = rating,
-            removeFromNewWords = removeFromNewWords,
-            paceTier = learningPace.tier,
-            paceHeat = learningPace.heat,
-            bounds = cardBounds,
-            motionEnabled = transitionEnabled,
-            // ghost 用当前皮肤取底色，浅色卡不会退场时变黑。
-            cardStyle = cardStyle
-        )
         if (removeFromNewWords) {
             viewModel.submitAnswerAndRemoveFromNewWords(rating)
         } else {
@@ -475,54 +440,61 @@ fun LearningScreen(
     }
 
     if (showAiAssistantPage && currentWord != null && learningMode == LearningMode.RECOGNITION) {
-        RecognitionAiAssistantPage(
-            word = currentWord!!,
-            aiState = aiState,
-            cachedExampleContent = cachedExampleContent,
-            cachedMemoryAidContent = cachedMemoryAidContent,
-            showMemoryAidSuggestion = memoryAidSuggestionWordId == currentWord!!.id,
-            canGenerateExample = isCardFlipped,
-            onBack = { showAiAssistantPage = false },
-            onGenerateExample = { forceRefresh -> viewModel.requestAiExample(forceRefresh) },
-            onGenerateMemoryAid = { forceRefresh -> viewModel.requestAiMemoryAid(forceRefresh) }
-        )
+        // AI 助手页是整页替换：沿用旧的「整层缩」观感，用一层全屏 Box 承担缩放。
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val scale = navDrawerDepthScale()
+                    scaleX = scale
+                    scaleY = scale
+                    transformOrigin = TransformOrigin.Center
+                }
+        ) {
+            RecognitionAiAssistantPage(
+                word = currentWord,
+                aiState = aiState,
+                cachedExampleContent = cachedExampleContent,
+                cachedMemoryAidContent = cachedMemoryAidContent,
+                showMemoryAidSuggestion = memoryAidSuggestionWordId == currentWord.id,
+                canGenerateExample = isCardFlipped,
+                onBack = { showAiAssistantPage = false },
+                onGenerateExample = { forceRefresh -> viewModel.requestAiExample(forceRefresh) },
+                onGenerateMemoryAid = { forceRefresh -> viewModel.requestAiMemoryAid(forceRefresh) }
+            )
+        }
         return
     }
-
-    // 全局全屏沉浸（状态栏）已上移到 AppNavigation 根层级统一控制，这里不再单独收放状态栏，
-    // 避免「进入本页隐藏 / 离开恢复」造成切页时状态栏闪一下、页面上下跳。
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            // 本页不再自铺背景：暗夜底与氛围层统一由 AppNavigation 根容器提供，
-            // 这里留透明，翻页/转场时才不会在页面之间叠出第二块底色。
-            // 整页横向滑动控制卡片材质抽屉：关闭时从右侧 40% 起手左滑拉出，
-            // 展开后整块面板都能右滑收回；左侧导航抽屉开着时本手势让位，
-            // 保证同一时间只有一个抽屉跟手（以最后一次滑动方向为准）。
+            // 右侧手势在导航抽屉打开时让位。
             .styleDrawerLeftSwipe(styleDrawerState, navDrawerOpen)
     ) {
+        AmbientBackdrop(
+            mode = AmbientBackdropMode.fromId(cardUiPrefs.ambientBackdropId),
+            cardStyle = cardStyle,
+            motionMode = if (systemAnimationsOn) cardUiPrefs.motionMode else CardMotionMode.STATIC,
+            timeSeconds = lightTime,
+            modifier = Modifier.fillMaxSize()
+        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 // 右侧材质抽屉展开时，主屏同步微缩到 0.975；读值在 layer lambda 里，只重绘不重组。
+                // 左抽屉展开时的 0.968 景深也乘在这里（与 AppNavigation 同一 lambda），
+                // 背景层和圆角背板不进这一层，因此始终贴满屏幕。
                 .graphicsLayer {
                     val drawer = styleDrawerState.progress
-                    scaleX = 1f - 0.025f * drawer
-                    scaleY = 1f - 0.025f * drawer
+                    val scale = (1f - 0.025f * drawer) * navDrawerDepthScale()
+                    scaleX = scale
+                    scaleY = scale
                     transformOrigin = TransformOrigin.Center
                 }
-                // 1.4.3：卡背输入框唤起键盘时，整页让到键盘上方，
-                // 否则「重写思路」按钮会被键盘盖住，点不到（edge-to-edge 默认不会让）。
+                .windowInsetsPadding(studyContentInsets())
                 .imePadding()
-                // 注意：这里不再消费 navigationBars inset。动态的 navigationBarsPadding()
-                // 会在上滑呼出系统手势条 / 进入多任务时瞬间改变可用高度，把卡片压扁；
-                // 底部安全间距改为固定值（由底部进度条的 16dp padding 承担），高度恒定。
-                // 全屏沉浸下状态栏隐藏，顶部先让开状态栏（隐藏时为 0）与挖孔安全边距，
-                // 再留 12dp 呼吸位——与词库 / 我的两页 AppPageHeader 的 12dp 完全一致。
-                .statusBarsPadding()
-                .displayCutoutPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // 1.4.7：模式切换与一级导航都搬进左侧抽屉，这里只留菜单入口
@@ -582,7 +554,7 @@ fun LearningScreen(
             } else {
                 when (learningMode) {
                     LearningMode.RECOGNITION -> {
-                        val cardState = WordCardState(currentWord!!, isInNewWords)
+                        val cardState = WordCardState(currentWord, isInNewWords)
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -595,43 +567,13 @@ fun LearningScreen(
                                     .weight(1f),
                                 contentAlignment = Alignment.Center
                             ) {
-                                // 一片底牌 + 一张主卡。底牌只做「牌堆厚度」，
-                                // 主卡进出场由 CardEntrance 负责（旧卡特效在顶层 Canvas 上跑）。
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .fillMaxHeight()
-                                        .testTag("learning_word_card")
-                                        .onGloballyPositioned { cardBounds = it.boundsInRoot() }
+                                CardEntrance(
+                                    contentKey = presentation,
+                                    motionEnabled = motionEnabled,
+                                    modifier = Modifier.fillMaxSize().testTag("learning_word_card")
                                 ) {
-                                    CardEntrance(
-                                        controller = cardTransition,
-                                        contentKey = cardState.word.id,
-                                        motionEnabled = transitionEnabled,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .fillMaxHeight()
-                                    ) {
-                                        // 底牌与新卡同处 CardEntrance 的动画内容层：同一个 Box、
-                                        // 同一次入场 transform。旧实现把底牌留在外面，主卡飞走后
-                                        // 屏幕中央会滞留一块静止的深色占位空框；现在底牌跟着一起
-                                        // 补位/入场，任何时刻中央都没有「没有卡的底牌」。
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .fillMaxHeight()
-                                        ) {
-                                            DeckStackUnderlay(
-                                                cardStyle = cardStyle,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .fillMaxHeight()
-                                                    .graphicsLayer { alpha = deckUnderlayAlpha }
-                                            )
-                                            // 换词时重建卡面：翻面、滚动等卡片内部状态跟着新词重置，
-                                            // 与原 AnimatedContent(contentKey = word.id) 的行为一致。
-                                            key(cardState.word.id) {
-                                            WordCard(
+                                    key(presentation) {
+                                        WordCard(
                                             // 词对象可能是旧快照，卡背正文与方法标签都以库里的实时值为准
                                             word = cardState.word.copy(
                                                 approach = liveApproach ?: cardState.word.approach,
@@ -643,14 +585,13 @@ fun LearningScreen(
                                             reviewTag = reviewTag,
                                             onReviewTagClick = { showReviewDialog = true },
                                             aiAvailable = aiState.isAvailable,
-                                            aiSuggested = memoryAidSuggestionWordId == currentWord!!.id,
+                                            aiSuggested = memoryAidSuggestionWordId == currentWord.id,
                                             onAiEntryClick = ::openAiEntry,
                                             onPronounceClick = { playPronunciation(cardState.word) },
                                             showPronounceButton = pronunciationEnabled,
                                             pronounceLoading = pronouncingWordId == cardState.word.id,
                                             onFlipChanged = { flipped ->
                                                 isCardFlipped = flipped
-                                                flipDeckPulse++
                                                 // 翻到背面顺手同步一次；翻回正面不发请求
                                                 if (flipped) viewModel.syncRewriteOnBackFlip()
                                             },
@@ -688,15 +629,12 @@ fun LearningScreen(
                                             },
                                             cardStyle = cardStyle,
                                             glossHigh = cardUiPrefs.glossHigh,
-                                            motionEnabled = cardUiPrefs.motionEnabled,
-                                            paceTier = learningPace.tier,
-                                            paceHeat = learningPace.heat,
+                                            motionMode = if (systemAnimationsOn) cardUiPrefs.motionMode else CardMotionMode.STATIC,
+                                            holoLight = holoLight,
                                             modifier = Modifier.fillMaxHeight()
-                                            )
-                                            } // key(word.id)
-                                        } // 底牌 + 主卡（同一动画层）
-                                    } // CardEntrance
-                                } // learning_word_card 外层 Box（过场层从这里取整卡 bounds）
+                                        )
+                                    }
+                                }
                             }
                             RecognitionActionPanel(
                                 isAnswering = isAnswering,
@@ -710,8 +648,11 @@ fun LearningScreen(
                                         handleAnswer(StudyRating.GOOD)
                                     }
                                 },
-                                showSkip = showSkipRewrite && rewriteMark != null,
-                                skipEnabled = rewriteMark?.status != RewriteStatus.DONE,
+                                // 1.4.7v7-bugfix：位置固定，但只有真的能跳过才可点；
+                                // 结果已合格时保留胶囊并置灰（不再「亮着点不动」）。
+                                showSkip = skipAvailability == SkipRewriteAvailability.AVAILABLE ||
+                                    skipAvailability == SkipRewriteAvailability.RESULT_READY,
+                                skipEnabled = skipAvailability == SkipRewriteAvailability.AVAILABLE,
                                 onSkip = viewModel::skipCurrentWordForRewrite
                             )
                         }
@@ -762,39 +703,33 @@ fun LearningScreen(
                 totalCount = totalCount,
                 tier = learningPace.tier,
                 elapsedMs = learningPace.elapsedMs,
-                motionEnabled = cardUiPrefs.motionEnabled,
+                motionEnabled = motionEnabled,
                 barHeight = 10.dp,
                 sprintSize = 30,
                 heat = learningPace.heat,
-                // 底部改用固定 16dp 呼吸边距（不消费 navigationBars inset）：
-                // 上滑手势条出现/消失时进度条与卡片高度都纹丝不动。
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp)
+                    .padding(bottom = 4.dp)
             )
         }
-
-        // 顶层特效画布：只画旧卡残骸，不接触摸（Canvas 本身没有 pointerInput）。
-        CardTransitionOverlay(
-            controller = cardTransition,
-            modifier = Modifier.fillMaxSize()
-        )
 
         // 右侧卡片材质抽屉：叠在整页之上；左抽屉开着时它不接边缘手势。
         CardStyleDrawer(
             state = styleDrawerState,
             navDrawerOpen = navDrawerOpen,
             selectedStyleId = cardUiPrefs.styleId,
+            activeStyle = cardStyle,
             glossHigh = cardUiPrefs.glossHigh,
-            motionEnabled = cardUiPrefs.motionEnabled,
+            motionMode = cardUiPrefs.motionMode,
+            lightTime = lightTime,
             onSelectStyle = { style ->
-                uiScope.launch { appContext.settingsRepository.updateCardStyleId(style.id) }
+                uiScope.launch { appContext.settingsRepository.updateCardStyleId(style) }
             },
             onGlossHighChange = { high ->
                 uiScope.launch { appContext.settingsRepository.updateCardGlossHigh(high) }
             },
-            onMotionEnabledChange = { enabled ->
-                uiScope.launch { appContext.settingsRepository.updateCardMotionEnabled(enabled) }
+            onMotionModeChange = { mode ->
+                uiScope.launch { appContext.settingsRepository.updateCardMotionMode(mode) }
             },
             ambientBackdropId = cardUiPrefs.ambientBackdropId,
             onAmbientBackdropChange = { id ->
@@ -808,11 +743,10 @@ private const val SM2_DESCRIPTION =
     "SM-2 调度说明：不认识会在会话内重试，模糊保守推进，认识按记忆因子增长间隔。"
 private val RECOGNITION_SECTION_SPACING = 8.dp
 
-/** 卡片材质的三个持久化开关，单独收敛成一个不可变快照，避免整页跟着 settingsFlow 抖。 */
 private data class CardUiPrefs(
-    val styleId: String = "pearl",
+    val styleId: String = "random",
     val glossHigh: Boolean = true,
-    val motionEnabled: Boolean = true,
+    val motionMode: CardMotionMode = CardMotionMode.FULL,
     val ambientBackdropId: String = "auto"
 )
 
@@ -1251,37 +1185,16 @@ private fun WordCard(
     /** 未复核的原因；点角标时展开它。空 = 只有角标没有说明。 */
     unverifiedReason: String? = null,
     backActions: (@Composable (Boolean) -> Unit)? = null,
-    /** 卡片材质（7 款之一），由设置里的 cardStyleId 决定。 */
-    cardStyle: HoloCardStyle = HoloCardStyle.PEARL,
-    /** true = 璀璨炫光，false = 柔和护眼。 */
-    glossHigh: Boolean = true,
-    /** true = 呼吸游走 + 指尖追光；false = 静止省电。 */
-    motionEnabled: Boolean = true,
-    /** 当前学习节奏：tier 0..4、heat 0..1，用于卡面与进度条同频。 */
-    paceTier: Int = 1,
-    paceHeat: Float = 0f,
+    cardStyle: HoloCardStyle,
+    glossHigh: Boolean,
+    motionMode: CardMotionMode,
+    holoLight: HoloLightState,
     modifier: Modifier = Modifier
 ) {
-    // 翻面角度是唯一真相：0° = 正面，180° = 背面。
-    // 用 Animatable 而不是 animateFloatAsState + Boolean：连点时新的 animateTo 会取消上一段
-    // 弹簧并从「当前角度」继续加速，不会像改 target 那样先顿一帧再重头起步，也就不会闪回。
-    val angle = remember(word.id) { Animatable(0f) }
-    // 正/背面只由角度决定：跨过 90° 切背面，越过 270° 才切回正面。
-    // 弹簧过冲 >180° 时仍落在 90..270 区间内，照实渲染卡背，不会闪回正面。
-    val showBack by remember(angle) {
-        derivedStateOf {
-            val n = ((angle.value % 360f) + 360f) % 360f
-            n in 90f..270f
-        }
-    }
-    // 翻面「意图状态」：点击时取反，决定这次动画的目标角度。
-    // 它不参与正/背面渲染判定（那个只由 angle 派生），也允许出现
-    // 「isFlipped 已取反、角度还在途中」的中间态——这正是连点能反向接续的原因。
-    var isFlipped by remember(word.id) { mutableStateOf(false) }
+    val angle = remember { Animatable(0f) }
+    val showBack by remember { derivedStateOf { angle.value >= 90f } }
+    var turning by remember { mutableStateOf(false) }
     val flipScope = rememberCoroutineScope()
-    // 卡背延后到换词动画结束后的静止帧再首次组合。
-    // 翻面时它已经在树里，跨 90° 的那一帧就只剩 layer 的 alpha 切换，不再付首次组合 + 测量。
-    var backReady by remember(word.id) { mutableStateOf(false) }
     val normalizedWordLength = word.word.trim().length
     val displayWord = remember(word.word) { word.word.adaptiveWordText() }
     val typography = MaterialTheme.typography
@@ -1329,319 +1242,200 @@ private fun WordCard(
         else -> 5
     }
     val backContentScrollState = rememberScrollState()
-    // 换词即复位：角度回到 0°、布尔状态同步，新词永远是正面朝上。
-    // 直接 snap 而不是 animate，避免换词瞬间还在播上一张卡的翻转。
-    LaunchedEffect(word.id) {
-        angle.snapTo(0f)
-        isFlipped = false
-        onFlipChanged(false)
-        backContentScrollState.scrollTo(0)
+    val motionAmount = when (motionMode) {
+        CardMotionMode.FULL -> 1f
+        CardMotionMode.LIGHT -> 0.46f
+        CardMotionMode.STATIC -> 0f
     }
-    // 换词时复位；等卡片切换动画彻底静止后再挂卡背内容（不跟动画抢同一帧）。
-    LaunchedEffect(word.id) {
-        backReady = false
-        delay(400)
-        backReady = true
-    }
-    val density = LocalDensity.current
-
-    val holoLight = rememberHoloLightState(motionEnabled)
-    val tapMaxDragPx = with(density) { 4.dp.toPx() }
 
     HoloCardTheme(cardStyle) {
-        // 卡面文字配色统一走全息调色板（必须在本层读：HoloCardTheme 才会 provide 对应肤色）。
         val palette = LocalHoloCardPalette.current
         val faceInk = palette.ink
         val faceSoftInk = palette.subInk
-        // 整张卡是一个不可分割的实体：全息材质、边框、准星、正反面文字
-        // 全挂在同一个 3D 旋转层上。翻面时整卡一起转，不再出现「卡内内容旋转门」；
-        // 切卡 ghost 覆盖的也是这张会一起滑出/补位的整卡。
-        Box(
-            modifier = modifier
-                // 先裁到卡片自身 bounds，再进 3D 旋转层：否则透视投影会把侧翻到
-                // 90° 附近的卡面拉成一条白色细长刀片，越过布局边界画到 header 与
-                // 底部光谱滑轨上。卡片本体圆角已在 HoloCardSurface 内部裁过。
-                .clipToBounds()
-                .graphicsLayer {
-                    // 读值留在 layer lambda 里：整段翻面每帧只重画，不重组。
-                    rotationY = angle.value
-                    // 卡片永远不俯仰：所有立体感来自 rotationY 与下面的描边。
-                    rotationX = 0f
-                    cameraDistance = 12f * density.density
-                    // 锚点正中心：卡片绕自身中轴甩翻，不做书脊铰链位移补偿。
-                    transformOrigin = TransformOrigin.Center
-                    // 整卡（材质渐变 + 阴影 + 正反面文字）先在离屏层里合成完整一帧，
-                    // 再整体做 3D 投影：否则每个子层各自投影，侧翻时材质与文字会互相错位。
-                    compositingStrategy = CompositingStrategy.Offscreen
-                }
-                .drawWithContent {
-                    // 先画卡面（不裁切、不遮挡），再叠立体厚度棱边与镜面扫光。
-                    drawContent()
-                    val a = abs(angle.value)
-                    if (a > 20f && a < 160f) {
-                        val rad = a * PI.toFloat() / 180f
-                        val t = a / 180f
-                        // 1) 4dp 立体厚度：卡片侧过时在迎风侧实时露出一条实体棱边。
-                        //    宽度 = 4dp * |sin|：90° 最厚，20°/160° 收窄，越过区间自然消失。
-                        val edgeW = 4.dp.toPx() * abs(sin(rad))
-                        val onLeft = a < 90f
-                        val edgeX = if (onLeft) 0f else size.width - edgeW
-                        drawRect(
-                            brush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.55f),
-                                    palette.panelBorder.copy(alpha = 0.9f),
-                                    Color.Black.copy(alpha = 0.35f)
-                                ),
-                                startX = edgeX,
-                                endX = edgeX + edgeW
-                            ),
-                            topLeft = Offset(edgeX, 0f),
-                            size = Size(edgeW, size.height)
-                        )
-                        val lineX = if (onLeft) 0.8.dp.toPx() else size.width - 0.8.dp.toPx()
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.5f),
-                            start = Offset(lineX, 0f),
-                            end = Offset(lineX, size.height),
-                            strokeWidth = 0.8.dp.toPx()
-                        )
-                        // 2) 镜面高光带：随 rotationY 角度横向扫过卡面，画在内容之上。
-                        val bandX = size.width * (0.1f + 0.8f * t)
-                        val bandW = size.width * 0.5f
-                        drawRoundRect(
-                            brush = Brush.linearGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.White.copy(alpha = 0.18f * (1f - t)),
-                                    Color.Transparent
-                                ),
-                                start = Offset(bandX - bandW, 0f),
-                                end = Offset(bandX + bandW, size.height)
-                            ),
-                            cornerRadius = CornerRadius(24.dp.toPx()),
-                            size = size
-                        )
+        val actionsEnabled = starEnabled && !turning
+        StudyCardBody(
+            modifier = modifier,
+            angle = { angle.value },
+            back = showBack,
+            light = holoLight,
+            turnEnabled = !turning,
+            onTurn = {
+                if (!turning) {
+                    turning = true
+                    val nextBack = !showBack
+                    flipScope.launch {
+                        try {
+                            angle.animateTo(
+                                if (nextBack) 180f else 0f,
+                                tween(430, easing = CubicBezierEasing(0.35f, 0.08f, 0.28f, 1f))
+                            )
+                            onFlipChanged(nextBack)
+                        } finally {
+                            turning = false
+                        }
                     }
                 }
+            }
         ) {
             HoloCardSurface(
                 style = cardStyle,
                 light = holoLight,
                 isBack = showBack,
                 glossHigh = glossHigh,
-                paceTier = paceTier,
-                paceHeat = paceHeat,
-                // 触摸不再参与光照：全息流光只由物理倾斜 + 极微弱呼吸驱动，
-                // 手指按压、翻面、卡背滚动都不改写 lightX/lightY。
+                shape = StudyCardShape,
+                motionAmount = motionAmount,
+                turn = { turnExposure(angle.value) * if (showBack) -1f else 1f },
                 modifier = Modifier.fillMaxSize()
             ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight()
-                // 玻璃夹层微视差：内容层随全息光斑做 ≤±2.5dp 的反向位移，
-                // 光斑移动时文字与卡面材质之间有一层薄薄的「夹层玻璃」感。
-                // 读的是 MutableFloatState，只在 layer lambda 里读，不触发重组。
-                .graphicsLayer {
-                    translationX = (holoLight.lightX.floatValue - 0.5f) * 5.dp.toPx()
-                    translationY = (holoLight.lightY.floatValue - 0.5f) * 5.dp.toPx()
-                }
-                .cardFlipTap(tapMaxDragPx) {
-                    // 目标角度由「意图状态」isFlipped 取反决定，而不是由 showBack 决定：
-                    // showBack 要等角度越过 90° 才变 true，若在 0→90° 区间连点，它仍是 false，
-                    // 会导致每次都重启同一方向的动画、无法中途反向。用 isFlipped 取反即可真正反向接续。
-                    // Animatable 的 MutatorMutex 会自动取消上一段 animateTo，从当前角度继续。
-                    val next = !isFlipped
-                    isFlipped = next
-                    val target = if (next) 180f else 0f
-                    onFlipChanged(next)
-                    flipScope.launch {
-                        angle.animateTo(
-                            targetValue = target,
-                            animationSpec = spring(
-                                dampingRatio = 0.74f,
-                                stiffness = 460f
-                            )
-                        )
-                    }
-                }
-                .padding(horizontal = 20.dp, vertical = 20.dp)
-                .heightIn(min = 260.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    // 顶栏也是卡的一部分：随整卡翻转；到卡背时（外层已转过 180°）
-                    // 在本层再绕 Y 轴转 180°，把镜像转回来，到期胶囊/发音/星标仍然读得正、点得准。
-                    .graphicsLayer {
-                        rotationY = if (showBack) 180f else 0f
-                        transformOrigin = TransformOrigin.Center
-                    },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp)
                 ) {
-                    ReviewTimeTag(text = reviewTag, onClick = onReviewTagClick)
-                    // 卡背顶栏：到期胶囊 + 记忆方法胶囊 + 星标同一行；正面保持原样不显示方法。
-                    if (showBack) {
-                        methodLabelOf(word.method)?.let { label ->
-                            MemoryMethodChip(label = label)
-                        }
-                    }
-                    if (showPronounceButton) {
-                        OutlinedButton(
-                            onClick = onPronounceClick,
-                            enabled = !pronounceLoading,
-                            modifier = Modifier.testTag("learning_pronounce_button")
-                        ) {
-                            if (pronounceLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Text(text = "发音")
-                            }
-                        }
-                    }
-                }
-                AnimatedStarToggle(
-                    checked = isInNewWords,
-                    onCheckedChange = { onToggleNewWords() },
-                    enabled = starEnabled,
-                    modifier = Modifier.testTag("learning_star_toggle")
-                )
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(),
-                    contentAlignment = Alignment.TopCenter
-                ) {
-                    // 正面常驻：背面露出时只把 alpha 归零，不再整棵释放/重建。
-                    // 旋转只发生在最外层整卡那一层，这里绝不能再加 rotationY——
-                    // 内框自转就是用户报的「旋转门」bug。
-                    // align(Center)：内层 Box 的 contentAlignment 已改 TopCenter（给卡背用），
-                    // 正面保持原来「垂直居中」的位置，不跟卡背抢同一个默认对齐。
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 8.dp)
-                            .graphicsLayer { alpha = if (showBack) 0f else 1f },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AdaptiveWordText(
-                            text = displayWord,
-                            preferredStyle = frontWordStyle,
-                            fallbackStyles = frontFallbackStyles,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 2.dp),
-                            textAlign = TextAlign.Center,
-                            maxLines = wordMaxLines
-                        )
-                        if (word.phonetic.isNotBlank()) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = faceInk.copy(alpha = 0.10f)
-                            ) {
-                                Text(
-                                    text = word.phonetic,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = faceInk,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            ReviewTimeTag(text = reviewTag, onClick = onReviewTagClick)
+                            // 卡背顶栏：到期胶囊 + 记忆方法胶囊 + 星标同一行；正面保持原样不显示方法。
+                            if (showBack) {
+                                methodLabelOf(word.method)?.let { label ->
+                                    MemoryMethodChip(label = label)
+                                }
+                            }
+                            if (showPronounceButton) {
+                                OutlinedButton(
+                                    onClick = onPronounceClick,
+                                    enabled = actionsEnabled && !pronounceLoading,
+                                    modifier = Modifier.testTag("learning_pronounce_button")
+                                ) {
+                                    if (pronounceLoading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Text(text = "发音")
+                                    }
+                                }
                             }
                         }
-                        Text(
-                            text = "轻触卡片查看释义与例句",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = faceSoftInk,
-                            textAlign = TextAlign.Center
+                        AnimatedStarToggle(
+                            checked = isInNewWords,
+                            onCheckedChange = { onToggleNewWords() },
+                            enabled = actionsEnabled,
+                            modifier = Modifier.testTag("learning_star_toggle")
                         )
                     }
-
-                    // 背面同样常驻（词稳定 400ms 后才挂上），反贴 180°，跟正面共用同一次 3D 旋转。
-                    // 挂载看 showBack（而不是意图状态 isFlipped）：中途反向翻回时，角度还没退回正面，
-                    // 卡背内容必须继续留在树里，否则会在 90°..270° 之间出现空洞。
-                    // 不可见时 interactive = false：滚动与重写条都不吃触摸，两面不会各响应一次。
-                    if (backReady || showBack) {
-                        // 1.4.3.2：重写区随卡背内容一起滚，排在正文最后，不再固定贴卡片底边。
-                        CardBackBlocks(
-                            config = cardBackConfig,
-                            word = word,
-                            displayWord = displayWord,
-                            backWordStyle = backWordStyle,
-                            scrollState = backContentScrollState,
-                            interactive = showBack,
-                            unverified = unverified,
-                            unverifiedReason = unverifiedReason,
-                            backActions = backActions
-                        )
-                    }
-                }
-                if (aiAvailable) {
-                    // 灯泡也随整卡翻：外层铺满宽度再反贴，旋转中心落在卡片中轴，
-                    // 不会因为绕自身中心转而甩到别处；testTag 仍在真正的点击面上。
+                    Spacer(modifier = Modifier.height(10.dp))
                     Box(
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .graphicsLayer {
-                                // 外层卡背已转过 180°，本层再绕 Y 轴转 180°，灯泡文字与图标不反。
-                                rotationY = if (showBack) 180f else 0f
-                                transformOrigin = TransformOrigin.Center
-                            }
+                            .weight(1f),
+                        contentAlignment = Alignment.TopCenter
                     ) {
-                        Surface(
+                        Box(
                             modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(6.dp)
-                                .clickable(enabled = starEnabled, onClick = onAiEntryClick)
-                                .testTag("learning_ai_bulb"),
-                            shape = RoundedCornerShape(999.dp),
-                            color = MaterialTheme.colorScheme.surface
+                                .fillMaxWidth()
+                                .fillMaxHeight(),
+                            contentAlignment = Alignment.TopCenter
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Lightbulb,
-                                    contentDescription = null,
-                                    tint = if (aiSuggested) AlertRed else MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = if (aiSuggested) "助记推荐" else "AI",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = faceInk
+                            if (!showBack) {
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
+                                ) {
+                                    AdaptiveWordText(
+                                        text = displayWord,
+                                        preferredStyle = frontWordStyle,
+                                        fallbackStyles = frontFallbackStyles,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 2.dp),
+                                        textAlign = TextAlign.Center,
+                                        maxLines = wordMaxLines
+                                    )
+                                    if (word.phonetic.isNotBlank()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = faceInk.copy(alpha = 0.10f)
+                                        ) {
+                                            Text(
+                                                text = word.phonetic,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = faceInk,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = "轻触卡片查看释义与例句",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = faceSoftInk,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            } else {
+                                CardBackBlocks(
+                                    config = cardBackConfig,
+                                    word = word,
+                                    displayWord = displayWord,
+                                    backWordStyle = backWordStyle,
+                                    scrollState = backContentScrollState,
+                                    interactive = actionsEnabled,
+                                    unverified = unverified,
+                                    unverifiedReason = unverifiedReason,
+                                    backActions = backActions
                                 )
                             }
                         }
+                        if (aiAvailable) {
+                            Box(
+                                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                            ) {
+                                Surface(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(6.dp)
+                                        .clickable(enabled = actionsEnabled, onClick = onAiEntryClick)
+                                        .testTag("learning_ai_bulb"),
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = MaterialTheme.colorScheme.surface
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Lightbulb,
+                                            contentDescription = null,
+                                            tint = if (aiSuggested) AlertRed else MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = if (aiSuggested) "助记推荐" else "AI",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = faceInk
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
+                    // 1.4.3.2：操作区已挪进卡背滚动内容（CardBackBlocks 的 backActions），
+                    // 这里不再固定贴底，避免正文被切走两百多像素。
                 }
             }
-            // 1.4.3.2：操作区已挪进卡背滚动内容（CardBackBlocks 的 backActions），
-            // 这里不再固定贴底，避免正文被切走两百多像素。
-        } // Column
-            } // HoloCardSurface content
-        } // 整卡 3D 旋转层（HoloCardSurface + 正反面内容一起转）
-    } // HoloCardTheme
+        }
+    }
 }
 
 
@@ -1666,38 +1460,12 @@ private fun CardBackBlocks(
     backActions: (@Composable (Boolean) -> Unit)? = null
 ) {
     val palette = LocalHoloCardPalette.current
-    // 1.4.7.4：卡背不再有任何内嵌「面板」——不 clip、不铺磨砂渐变底、不描边、不画高光。
-    // 文字直接落在 HoloCardSurface 的全息材质上（HoloCardSurface 也不再对卡背铺压暗遮罩），
-    // 只在滚动视口的上下沿做一层渐隐，避免内容被硬切一刀。
     val blocks = config.renderableBlocks
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
             .padding(horizontal = 4.dp, vertical = 8.dp)
-            .graphicsLayer {
-                // 外层整卡转到 180° 时，卡背内容会被水平镜像；本层再绕 Y 轴转 180° 把镜像转回来，
-                // 文字仍是正的（绕 Y 轴翻转不影响上下，所以渐隐遮罩的顶部仍是视觉顶部）。
-                rotationY = if (interactive) 180f else 0f
-                // 不可见时只把 alpha 归零：它在树里但既不画、也不吃触摸。
-                alpha = if (interactive) 1f else 0f
-                // DstIn 遮罩要落在本层自己的离屏缓冲里，否则会去抠整张卡
-                compositingStrategy = CompositingStrategy.Offscreen
-            }
-            .drawWithContent {
-                drawContent()
-                // 顶部/底部渐隐：180° 是绕 Y 轴反贴，上下不翻转，所以本地顶部就是视觉顶部。
-                // 盖住的是滚动视口本身（Column 尺寸），滚到底也不会出现硬截断的白边。
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.06f to Color.Black,
-                        0.90f to Color.Black,
-                        1f to Color.Transparent
-                    ),
-                    blendMode = BlendMode.DstIn
-                )
-            }
             .verticalScroll(scrollState, enabled = interactive)
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
@@ -1931,10 +1699,10 @@ private fun Modifier.styleDrawerLeftSwipe(
             // 左侧导航抽屉开着/正在关时，横向拖动归导航抽屉，材质抽屉不抢。
             if (currentNavOpen) return@awaitEachGesture
             val startedOpen = currentState.isOpen
-            val inOpenZone = down.position.x >= size.width * 0.40f
+            val inOpenZone = down.position.x >= size.width * 0.60f
             // 关闭状态只在右 40% 起手能拉出；已展开时整块面板都能右滑收回。
             if (!inOpenZone && !startedOpen) return@awaitEachGesture
-            val drawerWidthPx = size.width * 0.74f
+            val drawerWidthPx = minOf(size.width * 0.74f, 360.dp.toPx()).coerceAtLeast(1f)
             var lastX = down.position.x
             var lastTime = down.uptimeMillis
             var claimed = false
@@ -1967,56 +1735,6 @@ private fun Modifier.styleDrawerLeftSwipe(
                 lastX = change.position.x
                 lastTime = change.uptimeMillis
             }
-        }
-    }
-}
-
-/**
- * 卡片「轻触翻面」手势，替代原来的 Card(onClick)。
- *
- * 不用 Card(onClick)/clickable 的原因：
- * 1) Material 的 indication 会给整张卡片画按压态涟漪，也就是用户看到的「水波纹」；
- * 2) clickable 默认 awaitFirstDown(requireUnconsumed = true)，卡背滚动或惯性 fling
- *    一旦消费了按下事件，点击就再也翻不回正面。
- *
- * 判定规则：按下 → 中途位移不超过 [tapMaxDragPx] → 抬起，且抬起事件没有被内部
- * 滚动手势消费，才算一次点击。全程不消费任何事件、不画任何视觉反馈。
- *
- * 挂在内层 Column 上、监听 Main 阶段：Main 从叶子往根传播，星星/发音/AI 灯泡/
- * 卡背 verticalScroll 都先于本节点处理，它们消费掉 up 之后这里才读 isConsumed。
- */
-private fun Modifier.cardFlipTap(
-    tapMaxDragPx: Float,
-    onClick: () -> Unit
-): Modifier = composed {    val currentOnClick by rememberUpdatedState(onClick)
-    pointerInput(tapMaxDragPx) {
-        awaitEachGesture {
-            // Initial 阶段拿按下：此时还没有内部手势消费事件，滚动惯性也拦不住。
-            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            val downPosition = down.position
-            var maxDragSq = 0f
-            var multiTouch = false
-            var upSeen = false
-            var upConsumed = true
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Main)
-                if (event.changes.count { it.pressed } > 1) {
-                    multiTouch = true
-                    break
-                }
-                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                val delta = change.position - downPosition
-                val dragSq = delta.x * delta.x + delta.y * delta.y
-                if (dragSq > maxDragSq) maxDragSq = dragSq
-                if (!change.pressed) {
-                    upSeen = true
-                    upConsumed = change.isConsumed
-                    break
-                }
-            }
-            val isTap = upSeen && !upConsumed && !multiTouch &&
-                maxDragSq <= tapMaxDragPx * tapMaxDragPx
-            if (isTap) currentOnClick()
         }
     }
 }

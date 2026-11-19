@@ -116,6 +116,15 @@ private fun paceHeatForAnswerDuration(durationMs: Long): Float = when {
 
 private const val PACE_HEAT_COOLDOWN_MS = 4_200L
 
+/** 1.4.7v7-bugfix：「跳过」的欠卡没落进库时的用户可见提示（不静默吞掉）。 */
+private const val SKIP_PERSIST_FAILED = "跳过没生效：重写记录没存上，请稍后重试"
+
+/** 点击到落库之间这条记录被撤销/换版：不换词，让用户刷新后重试。 */
+private const val SKIP_MARK_CHANGED = "重写记录已变化，先刷新一下再试"
+
+/** 结果已经合格：不做「跳过」，这张卡按既有插回规则留在队列里继续背。 */
+private const val SKIP_RESULT_READY = "思路已更新，继续背当前词"
+
 /**
  * 卡背重写进度（1.4.3.1）。
  *
@@ -134,6 +143,44 @@ private data class QueueLoadParams(
     val shuffleNewWords: Boolean,
     val plannedModeEnabled: Boolean
 )
+
+internal data class LearningCardPresentation(val word: Word?, val generation: Long)
+
+/**
+ * 1.4.7v7-bugfix：当前这张卡能不能「跳过、先背下一个」。
+ *
+ * 判定只在这里写一次：暴露给界面的 [LearningViewModel.currentRewriteSkipAvailability]
+ * 与命令 [LearningViewModel.skipCurrentWordForRewrite] 共用同一份，
+ * 避免「按钮亮着、点下去却被 ViewModel 静默 return」这种按了没反应的状态。
+ */
+internal enum class SkipRewriteAvailability {
+    /** 有本词本书记录、且结果还没合格：可以跳过。 */
+    AVAILABLE,
+
+    /** 没有任何重写记录（被撤销/取消/同步删掉了）：入口应消失。 */
+    NO_MARK,
+
+    /** 记录的词或书跟当前卡对不上（换词/换书后的旧按钮）：直接丢弃。 */
+    OTHER_WORD,
+    OTHER_BOOK,
+
+    /** 结果已经合格：按既有插回规则处理，跳过没有意义，入口置灰。 */
+    RESULT_READY
+}
+
+internal fun skipRewriteAvailability(
+    wordId: Long?,
+    bookId: Long?,
+    mark: RewriteQueueItem?
+): SkipRewriteAvailability {
+    if (wordId == null || bookId == null) return SkipRewriteAvailability.OTHER_WORD
+    if (mark == null) return SkipRewriteAvailability.NO_MARK
+    if (mark.wordId != wordId) return SkipRewriteAvailability.OTHER_WORD
+    // book_id = 0 是 16_17 迁移留下的全局行，同 observeMark 的口径，算作当前书。
+    if (mark.bookId != 0L && mark.bookId != bookId) return SkipRewriteAvailability.OTHER_BOOK
+    if (mark.status == RewriteStatus.DONE) return SkipRewriteAvailability.RESULT_READY
+    return SkipRewriteAvailability.AVAILABLE
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LearningViewModel(application: Application) : AndroidViewModel(application) {
@@ -271,6 +318,16 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
 
     private val _currentWord = MutableStateFlow<Word?>(null)
     val currentWord: StateFlow<Word?> = _currentWord.asStateFlow()
+    private val _cardPresentation = MutableStateFlow(LearningCardPresentation(null, 0L))
+    internal val cardPresentation: StateFlow<LearningCardPresentation> = _cardPresentation.asStateFlow()
+
+    private fun publishWord(word: Word?, presentAgain: Boolean = false) {
+        val previous = _cardPresentation.value
+        val changed = previous.word?.id != word?.id || (presentAgain && word != null)
+        val generation = if (changed) previous.generation + 1 else previous.generation
+        _currentWord.value = word
+        _cardPresentation.value = LearningCardPresentation(word, generation)
+    }
 
     // ---- 重写记忆思路（1.4.3）----
 
@@ -295,6 +352,30 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
      */
     private val _skipRewriteLatchedWordId = MutableStateFlow<Long?>(null)
     val skipRewriteLatchedWordId: StateFlow<Long?> = _skipRewriteLatchedWordId.asStateFlow()
+
+    /**
+     * 1.4.7v7-bugfix：右侧「跳过」到底该不该出现/能不能点。
+     *
+     * 只用 `latched != null && mark != null` 决定显示、再用 status 决定可用，会出现
+     * 「按钮亮着但点下去被 ViewModel 静默 return」的状态（mark 已被撤销/换书/换了词）。
+     * 这里把 UI 与命令共用同一份判定，点击路径再用库里的实时行复核一次。
+     */
+    internal val currentRewriteSkipAvailability: StateFlow<SkipRewriteAvailability> = combine(
+        _currentWord,
+        activeBook,
+        currentRewriteMark,
+        _skipRewriteLatchedWordId
+    ) { word, book, mark, latched ->
+        if (word == null || latched == null || latched != word.id) {
+            SkipRewriteAvailability.NO_MARK
+        } else {
+            skipRewriteAvailability(word.id, book?.id, mark)
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        SkipRewriteAvailability.NO_MARK
+    )
 
     /**
      * 当前词的记忆思路，直接来自数据库。
@@ -609,10 +690,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 // W3 P2：只有撤销真的成功才收起「跳过」；没有上一版时保持原状。
                 _skipRewriteLatchedWordId.value = null
                 val restoredMethod = rewriteRepository.methodOf(word.id, bookId)
-                _currentWord.value = _currentWord.value?.copy(
-                    approach = restored,
-                    method = restoredMethod
-                )
+                publishWord(_currentWord.value?.copy(approach = restored, method = restoredMethod))
                 _message.value = "已撤销回上一版"
             } else {
                 _message.value = "没有可撤销的上一版了"
@@ -689,21 +767,71 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
      * 只在「已点重写、结果还没回来」时可用；词不删、今天仍要背。1.4.7.2 W2 起，
      * 生成好后按稳定槽位插回当前卡之后第 2/3 张普通卡之后（见 onWaitingRewriteReady），
      * 且**只有用户真的作答**才清 needs_reinsert —— 跳过不等于背完。
+     *
+     * 1.4.7v7-bugfix：
+     * - 判定与界面同源（[currentRewriteSkipAvailability]），不再出现「按钮亮着点了没反应」；
+     * - 与三键/拼写共用 [launchSubmit] 的互斥闸，跳过写库期间不会被一次评分打断；
+     * - 只有 `markNeedsReinsert` 与库内回读都确认后才换词，落库失败会明确提示而不是静默返回。
      */
     fun skipCurrentWordForRewrite() {
         val word = _currentWord.value ?: return
         val book = activeBook.value ?: return
-        val mark = currentRewriteMark.value ?: return
-        if (mark.wordId != word.id || (mark.bookId != book.id && mark.bookId != 0L) ||
-            mark.status == RewriteStatus.DONE
-        ) return
-        viewModelScope.launch {
-            // 先确认欠卡已经落库；若刚换词书，也不能改另一书的内存队列。
-            val saved = runCatching { rewriteRepository.markNeedsReinsert(word.id, book.id) }
-                .getOrDefault(false)
-            if (!saved || activeBook.value?.id != book.id || _currentWord.value?.id != word.id) {
-                return@launch
+        when (skipRewriteAvailability(word.id, book.id, currentRewriteMark.value)) {
+            SkipRewriteAvailability.AVAILABLE -> Unit
+            SkipRewriteAvailability.RESULT_READY -> {
+                // 结果已经合格：这张卡按既有插回规则处理，跳过没有意义也不允许，
+                // 直接留在屏上继续背（不换词、不动进度）。
+                _message.value = SKIP_RESULT_READY
+                return
             }
+            // 没有可跳过的欠卡（撤销/换词/换书后的旧入口）：按钮状态已收起或置灰，
+            // 这里再拦一次，避免把还没背的词误移出队列。
+            SkipRewriteAvailability.NO_MARK,
+            SkipRewriteAvailability.OTHER_WORD,
+            SkipRewriteAvailability.OTHER_BOOK -> return
+        }
+        // 与三键/拼写作答共用 launchSubmit 的互斥闸：跳过写库期间不会同时开始一次评分，
+        // 评分在途时也不会把当前词从队列里拿走；重复点「跳过」同样被这道闸挡住。
+        launchSubmit {
+            // 先把「欠一次作答」落到当前这本书；落不下去就不换卡，并且要让人看见原因。
+            val saved = runCatching { rewriteRepository.markNeedsReinsert(word.id, book.id) }
+            if (saved.isFailure) {
+                _message.value = SKIP_PERSIST_FAILED
+                return@launchSubmit
+            }
+            if (!saved.getOrDefault(false)) {
+                // 点下到落库之间行被撤销/删除：不重复入队，也不静默换卡。
+                _message.value = SKIP_MARK_CHANGED
+                return@launchSubmit
+            }
+            // 以库里的实时行复核标记真的落在这张卡上，确认后才允许移出当前队列。
+            val confirmed = runCatching { rewriteRepository.markOf(word.id, book.id) }.getOrNull()
+            if (confirmed == null) {
+                // 行在这期间被撤销/删除：同样不静默换卡。
+                _message.value = SKIP_MARK_CHANGED
+                return@launchSubmit
+            }
+            if (!confirmed.needsReinsert) {
+                // 刚才置的标记被别的路径清掉（例如已经作答/运维结清）：这次跳过作废，
+                // 不换词、不重复入队；合格稿仍按既有插回规则由观察器处理。
+                _message.value = if (confirmed.status == RewriteStatus.DONE) {
+                    SKIP_RESULT_READY
+                } else {
+                    SKIP_MARK_CHANGED
+                }
+                return@launchSubmit
+            }
+            if (activeBook.value?.id != book.id || _currentWord.value?.id != word.id) {
+                return@launchSubmit
+            }
+            // needs_reinsert 已是唯一「还欠一次作答」的依据：pending/queued/failed 都登记等待，
+            // 合格后由 observeWaitingRewrite → onWaitingRewriteReady 按稳定槽位插回，
+            // 不会重复插回（reinsertingWordIds 去重）。
+            //
+            // 点下到落库之间刚好变成 DONE 的竞争：这里**允许**这次已经获得资格的跳过成立
+            // （needs_reinsert=1 + status=done），observeWaitingRewrite 下一帧就会把它登记成
+            // 待插回，按「当前卡之后第 2/3 张普通卡之后」回到队列，不会丢卡也不会重插。
+            // 不在这里 clearNeedsReinsert：那会让用户刚点过的跳过直接蒸发，且与「作答才结清」口径冲突。
             if (waitingRewriteWords.putIfAbsent(word.id, word) == null) {
                 sessionSkippedWordIds.add(word.id)
                 observeWaitingRewrite(word, book.id)
@@ -745,10 +873,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             val approachChanged = fresh != null && fresh != current.approach
             val methodChanged = freshMethod != current.method
             if (approachChanged || methodChanged) {
-                _currentWord.value = current.copy(
-                    approach = fresh ?: current.approach,
-                    method = freshMethod
-                )
+                publishWord(current.copy(approach = fresh ?: current.approach, method = freshMethod))
                 _rewriteUpdatedTick.value += 1
             }
         }
@@ -926,7 +1051,10 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 _memoryAidSuggestionWordId.value = null
                 markAnswered()
             }
-            loadQueueForBook(book, newWordsLimit.value, shuffleNewWordsEnabled.value, plannedNewWordsEnabled.value)
+            loadQueueForBook(
+                book, newWordsLimit.value, shuffleNewWordsEnabled.value,
+                plannedNewWordsEnabled.value, presentAgain = true
+            )
             emitRecognitionAutoPronounceEventIfNeeded(previousWordId)
         }
     }
@@ -980,7 +1108,10 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             }
             forgetPendingReinsert(word.id)
             markAnswered()
-            loadQueueForBook(book, newWordsLimit.value, shuffleNewWordsEnabled.value, plannedNewWordsEnabled.value)
+            loadQueueForBook(
+                book, newWordsLimit.value, shuffleNewWordsEnabled.value,
+                plannedNewWordsEnabled.value, presentAgain = true
+            )
             emitRecognitionAutoPronounceEventIfNeeded(previousWordId)
         }
     }
@@ -1263,7 +1394,8 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         book: Book?,
         newWordsLimit: Int,
         shuffleNewWords: Boolean,
-        plannedModeEnabled: Boolean
+        plannedModeEnabled: Boolean,
+        presentAgain: Boolean = false
     ) {
         if (book == null) {
             immediateRetryQueue.clear()
@@ -1329,7 +1461,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             val insertAt = target.coerceIn(0, placed.size)
             placed = placed.toMutableList().apply { add(insertAt, word) }
         }
-        updateQueue(applyPendingReinsertPlacements(placed))
+        updateQueue(applyPendingReinsertPlacements(placed), presentAgain || bookChanged)
     }
 
     /**
@@ -1407,7 +1539,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         return plan.wordIds
     }
 
-    private fun updateQueue(list: List<Word>) {
+    private fun updateQueue(list: List<Word>, presentAgain: Boolean = false) {
         activeQueue = list
         val oldWordId = _currentWord.value?.id
         // 等待重写的词也算今天的进度，否则跳过后总进度会凭空变少。
@@ -1420,7 +1552,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             else -> (answeredInSession + 1).coerceAtMost(total)
         }
         val nextWord = list.firstOrNull()
-        _currentWord.value = nextWord
+        publishWord(nextWord, presentAgain)
         // W3：换词即收起「跳过」；同一个词停留期间（哪怕生成完）保持。
         if (_skipRewriteLatchedWordId.value != null && _skipRewriteLatchedWordId.value != nextWord?.id) {
             _skipRewriteLatchedWordId.value = null
