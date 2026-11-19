@@ -1397,22 +1397,6 @@ private fun WordCard(
                                 )
                             }
                         }
-                        if (showBack) {
-                            Surface(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 4.dp),
-                                shape = RoundedCornerShape(999.dp),
-                                color = palette.panelStrong
-                            ) {
-                                Text(
-                                    text = "上下滑动查看完整思路",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = faceSoftInk,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                                )
-                            }
-                        }
                         if (aiAvailable) {
                             Box(
                                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
@@ -2285,3 +2269,4 @@ private fun readAnimationScale(resolver: android.content.ContentResolver): Float
 } catch (_: Throwable) {
     1f
 }
+
