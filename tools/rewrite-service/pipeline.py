@@ -938,6 +938,31 @@ def _rank(row):
     return (hard_ok, scores.get(COMPLIANCE_DIM, 0), _min_six(scores))
 
 
+def _safe_log(sink, message):
+    """写日志绝不能让流水线断掉。
+
+    Windows GBK 控制台遇到 IPA（如 /ə/）会在 print 时抛 UnicodeEncodeError。
+    先原样写；失败则把当前控制台编不了的字符替换掉再写一次，宁可日志丑，
+    也不能让已经生成的 fallback 稿丢在最后一行日志上。
+    """
+    if not sink:
+        return
+    try:
+        sink(message)
+        return
+    except UnicodeEncodeError:
+        pass
+    except Exception:  # noqa: BLE001 - 日志本身是旁路，不能反噬主流程
+        return
+    try:
+        sink(str(message).encode("gbk", "replace").decode("gbk", "replace"))
+    except Exception:  # noqa: BLE001
+        try:
+            sink(str(message).encode("ascii", "replace").decode("ascii"))
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def run(item, log=None, on_stage=None):
     """跑完一条词。返回 {approach, method, scores, attempts, timings, unverified, reason}；失败抛 PipelineError。
 
@@ -970,8 +995,7 @@ def run(item, log=None, on_stage=None):
         try:
             draft = generate(item, feedback, hard=feedback_hard)
             timings["generate_%d" % attempt] = round(time.time() - stamp, 1)
-            if log:
-                log("[%s] 生成 %.1fs" % (item["word"], timings["generate_%d" % attempt]))
+            _safe_log(log, "[%s] 生成 %.1fs" % (item["word"], timings["generate_%d" % attempt]))
 
             stage("polish")
             stamp = time.time()
@@ -1008,8 +1032,7 @@ def run(item, log=None, on_stage=None):
             # 一轮坏了不该让整条词蒸发：记下来换下一轮，历史里还有稿子就继续兜底
             errors.append("第%d轮：%s" % (attempt, str(exc)[:200]))
             fatal = fatal or exc
-            if log:
-                log("[%s] 第%d轮作废：%s" % (item["word"], attempt, str(exc)[:200]))
+            _safe_log(log, "[%s] 第%d轮作废：%s" % (item["word"], attempt, str(exc)[:200]))
             feedback = ""
             continue
 
@@ -1028,21 +1051,21 @@ def run(item, log=None, on_stage=None):
                 "binary": binary,
             }
         )
-        if log:
-            if hard.ok:
-                log(
-                    "[%s] 第%d轮 润色 %.1fs 评分 %.1fs 最低 %d 分 %s intent=%s same_method=%s 排雷=%s"
-                    % (
-                        item["word"], attempt, timings.get("polish_%d" % attempt, 0),
-                        timings["judge_%d" % attempt], low,
-                        json.dumps(scores, ensure_ascii=False), intent, same_method,
-                        json.dumps(binary, ensure_ascii=False) if binary else "legacy",
-                    )
-                )
-            else:
-                log("[%s] 第%d轮 硬拦截：%s" % (
-                    item["word"], attempt, "；".join(hard.hits or violations)[:240],
-                ))
+        if hard.ok:
+            _safe_log(
+                log,
+                "[%s] 第%d轮 润色 %.1fs 评分 %.1fs 最低 %d 分 %s intent=%s same_method=%s 排雷=%s"
+                % (
+                    item["word"], attempt, timings.get("polish_%d" % attempt, 0),
+                    timings["judge_%d" % attempt], low,
+                    json.dumps(scores, ensure_ascii=False), intent, same_method,
+                    json.dumps(binary, ensure_ascii=False) if binary else "legacy",
+                ),
+            )
+        else:
+            _safe_log(log, "[%s] 第%d轮 硬拦截：%s" % (
+                item["word"], attempt, "；".join(hard.hits or violations)[:240],
+            ))
         # 硬拦截干净 + 五道排雷全 false + 历史不重复，才允许当「已复核」交付。
         if hard_ok and _passed(
             item, scores, intent, same_method, history_repeat, binary=binary, hard_ok=True
@@ -1091,9 +1114,8 @@ def run(item, log=None, on_stage=None):
         reason += "；仍含用户禁令词：%s" % "、".join(best["violations"])
     if errors:
         reason += "；作废轮次：%s" % "；".join(errors)[:200]
-    if log:
-        log("[%s] 质量未过（%d 次失败），保留最佳候选待重试：%s" % (
-            item["word"], len(history) + len(errors), reason[:200]))
+    _safe_log(log, "[%s] 质量未过（%d 次失败），保留最佳候选待重试：%s" % (
+        item["word"], len(history) + len(errors), reason[:200]))
     return {
         "approach": best["approach"],
         "method": best["method"],
