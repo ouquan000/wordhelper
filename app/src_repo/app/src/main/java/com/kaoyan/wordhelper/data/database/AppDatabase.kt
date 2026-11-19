@@ -77,7 +77,7 @@ import kotlinx.coroutines.launch
         RewriteFeedback::class,
         RewriteSkippedResult::class
     ],
-    version = 23,
+    version = 24,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -140,7 +140,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_19_20,
                     MIGRATION_20_21,
                     MIGRATION_21_22,
-                    MIGRATION_22_23
+                    MIGRATION_22_23,
+                    MIGRATION_23_24
                 )
                 .build()
         }
@@ -934,6 +935,51 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS index_tb_rewrite_queue_word_id_book_id " +
                         "ON tb_rewrite_queue (word_id, book_id)"
+                )
+            }
+        }
+
+        /**
+         * 1.4.7.3 / v8（DB 24）：接入 FSRS-5。
+         *
+         * ① tb_progress 加四列 FSRS 记忆状态。老行不能只填 0：fsrsStability=0 会被调度器当成新卡，
+         *    用户几年的复习进度就白费了。所以 ALTER 之后按 SM-2 的 interval/ease 无损回填：
+         *    - stability：有间隔就用间隔天数，没间隔的最小给 1 天；
+         *    - difficulty：ease 2.5 → 1（最容易），ease 1.3 → 10（最难），夹在 1..10；
+         *    - state：背过（repetitions>0 或 interval_days>0）就是 REVIEW=2，否则仍 NEW=0；
+         *    - lapses 归零（SM-2 没有等价计数，不臆造）。
+         * ② tb_rewrite_queue 加 priority，低优先级任务排在后面。
+         *
+         * 所有 ALTER 走 ensureColumnExists，重复执行/列已存在都安全；UPDATE 回填基于未变的
+         * SM-2 列计算，重复执行结果一致，天然幂等。
+         */
+        @VisibleForTesting
+        val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureColumnExists(db, "tb_progress", "fsrsStability", "REAL NOT NULL DEFAULT 0")
+                ensureColumnExists(db, "tb_progress", "fsrsDifficulty", "REAL NOT NULL DEFAULT 0")
+                ensureColumnExists(db, "tb_progress", "fsrsLapses", "INTEGER NOT NULL DEFAULT 0")
+                ensureColumnExists(db, "tb_progress", "fsrsState", "INTEGER NOT NULL DEFAULT 0")
+                ensureColumnExists(db, "tb_rewrite_queue", "priority", "INTEGER NOT NULL DEFAULT 0")
+
+                // 旧 SM-2 进度 → FSRS 记忆状态。列名用表里的 snake_case。
+                db.execSQL(
+                    """
+                    UPDATE tb_progress SET
+                        fsrsStability = CASE
+                            WHEN interval_days > 0 THEN interval_days
+                            ELSE 1
+                        END,
+                        fsrsDifficulty = CASE
+                            WHEN ease_factor IS NULL THEN 5.0
+                            ELSE MIN(10.0, MAX(1.0, 1.0 + (2.5 - ease_factor) * 7.5))
+                        END,
+                        fsrsState = CASE
+                            WHEN repetitions > 0 OR interval_days > 0 THEN 2
+                            ELSE 0
+                        END,
+                        fsrsLapses = 0
+                    """.trimIndent()
                 )
             }
         }

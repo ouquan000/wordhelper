@@ -31,7 +31,10 @@ interface RewriteQueueDao {
     fun observeForBook(wordId: Long, bookId: Long): Flow<RewriteQueueItem?>
 
     /** 还要投递或等待回包的任务。 */
-    @Query("SELECT * FROM tb_rewrite_queue WHERE status IN ('pending','queued') ORDER BY updated_at ASC")
+    @Query(
+        """SELECT * FROM tb_rewrite_queue WHERE status IN ('pending','queued')
+           ORDER BY priority ASC, updated_at ASC"""
+    )
     suspend fun getOpen(): List<RewriteQueueItem>
 
     /** 还没结束的标记数，用来在「我的」页提示还有几条在跑。 */

@@ -36,6 +36,9 @@ data class RewriteQueueItem(
     val model: String = "",
     /** 见 [RewriteStatus]。 */
     val status: String = RewriteStatus.PENDING,
+    /** 投递优先级：数值越小越先投；0 = 默认，低优先级任务用正数。 */
+    @ColumnInfo(name = "priority", defaultValue = "0")
+    val priority: Int = 0,
     val error: String? = null,
     /**
      * 1.4.7.2 W2：这张重写卡还欠用户一次「实际作答」。
