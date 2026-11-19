@@ -19,7 +19,10 @@ import os
 import re
 import time
 
+import exemplars
+import profile
 import providers
+import rules_hard
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROMPT_DIR = os.path.join(HERE, "prompts")
@@ -39,6 +42,39 @@ JUDGE_ALIASES = {
     "诉求落实度": COMPLIANCE_DIM,
     "诉求": COMPLIANCE_DIM,
 }
+
+# 五道二值排雷题（prompts/judge.txt）。全部 false 才算干净；有疑点按 true。
+BINARY_FIELDS = (
+    "has_unknown_part",
+    "is_robot_tone",
+    "is_logic_broken",
+    "phonetic_drift_unwarned",
+    "violates_user_intent",
+)
+BINARY_LABELS = {
+    "has_unknown_part": "用了用户不认识的生僻词根/偏僻四级词",
+    "is_robot_tone": "讲师报幕/词典腔/翻译腔/强行升华",
+    "is_logic_broken": "逻辑断链/单字母算命/纯抽象画面",
+    "phonetic_drift_unwarned": "谐音偏离音标或拼写拆法没提醒读音",
+    "violates_user_intent": "没落实用户原话/把否掉的路线请回来",
+}
+# 二值结果到旧 scores 的兼容映射：只给记录页显示，不参与通过判定。
+BINARY_TO_DIMS = {
+    "has_unknown_part": ("拆分成立", "方法选对"),
+    "is_robot_tone": ("像人说话",),
+    "is_logic_broken": ("逻辑连贯", "文本充足"),
+    "phonetic_drift_unwarned": ("谐音过关",),
+    "violates_user_intent": (COMPLIANCE_DIM,),
+}
+
+
+class JudgeResult(tuple):
+    """保持 judge() 原来的五元组解包，同时把二值排雷结果挂在 .binary 上。"""
+
+    def __new__(cls, scores, issues, intent, same_method, history_repeat, binary=None):
+        obj = super().__new__(cls, (scores, issues, intent, same_method, history_repeat))
+        obj.binary = binary
+        return obj
 
 
 def _canonical_dim(key):
@@ -379,10 +415,64 @@ def _draft_hits(bans, draft):
     return out
 
 
+# ------------------------------------------------------------------ 跨词经验
+
+
+def _recommended_methods(item):
+    """画像 Top-2：只作倾向提示，权重低于用户原话、高于默认模板。"""
+    try:
+        rows = profile.recommend_top(2, item.get("history") or "")
+    except Exception:  # noqa: BLE001 - 画像坏了不能拖垮生成
+        return []
+    return [row for row in rows if row in METHOD_KEYS.values()][:2]
+
+
+def _exemplar_block(method):
+    """黄金正例 2 条 + 避雷反例 1 条；检索不到就返回空串，流水线照跑。"""
+    try:
+        data = exemplars.retrieve(method or "")
+    except Exception:  # noqa: BLE001 - 样本库坏了不能拖垮生成
+        return ""
+    pos = (data or {}).get("pos") or []
+    neg = (data or {}).get("neg") or []
+    if not pos and not neg:
+        return ""
+    rows = []
+    if pos:
+        rows.append("【黄金正例·照这个手感写，不许抄词】")
+        for item in pos[:2]:
+            rows.append(
+                "- %s（%s）：%s" % (
+                    item.get("word") or "?",
+                    item.get("method") or "?",
+                    " ".join(item.get("derivation") or []),
+                )
+            )
+    if neg:
+        rows.append("【避雷反例·用户踩过的坑，别复现】")
+        for item in neg[:1]:
+            rows.append(
+                "- %s（%s）：用户原话「%s」→ %s" % (
+                    item.get("word") or "?",
+                    item.get("method") or "?",
+                    item.get("note") or "没给原因",
+                    " ".join(item.get("derivation") or []),
+                )
+            )
+    return "\n".join(rows)
+
+
+def _zero_scores(item):
+    scores = {dim: 0 for dim in JUDGE_DIMENSIONS}
+    if _has_instruction(item):
+        scores[COMPLIANCE_DIM] = 0
+    return scores
+
+
 # ------------------------------------------------------------------ 三步
 
 
-def _generate_once(item, feedback=""):
+def _generate_once(item, feedback="", hard=False):
     user = _brief(item)
     instruction = str(item.get("instruction") or "").strip()
     if instruction:
@@ -390,16 +480,33 @@ def _generate_once(item, feedback=""):
             "\n\n用户这一版的原话是硬约束，优先级高于任何评委意见："
             "他明令不要的招或元素，不许再当主线。"
         )
+    ranked = _recommended_methods(item)
+    if ranked:
+        user += (
+            "\n\n【跨词经验·这一版优先试（只是倾向，不是命令）】\n"
+            + " > ".join(ranked)
+            + "\n顺序仅供参考；与用户原话或本词实际情况冲突时，以用户原话为准。"
+        )
+    samples = _exemplar_block(ranked[0] if ranked else "")
+    if samples:
+        user += "\n\n" + samples
     if feedback:
         if instruction:
             user += (
                 "\n\n【硬约束·用户原话再贴一遍（照抄，不许改写）】\n" + instruction
             )
-        user += (
-            "\n\n上一版没过。下面是评委的软建议（参考为主，可反驳）：\n" + feedback
-            + "\n\n先满足用户原话，再考虑评委意见；两者冲突时一律以用户原话为准 —— "
-            "用户明令不要的，不许为了讨好评委请回来。"
-        )
+        if hard:
+            user += (
+                "\n\n上一版被确定性硬拦截打回。下面是机械规则查出的问题，"
+                "必须逐条改掉（这不是评委建议，不能反驳）：\n" + feedback
+                + "\n\n先满足用户原话；硬拦截条目必须清零，否则这一轮不会进评委。"
+            )
+        else:
+            user += (
+                "\n\n上一版没过。下面是评委的软建议（参考为主，可反驳）：\n" + feedback
+                + "\n\n先满足用户原话，再考虑评委意见；两者冲突时一律以用户原话为准 —— "
+                "用户明令不要的，不许为了讨好评委请回来。"
+            )
     text = providers.complete(
         item["model"],
         _prompt("generate"),
@@ -434,14 +541,14 @@ def _generate_once(item, feedback=""):
     }
 
 
-def generate(item, feedback=""):
+def generate(item, feedback="", hard=False):
     """第一步：出草稿。feedback 只在重试那一轮有 —— 把评委的意见还给选手。
 
     用户原话同时是硬约束：草稿踩到「不要 X」黑名单就带着违规项重生成一次。
     只加一次生成调用，不动 run 的轮数上限。
     """
     bans = banned_terms(item.get("instruction"))
-    draft = _generate_once(item, feedback)
+    draft = _generate_once(item, feedback, hard=hard)
     hits = _draft_hits(bans, draft)
     if hits:
         note = (
@@ -449,7 +556,7 @@ def generate(item, feedback=""):
             "这是硬约束：这些招／元素不许出现在拆法与推导里（只有末行顺带提一嘴才放行）。"
             % ("、".join(hits[:3]), str(item.get("instruction") or "").strip())
         )
-        draft = _generate_once(item, (feedback + "\n\n" + note) if feedback else note)
+        draft = _generate_once(item, (feedback + "\n\n" + note) if feedback else note, hard=True)
         hits = _draft_hits(bans, draft)
     draft["violations"] = hits
     return draft
@@ -465,6 +572,9 @@ def polish(item, draft):
         draft["split"] or draft["method"],
         "\n".join(draft_lines),
     )
+    samples = _exemplar_block(draft.get("method") or "")
+    if samples:
+        user += "\n\n【手感参考·只学说话方式，不许换联想】\n" + samples
     bans = banned_terms(item.get("instruction"))
     if bans:
         user += (
@@ -741,12 +851,23 @@ def judge(item, draft, approach):
             still_missing.append("history_repeat")
         if still_missing:
             raise PipelineError("评委缺字段，已补判一次仍缺失：%s" % ",".join(still_missing))
+    binary = {key: _bool_field(data, key) for key in BINARY_FIELDS}
+    binary_present = any(value is not None for value in binary.values())
     scores = {}
-    for key, value in (data.get("scores") or {}).items():
-        try:
-            scores[_canonical_dim(key)] = int(round(float(value)))
-        except (TypeError, ValueError):
-            continue
+    raw_scores = data.get("scores")
+    if isinstance(raw_scores, dict):
+        for key, value in raw_scores.items():
+            try:
+                scores[_canonical_dim(key)] = int(round(float(value)))
+            except (TypeError, ValueError):
+                continue
+    if binary_present:
+        # 新评委只回五道二值题；scores 缺失时按映射合成，旧记录页照常显示。
+        for field, dims in BINARY_TO_DIMS.items():
+            value = binary[field]
+            score = 10 if value is False else (0 if value is True else 5)
+            for dim in dims:
+                scores.setdefault(dim, score)
     if not scores:
         raise PipelineError("评分没给出任何维度分数")
     # 漏项按 0 处理：只给一两个维度打分时，min() 会误判成「全过」
@@ -757,12 +878,13 @@ def judge(item, draft, approach):
         scores.setdefault(COMPLIANCE_DIM, 0)
     else:
         scores.pop(COMPLIANCE_DIM, None)
-    return (
+    return JudgeResult(
         scores,
         [str(x) for x in (data.get("issues") or [])][:6],
         _intent(data.get("intent")),
         bool(_bool_field(data, "same_method")),
         bool(_bool_field(data, "history_repeat")),
+        binary=binary if binary_present else None,
     )
 
 
@@ -770,14 +892,15 @@ def _min_six(scores):
     return min(scores.get(dim, 0) for dim in JUDGE_DIMENSIONS)
 
 
-def _passed(item, scores, intent=None, same_method=False, history_repeat=False):
-    """两段式验收（判据见 prompts/judge.txt）。
+def _passed(item, scores, intent=None, same_method=False, history_repeat=False, binary=None, hard_ok=True):
+    """验收：新评委走五道二值排雷；老评委/旧测试回落到 scores。
 
-    用户提了意见时，第一段除了六维全 ≥8，还要「诉求落实」≥8：只判六维的话，
-    把用户刚否掉的走法换个措辞就能靠 8/8/8/8/8/8 过关，问题原样复现。
-    同方法硬闸：用户要「换方法」而评委也判了同一条思路，分数再高也不放行 ——
-    这正是「把用户否掉的走法换身措辞再来一遍」，只靠提示词挡不住人情分。
+    新判据（prompts/judge.txt）：
+      rules_hard 0 命中 AND 五道二值全 false AND history_repeat=false。
+    旧 scores 只作兼容：没有 binary 字段时，仍按原来的两段式判。
     """
+    if not hard_ok:
+        return False
     if history_repeat:
         # 历史里用户明确否掉同一方法，新版还走这条线：换措辞不算解决。
         return False
@@ -786,6 +909,11 @@ def _passed(item, scores, intent=None, same_method=False, history_repeat=False):
     # - 评委也可能把「不用换方法」回成 change_method，误伤合规的同方法稿。
     if _has_instruction(item) and same_method and _requires_change_method(item, intent):
         return False
+    if binary is not None:
+        # 新判据：五道排雷题必须全 false；缺字段/含糊一律不算干净。
+        return len(binary) == len(BINARY_FIELDS) and all(
+            binary.get(key) is False for key in BINARY_FIELDS
+        )
     low_six = _min_six(scores)
     if not _has_instruction(item):
         return low_six >= PASS_LINE
@@ -798,9 +926,16 @@ def _passed(item, scores, intent=None, same_method=False, history_repeat=False):
     )
 
 
-def _rank(scores):
-    """兜底挑稿顺序：先看诉求分，再看六维最低分（用户要的东西优先于通用质量）。"""
-    return (scores.get(COMPLIANCE_DIM, 0), _min_six(scores))
+def _rank(row):
+    """兜底挑稿顺序：先看硬拦截是否干净，再看诉求分，最后看六维最低分。
+
+    兼容旧调用：_rank 原来收的是 scores 字典；现在也接受带 scores 的历史行。
+    """
+    scores = row.get("scores") if isinstance(row, dict) else None
+    if not isinstance(scores, dict):
+        scores = row if isinstance(row, dict) else {}
+    hard_ok = 1 if (not isinstance(row, dict) or row.get("hard_ok", True)) else 0
+    return (hard_ok, scores.get(COMPLIANCE_DIM, 0), _min_six(scores))
 
 
 def run(item, log=None, on_stage=None):
@@ -814,6 +949,7 @@ def run(item, log=None, on_stage=None):
     """
     timings = {}
     feedback = ""
+    feedback_hard = False
     problems = []
     history = []  # 拿到成品+分数的轮次，兜底从这里挑
     errors = []  # 模型/JSON 错误（这些轮次没有产物）
@@ -832,7 +968,7 @@ def run(item, log=None, on_stage=None):
         stage("generate")
         stamp = time.time()
         try:
-            draft = generate(item, feedback)
+            draft = generate(item, feedback, hard=feedback_hard)
             timings["generate_%d" % attempt] = round(time.time() - stamp, 1)
             if log:
                 log("[%s] 生成 %.1fs" % (item["word"], timings["generate_%d" % attempt]))
@@ -848,10 +984,26 @@ def run(item, log=None, on_stage=None):
                         draft["violations"].append(hit)
             timings["polish_%d" % attempt] = round(time.time() - stamp, 1)
 
-            stage("judge")
-            stamp = time.time()
-            scores, issues, intent, same_method, history_repeat = judge(item, draft, approach)
-            timings["judge_%d" % attempt] = round(time.time() - stamp, 1)
+            # 0ms 硬拦截：行数/箭头/教材腔/翻译腔/用户禁令命中就直接打回，
+            # 不花 Judge Token。feedback 直接进下一轮生成。
+            hard = rules_hard.check(
+                approach,
+                instruction=str(item.get("instruction") or ""),
+                banned_terms=[ban["needle"] for ban in _bans] if _bans else None,
+            )
+            if hard.ok:
+                stage("judge")
+                stamp = time.time()
+                judged = judge(item, draft, approach)
+                scores, issues, intent, same_method, history_repeat = judged
+                binary = getattr(judged, "binary", None)
+                timings["judge_%d" % attempt] = round(time.time() - stamp, 1)
+            else:
+                # 没进评委：给一套全 0 的兼容分数，兜底排序时排在有成品分数的稿后面。
+                scores = _zero_scores(item)
+                issues = [hard.feedback]
+                intent, same_method, history_repeat, binary = "other", False, False, None
+                timings["judge_%d" % attempt] = 0.0
         except (PipelineError, providers.ProviderError) as exc:
             # 一轮坏了不该让整条词蒸发：记下来换下一轮，历史里还有稿子就继续兜底
             errors.append("第%d轮：%s" % (attempt, str(exc)[:200]))
@@ -862,26 +1014,39 @@ def run(item, log=None, on_stage=None):
             continue
 
         low = _min_six(scores)
+        violations = list(draft.get("violations") or [])
+        hard_ok = hard.ok and not violations
         history.append(
             {
                 "attempt": attempt,
                 "approach": approach,
                 "method": draft["method"],
                 "scores": scores,
-                "violations": list(draft.get("violations") or []),
+                "violations": violations,
+                "hard_ok": hard_ok,
+                "hard_feedback": hard.feedback,
+                "binary": binary,
             }
         )
         if log:
-            log(
-                "[%s] 第%d轮 润色 %.1fs 评分 %.1fs 最低 %d 分 %s intent=%s same_method=%s"
-                % (
-                    item["word"], attempt, timings.get("polish_%d" % attempt, 0),
-                    timings["judge_%d" % attempt], low,
-                    json.dumps(scores, ensure_ascii=False), intent, same_method,
+            if hard.ok:
+                log(
+                    "[%s] 第%d轮 润色 %.1fs 评分 %.1fs 最低 %d 分 %s intent=%s same_method=%s 排雷=%s"
+                    % (
+                        item["word"], attempt, timings.get("polish_%d" % attempt, 0),
+                        timings["judge_%d" % attempt], low,
+                        json.dumps(scores, ensure_ascii=False), intent, same_method,
+                        json.dumps(binary, ensure_ascii=False) if binary else "legacy",
+                    )
                 )
-            )
-        # 质量过了但稿子还踩着用户明令禁止的招：不许当「已复核」交付。
-        if _passed(item, scores, intent, same_method, history_repeat) and not draft.get("violations"):
+            else:
+                log("[%s] 第%d轮 硬拦截：%s" % (
+                    item["word"], attempt, "；".join(hard.hits or violations)[:240],
+                ))
+        # 硬拦截干净 + 五道排雷全 false + 历史不重复，才允许当「已复核」交付。
+        if hard_ok and _passed(
+            item, scores, intent, same_method, history_repeat, binary=binary, hard_ok=True
+        ):
             stage("done")
             timings["total"] = round(time.time() - started, 1)
             return {
@@ -895,16 +1060,19 @@ def run(item, log=None, on_stage=None):
             }
 
         problems = list(issues)
-        if draft.get("violations"):
+        if not hard.ok:
+            problems = [hard.feedback] + [p for p in problems if p != hard.feedback]
+        if violations:
             problems.insert(
                 0,
-                "用户明令禁止的「%s」仍在稿子里（用户原话优先）" % "、".join(draft["violations"]),
+                "用户明令禁止的「%s」仍在稿子里（用户原话优先）" % "、".join(violations),
             )
         if _has_instruction(item) and same_method and _requires_change_method(item, intent):
             problems.insert(0, "这版和上一版是同一条思路，没有解决换方法的诉求")
         if not problems:
             problems = ["最低分 %d（%s）" % (low, json.dumps(scores, ensure_ascii=False))]
         feedback = "\n".join("- " + p for p in problems)
+        feedback_hard = not hard_ok
 
     if not history:
         detail = "；".join(errors)[:300]
@@ -912,7 +1080,7 @@ def run(item, log=None, on_stage=None):
             raise fatal  # 全是调用失败：保留原始类型，service 那边记成「模型调用失败」
         raise PipelineError("两轮都没有可用结果：%s" % detail)
 
-    best = max(history, key=lambda row: _rank(row["scores"]))
+    best = max(history, key=_rank)
     stage("done")
     timings["total"] = round(time.time() - started, 1)
     reason = "两轮都没过评审判定，交付历史最佳（第%d轮）；最后一轮问题：%s" % (

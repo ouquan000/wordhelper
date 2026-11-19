@@ -20,6 +20,7 @@ import providers
 KEEP_FINISHED = 500  # 队列只留最近这么多条已完成的，防止一年后扫盘变慢
 KEEP_OK = 5  # 每词最多 5 版（spec §4.4）
 KEEP_FAIL = 3
+MEMORY_COOLDOWN_SECONDS = 30 * 60  # lapsed 同词同方法 30 分钟冷却
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
 # 质量不合格/传输失败后的退避：不设总次数，间隔逐级拉长，避免把网关打穿。
@@ -149,6 +150,10 @@ class Store:
         self.results_dir = os.path.join(data_dir, "results")
         # 1.4.6：卡背 👍/👎 只追加、不改队列；按 clientId 幂等去重。
         self.feedback_path = os.path.join(data_dir, "feedback.jsonl")
+        # v8：单词复习的 retained/lapsed 信号，落盘做幂等与冷却。
+        self.memory_signals_path = os.path.join(data_dir, "memory_signals.json")
+        self._memory_signals = {}
+        self._memory_cooldowns = {}
         self._feedback_ids = None
         self.items = []
         self.accepted_mark_ids = set()
@@ -177,6 +182,20 @@ class Store:
             self.seq = stored_seq
             if isinstance(stored_stream, str) and re.fullmatch(r"[0-9a-f]{32}", stored_stream):
                 self.stream_id = stored_stream
+        signals = _read_json(self.memory_signals_path)
+        if isinstance(signals, dict):
+            saved_signals = signals.get("signals")
+            if isinstance(saved_signals, dict):
+                self._memory_signals = {
+                    str(key): value for key, value in saved_signals.items()
+                    if isinstance(value, dict)
+                }
+            saved_cooldowns = signals.get("cooldowns")
+            if isinstance(saved_cooldowns, dict):
+                self._memory_cooldowns = {
+                    str(key): value for key, value in saved_cooldowns.items()
+                    if isinstance(value, str) and value
+                }
         # 只有未被替换的旧 running 任务才接续；过期任务不再占工位。
         self._retire_superseded(("pending", "running", "retry_wait"))
         for item in self.items:
@@ -284,6 +303,60 @@ class Store:
                     self._feedback_ids.add(client_id)
                     accepted.append(client_id)
         return accepted, rejected
+
+    # ------------------------------------------------------ 复习记忆信号（v8）
+
+    def record_memory_signal(self, payload):
+        """记录一条 retained/lapsed 复习信号。
+
+        幂等键：clientId + word + bookId + method + event；同一事件只生效一次。
+        lapsed 额外加 30 分钟冷却（同词同方法），避免手机端补传把一次遗忘记成多次。
+        返回 (applied, reason)。
+        """
+        client_id = str(payload.get("clientId") or "").strip()
+        word = str(payload.get("word") or "").strip()
+        book_id = str(payload.get("bookId") or "0").strip()
+        method = str(payload.get("method") or "").strip()
+        event = str(payload.get("event") or "").strip().lower()
+        key = "|".join((client_id, word, book_id, method, event))
+        with self._lock:
+            if key in self._memory_signals:
+                return False, "重复信号，已生效过"
+            if event == "lapsed":
+                cooldown_key = word + "|" + method
+                last = self._memory_cooldowns.get(cooldown_key)
+                if last:
+                    try:
+                        last_at = datetime.fromisoformat(last)
+                        if last_at.tzinfo is None:
+                            last_at = last_at.replace(tzinfo=datetime.now().astimezone().tzinfo)
+                        elapsed = (datetime.now().astimezone() - last_at).total_seconds()
+                        if elapsed < MEMORY_COOLDOWN_SECONDS:
+                            return False, "同词同方法 30 分钟冷却中"
+                    except (TypeError, ValueError):
+                        pass
+            record = {
+                "clientId": client_id,
+                "word": word,
+                "bookId": book_id,
+                "method": method,
+                "event": event,
+                "stability": payload.get("stability"),
+                "difficulty": payload.get("difficulty"),
+                "lapses": payload.get("lapses"),
+                "receivedAt": _now(),
+            }
+            self._memory_signals[key] = record
+            if event == "lapsed":
+                self._memory_cooldowns[word + "|" + method] = record["receivedAt"]
+            self._save_memory_signals()
+        return True, ""
+
+    def _save_memory_signals(self):
+        _write_json(self.memory_signals_path, {
+            "signals": self._memory_signals,
+            "cooldowns": self._memory_cooldowns,
+        })
 
     def _load_feedback_ids(self):
         """第一次收到反馈时扫一遍文件，把已有 clientId 读进内存。"""
