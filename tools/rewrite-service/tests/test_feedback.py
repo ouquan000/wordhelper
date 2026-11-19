@@ -23,9 +23,9 @@ import providers  # noqa: E402
 
 # 三段提示词的开头各自不同，假 providers 靠它认阶段
 STAGE_MARKERS = (
-    ("generate", "你是《单词突围》体系的领背讲师"),
-    ("polish", "你是英文单词记忆卡的中文文案编辑"),
-    ("judge", "你是《单词突围》体系的资深审稿人"),
+    ("generate", "你是刚背完这个词、顺手把记忆小抄递给同桌的聪明室友"),
+    ("polish", "你是刚背完这个词、把同一张小抄重新誊一遍的聪明室友"),
+    ("judge", "你是记忆卡的排雷员"),
 )
 
 DRAFT_LINES = [

@@ -22,7 +22,9 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import history  # noqa: E402
+import exemplars  # noqa: E402
 import pipeline  # noqa: E402
+import profile  # noqa: E402
 import providers  # noqa: E402
 import store as store_mod  # noqa: E402
 import wb_gate  # noqa: E402
@@ -143,6 +145,15 @@ def _worker(index):
 # ------------------------------------------------------------------ 生命周期
 
 
+def _profile_state():
+    """按当前 DATA_DIR 取画像实例；测试改 DATA_DIR 后也不会串库。"""
+    return profile.get_profile(os.path.join(DATA_DIR, "profile.json"))
+
+
+def _exemplar_state():
+    return exemplars.get_exemplars(DATA_DIR)
+
+
 def startup():
     """幂等挂载：导入后调一次，重启整个编辑器进程时由它把队列接回来。"""
     with _lock:
@@ -154,6 +165,12 @@ def startup():
         _state["store"] = store
         _state["startedAt"] = datetime.now().astimezone().isoformat(timespec="seconds")
         _state["ready"] = True
+        # 预热跨词画像与样例池：坏了也只记日志，不能让重写服务起不来。
+        try:
+            _profile_state()
+            _exemplar_state()
+        except Exception as exc:  # noqa: BLE001
+            log("预热 profile/exemplars 失败：%r" % (exc,))
         pending = store.status()["pending"]
         log("重写服务启动：并发 %d，待跑 %d 条，seq=%s" % (CONCURRENCY, pending, store.seq))
         for index in range(CONCURRENCY):
@@ -211,7 +228,7 @@ def _marks(body):
 
 
 def _feedback(body):
-    """卡背 👍/👎（1.4.6）：只落盘，不触发任何重写。"""
+    """卡背 👍/👎（1.4.6）：落盘，同时喂跨词画像与样例池。"""
     payload = _read_body(body)
     items = payload.get("items") if isinstance(payload, dict) else payload
     if not isinstance(items, list):
@@ -220,7 +237,68 @@ def _feedback(body):
         raise ApiError("一次最多 200 条反馈")
     accepted, rejected = _state["store"].add_feedback(items)
     log("收反馈 %d 条：接受 %d 拒绝 %d" % (len(items), len(accepted), len(rejected)))
+    # add_feedback 对重复 clientId 也回 accepted，不能拿返回值判断新增；
+    # 直接用原始 items，profile/exemplars 各自按 id 幂等。
+    # store 只拒收「非对象 / 缺 clientId / rating 非 up/down」，下面三道校验天然排除，
+    # 被拒的非法反馈不会算进画像。
+    try:
+        current = _profile_state()
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+            client_id = str(raw.get("clientId") or "").strip()
+            method = profile.normalize_method(raw.get("method"))
+            rating = str(raw.get("rating") or "").strip().lower()
+            if client_id and method and rating in ("up", "down"):
+                current.update_feedback(method, rating, event_id="feedback:" + client_id)
+        _exemplar_state().ingest_feedback(items)
+    except Exception as exc:  # noqa: BLE001 - 旁路学习失败不能影响已落盘的反馈
+        log("更新画像/样例失败：%r" % (exc,))
     return {"ok": True, "accepted": accepted, "rejected": rejected}
+
+
+def _memory_signal(body):
+    """复习结果信号（v8）：retained / lapsed → 更新六招画像。"""
+    data = _read_body(body)
+    if not isinstance(data, dict):
+        raise ApiError("请求体要是对象")
+    client_id = str(data.get("clientId") or "").strip()
+    word = str(data.get("word") or "").strip()
+    book_id = str(data.get("bookId") or "0").strip()
+    method = profile.normalize_method(data.get("method"))
+    event = str(data.get("event") or "").strip().lower()
+    if not client_id:
+        raise ApiError("缺 clientId")
+    if not word:
+        raise ApiError("缺 word")
+    if not method:
+        raise ApiError("method 只能是 sound/root/contrast/shape/polysemy/meaning")
+    if event not in ("retained", "lapsed"):
+        raise ApiError("event 只能是 retained/lapsed")
+    applied, reason = _state["store"].record_memory_signal({
+        "clientId": client_id,
+        "word": word,
+        "bookId": book_id,
+        "method": method,
+        "event": event,
+        "stability": data.get("stability"),
+        "difficulty": data.get("difficulty"),
+        "lapses": data.get("lapses"),
+    })
+    if applied:
+        try:
+            _profile_state().update_memory_signal(
+                method,
+                event,
+                event_id="memory:" + "|".join((client_id, word, book_id, method, event)),
+            )
+        except Exception as exc:  # noqa: BLE001
+            log("更新记忆画像失败：%r" % (exc,))
+        log("记忆信号 %s/%s：%s" % (word, method, event))
+    out = {"ok": True, "applied": applied}
+    if not applied and reason:
+        out["reason"] = reason
+    return out
 
 
 PAGE_FILES = {"records": "rewrite.html", "panel": "panel.html"}
@@ -303,6 +381,8 @@ def _dispatch(method, raw_path, body):
         return _json(_marks(body))
     if method == "POST" and path == "/rewrite/feedback":
         return _json(_feedback(body))
+    if method == "POST" and path == "/rewrite/memory-signal":
+        return _json(_memory_signal(body))
     if method == "POST" and path == "/rewrite/stop":
         return _json(_stop(body))
     if method == "POST" and path == "/rewrite/gate":
