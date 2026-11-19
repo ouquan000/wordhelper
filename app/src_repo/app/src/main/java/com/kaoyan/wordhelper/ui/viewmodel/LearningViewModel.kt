@@ -1042,7 +1042,9 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 )
             }
         }
-        if (updated.fsrsLapses >= 2 || updated.fsrsDifficulty >= 8.5f) {
+        if (fsrsEnabled.value &&
+            (updated.fsrsLapses >= 2 || updated.fsrsDifficulty >= 8.5f)
+        ) {
             rewriteRepository.maybeAutoRewriteAfterLapse(word, book, updated)
         }
     }

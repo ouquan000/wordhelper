@@ -141,8 +141,8 @@ internal fun buildRewriteRequest(
         prior.instruction == trimmed && prior.model == model &&
         DateUtils.currentLearningDate(prior.createdAt) == DateUtils.currentLearningDate(now)
     ) {
-        // 同一天同指令重复入队：保留原行，但优先级只能升不能降（FSRS 自动换招 = 20）。
-        return prior.copy(updatedAt = now, priority = maxOf(prior.priority, priority))
+        // 同一天同指令重复入队：保留原行，并保留更高优先级（数值更小者）。
+        return prior.copy(updatedAt = now, priority = minOf(prior.priority, priority))
     }
     return RewriteQueueItem(
         id = prior?.id ?: 0,
@@ -471,9 +471,12 @@ class RewriteRepository(
             } else if (event == EVENT_LAPSED) {
                 if (now - prefs.getLong(lapsedKey(wordId, bookId), 0L) < MEMORY_SIGNAL_MIN_INTERVAL_MS) return
             }
+            // 服务端按 clientId 幂等：带按天分桶，lapsed 过 24h 冷却后才会新开一条，
+            // 同一天内的重试仍然会被吞成同一条，不会刷屏。
+            val bucket = now / 86_400_000L
             val payload = gson.toJson(
                 mapOf(
-                    "clientId" to "fsrs-$wordId-$bookId-$event",
+                    "clientId" to "fsrs-$wordId-$bookId-$event-$bucket",
                     "word" to word,
                     "bookId" to bookId,
                     "method" to method,
