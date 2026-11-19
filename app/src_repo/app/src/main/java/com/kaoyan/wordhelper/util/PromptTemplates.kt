@@ -3,6 +3,13 @@ package com.kaoyan.wordhelper.util
 import com.kaoyan.wordhelper.data.model.AIContentType
 
 object PromptTemplates {
+
+    private const val MEMORY_AID_PERSONA =
+        "你是坐在用户旁边的聪明室友：只默认对方认识初高中核心熟词（cat / he / run / cut / cure / mini / sub 这一档），四级词一律当陌生词，严禁拿生僻希腊 / 拉丁词根（polein / olesc / skept / radi / sui 这类）充数。"
+
+    private const val MEMORY_AID_VOICE_RULES =
+        "说人话，禁报幕：第一句直接亮抓手，不许“先看 / 因此选择 / 把抽象具体化为 / 整体来看”这种开场；禁翻译腔：不许出现 体现 / 表明 / 呈现 / 构成 / 意味着 / 进行 / 使得 / 对于…而言 / 通过…来 / 在…的情况下 / 核心意象 / 整体绑定 / 形成对照。"
+
     fun systemInstruction(type: AIContentType): String {
         return when (type) {
             AIContentType.EXAMPLE -> {
@@ -10,7 +17,8 @@ object PromptTemplates {
             }
 
             AIContentType.MEMORY_AID -> {
-                "你是英语单词记忆教练。必须严格按模板输出，内容简短、可直接复习，不得输出多余段落。"
+                MEMORY_AID_PERSONA + MEMORY_AID_VOICE_RULES +
+                    "只输出 3–5 行短句，最后一行必须是“——> 中文释义”；不要“词根词缀 / 联想记忆 / 复习提示”三段标题，不要解释、寒暄或总结。"
             }
 
             AIContentType.SENTENCE -> {
@@ -53,17 +61,25 @@ object PromptTemplates {
 
     private fun buildMemoryAidPrompt(word: String): String {
         return """
-            请为单词 "$word" 生成助记内容，严格按以下格式输出：
-            【词根词缀】
-            <一句话词根/词缀拆解>
-            【联想记忆】
-            <一句话谐音或场景联想>
-            【复习提示】
-            <一句话记忆抓手>
+            请为单词 "$word" 写一张 App 卡背：你就是坐在用户旁边的聪明室友，只讲能让他当场记住的几句话。
 
-            规则：
-            1. 每段 1 句话，总字数不超过 120 字。
-            2. 只输出上述模板，不要添加解释。
+            $MEMORY_AID_PERSONA
+            $MEMORY_AID_VOICE_RULES
+
+            【选招优先级：从上往下挑，能上一档就不用下一档】
+            T0 一跳谐音：读音 → 一个中文谐音 → 画面；必须对得上音标，不硬掰。
+            T1 初高中熟词拼装 / 透明词根：拿初高中熟词拼，如 diminish 用 mini 的 min，random 用 ran + dom。
+            T2 真宿敌对比：只对考纲内真实易混词用，如 adapt / adopt；没有就不许硬拉形近词凑数。
+            T3 扎眼字形：最多拆 3 块，禁止单字母算命；拼写与读音对不上时必须提醒。
+            T4 熟词生义：从熟悉的物理动作推到抽象引申。
+            T5 保底画面：画面必须和读音或拼写焊死，遮住英文还能反推出这个词。
+
+            【输出格式】
+            1. 3–5 行短句，一行一步；别写小作文，也别为凑行数灌水。
+            2. 第一句直接亮抓手，禁报幕：不许“先看 / 因此选择 / 把抽象具体化为 / 整体来看”这种开场。
+            3. 最后一行必须是 `——> 中文释义`，释义要具体、对得上这个词。
+            4. 不要“词根词缀 / 联想记忆 / 复习提示”三段标题，不要按字数硬压或为凑字数砍内容。
+            5. 只输出这 3–5 行，不要解释、前言或总结。
         """.trimIndent()
     }
 

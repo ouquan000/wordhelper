@@ -4,6 +4,19 @@ import com.kaoyan.wordhelper.data.model.AIContentType
 
 object AIContentFormatter {
 
+    private const val MEMORY_AID_FALLBACK_ARROW = "——> 见释义"
+    private const val MEMORY_AID_RECALL_LINE = "遮住英文，用上面的抓手反推这个词。"
+
+    private val MEMORY_AID_HEADING_REGEX =
+        Regex("""【\s*(?:词根词缀|联想记忆|复习提示|方法|拆分)\s*】""")
+    private val MEMORY_AID_LABEL_REGEX =
+        Regex("""^(?:方法|拆分|词根|词缀|谐音|联想|记忆|复习提示|提示|招式|思路)\s*[:：]\s*""")
+    private val MEMORY_AID_ARROW_REGEX = Regex("""——>|-->|→""")
+    private val MEMORY_AID_BOUNDARIES = listOf(
+        Regex("""(?<=[。；！？!?])\s*"""),
+        Regex("""(?<=[，,、])\s*""")
+    )
+
     fun normalize(type: AIContentType, raw: String): String {
         val content = raw.trim()
         if (content.isBlank()) return content
@@ -39,21 +52,68 @@ object AIContentFormatter {
     }
 
     private fun normalizeMemoryAid(content: String): String {
-        if (content.contains("【词根词缀】") && content.contains("【联想记忆】")) {
-            return content
+        // 旧缓存里的三段标题只当分隔符，正文全部保留；新格式没有标题，原样走同一套清洗。
+        val body = content
+            .replace("\r\n", "\n")
+            .replace(MEMORY_AID_HEADING_REGEX, "\n")
+
+        var lines = body.lineSequence()
+            .map { line -> cleanMemoryAidLine(line) }
+            .filter { it.isNotBlank() }
+            .toMutableList()
+
+        if (lines.isEmpty()) return MEMORY_AID_FALLBACK_ARROW
+
+        if (lines.size < 3) {
+            lines = expandMemoryAidLines(lines).toMutableList()
         }
-        val lines = collectCleanLines(content)
-        val root = lines.getOrNull(0) ?: "（未提取到词根词缀信息，请重试）"
-        val association = lines.getOrNull(1) ?: "（未提取到联想记忆信息，请重试）"
-        val tip = lines.getOrNull(2) ?: "（未提取到复习提示，请重试）"
-        return """
-            【词根词缀】
-            $root
-            【联想记忆】
-            $association
-            【复习提示】
-            $tip
-        """.trimIndent()
+
+        val arrowIndex = lines.indexOfLast { MEMORY_AID_ARROW_REGEX.containsMatchIn(it) }
+        when {
+            arrowIndex >= 0 && arrowIndex != lines.lastIndex -> {
+                val arrowLine = lines.removeAt(arrowIndex)
+                lines.add(arrowLine)
+            }
+
+            arrowIndex < 0 -> lines.add(MEMORY_AID_FALLBACK_ARROW)
+        }
+
+        // 内容太短时补一句中性复述动作，不编造释义。
+        if (lines.size < 3) {
+            lines.add(lines.lastIndex, MEMORY_AID_RECALL_LINE)
+        }
+
+        // 卡背只放 3–5 行：多出来的中段砍掉，末行释义始终保留。
+        if (lines.size > 5) {
+            val tail = lines.removeAt(lines.lastIndex)
+            lines = lines.take(4).toMutableList()
+            lines.add(tail)
+        }
+
+        return lines.joinToString("\n")
+    }
+
+    private fun cleanMemoryAidLine(line: String): String {
+        return line.trim()
+            .removePrefix("-")
+            .removePrefix("*")
+            .replace(Regex("""^\d+[).、]\s*"""), "")
+            .replace(MEMORY_AID_LABEL_REGEX, "")
+            .trim()
+    }
+
+    private fun expandMemoryAidLines(lines: List<String>): List<String> {
+        var expanded = lines
+        for (boundary in MEMORY_AID_BOUNDARIES) {
+            if (expanded.size >= 3) break
+            val next = expanded.flatMap { line ->
+                line.split(boundary)
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+            }
+            if (next.size > expanded.size) expanded = next
+        }
+        return expanded
     }
 
     private fun normalizeSentence(content: String): String {
