@@ -897,6 +897,8 @@ def _passed(item, scores, intent=None, same_method=False, history_repeat=False, 
 
     新判据（prompts/judge.txt）：
       rules_hard 0 命中 AND 五道二值全 false AND history_repeat=false。
+      例外：没有用户原话时，violates_user_intent 的 None 表示“不适用”，
+      可放行；其余四项仍须严格 false。
     旧 scores 只作兼容：没有 binary 字段时，仍按原来的两段式判。
     """
     if not hard_ok:
@@ -911,9 +913,20 @@ def _passed(item, scores, intent=None, same_method=False, history_repeat=False, 
         return False
     if binary is not None:
         # 新判据：五道排雷题必须全 false；缺字段/含糊一律不算干净。
-        return len(binary) == len(BINARY_FIELDS) and all(
-            binary.get(key) is False for key in BINARY_FIELDS
-        )
+        # 例外：用户没留原话时，第 5 题（是否违背用户原话）不适用。judge.txt
+        # 明确不要求输出该键，judge() 也会把它解析成 None；此时 None 视为通过，
+        # 但其余四项仍必须严格 false，且 violates_user_intent=true 依旧拦截。
+        if len(binary) != len(BINARY_FIELDS):
+            return False
+        for key in BINARY_FIELDS:
+            value = binary.get(key)
+            if key == "violates_user_intent" and not _has_instruction(item):
+                if value is not False and value is not None:
+                    return False
+                continue
+            if value is not False:
+                return False
+        return True
     low_six = _min_six(scores)
     if not _has_instruction(item):
         return low_six >= PASS_LINE

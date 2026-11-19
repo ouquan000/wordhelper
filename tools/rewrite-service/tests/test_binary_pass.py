@@ -18,11 +18,43 @@ def clean_binary():
 
 
 class BinaryPassTest(unittest.TestCase):
-    def item(self):
-        return {"word": "cathedral", "instruction": ""}
+    def item(self, instruction=""):
+        return {"word": "cathedral", "instruction": instruction}
 
     def test_all_false_passes_even_without_scores(self):
         self.assertTrue(pipeline._passed(self.item(), {}, binary=clean_binary()))
+
+    def test_empty_instruction_intent_none_counts_as_not_applicable(self):
+        # 用户没留原话时 judge.txt 不要求输出 violates_user_intent，
+        # pipeline.judge() 会把它解析成 None；此时应视为“不适用”而放行。
+        binary = clean_binary()
+        binary["violates_user_intent"] = None
+        self.assertTrue(pipeline._passed(self.item(), {}, binary=binary))
+
+    def test_empty_instruction_intent_true_still_blocks(self):
+        binary = clean_binary()
+        binary["violates_user_intent"] = True
+        self.assertFalse(pipeline._passed(self.item(), {}, binary=binary))
+
+    def test_empty_instruction_any_other_flag_true_blocks(self):
+        binary = clean_binary()
+        binary["violates_user_intent"] = None
+        binary["is_logic_broken"] = True
+        self.assertFalse(pipeline._passed(self.item(), {}, binary=binary))
+
+    def test_instruction_present_intent_none_blocks(self):
+        binary = clean_binary()
+        binary["violates_user_intent"] = None
+        self.assertFalse(
+            pipeline._passed(self.item("换成谐音法"), {}, binary=binary)
+        )
+
+    def test_instruction_present_intent_true_blocks(self):
+        binary = clean_binary()
+        binary["violates_user_intent"] = True
+        self.assertFalse(
+            pipeline._passed(self.item("换成谐音法"), {}, binary=binary)
+        )
 
     def test_any_true_blocks(self):
         binary = clean_binary()
