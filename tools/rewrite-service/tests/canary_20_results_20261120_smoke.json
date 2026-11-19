@@ -1,0 +1,121 @@
+{
+  "meta": {
+    "date": "2026-11-20",
+    "script": "tests\\canary_20.py",
+    "data_dir": "tests\\_canary_data_20261120",
+    "model": "glm53",
+    "judge_model": "wb/cn:deepseek-v4.1-flash",
+    "started_at": "2026-11-20T00:53:49+08:00",
+    "updated_at": "2026-11-20T00:56:19+08:00",
+    "run_wall_s": 150.5,
+    "finished_at": "2026-11-20T00:56:19+08:00"
+  },
+  "results": [
+    {
+      "word": "cathedral",
+      "category": "高踩钉子户",
+      "model": "glm53",
+      "judge_model": "wb/cn:deepseek-v4.1-flash",
+      "method": "shape",
+      "approach": [
+        "① cathedral 里最扎眼的是开头的 cat 和中间的 he，切成 cat / he / dral 三块，闭上眼也能一块块拼回来。",
+        "② cat 是猫，he 是他：一只猫贴着他的脚跟，蹑手蹑脚去推一扇又高又沉的大石门。",
+        "③ 尾块 dral 真读 /drəl/，快念像「得儿——」；整词读 /kəˈθiːdrəl/，cat 里的 t 变轻、he 念得含糊，th 要咬着舌尖。",
+        "④ 石门一开，管风琴正好轰出一个低音，高得看不见顶的大厅「得儿——」嗡嗡震起来，猫吓得毛全炸开。",
+        "⑤ 猫、他、这声一进门就震得人发懵的高顶嗡鸣 ——> 大教堂。"
+      ],
+      "passed": false,
+      "unverified": true,
+      "attempts": 2,
+      "timings": {
+        "generate_1": 21.9,
+        "polish_1": 12.1,
+        "judge_1": 27.4,
+        "generate_2": 53.6,
+        "polish_2": 10.6,
+        "judge_2": 24.8,
+        "total": 150.3
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": null
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        },
+        {
+          "attempt": 2,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": true,
+            "phonetic_drift_unwarned": true,
+            "violates_user_intent": null
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 0,
+            "逻辑连贯": 0,
+            "文本充足": 0,
+            "像人说话": 10
+          },
+          "issues": [
+            "dral 念快了像「桌儿」与 /kəˈθiːdrəl/ 的尾音 /drəl/ 对不上，谐音明显偏离。",
+            "第③步从「桌儿」接到高背大椅，物件从桌子变成椅子，前后画面断链。",
+            "遮住英文时，猫、他、高背椅只能推出大殿内景，无法稳定反推出 dral 这一拼写块。"
+          ]
+        },
+        {
+          "attempt": 2,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": null
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": []
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "两轮都没过评审判定，交付历史最佳（第2轮）；最后一轮问题：最低分 10（{\"拆分成立\": 10, \"方法选对\": 10, \"谐音过关\": 10, \"逻辑连贯\": 10, \"文本充足\": 10, \"像人说话\": 10}）",
+      "error": "",
+      "elapsed_s": 150.5,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\smoke_cathedral.log"
+    }
+  ]
+}

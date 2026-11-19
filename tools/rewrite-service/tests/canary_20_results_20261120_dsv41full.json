@@ -1,0 +1,1749 @@
+{
+  "meta": {
+    "date": "2026-11-20",
+    "script": "tests\\canary_20.py",
+    "data_dir": "tests\\_canary_data_20261120",
+    "model": "ds-v41-flash",
+    "judge_model": "wb/cn:glm-5.3",
+    "started_at": "2026-11-20T02:21:38+08:00",
+    "updated_at": "2026-11-20T03:01:40+08:00",
+    "run_wall_s": 2401.7,
+    "finished_at": "2026-11-20T03:01:40+08:00"
+  },
+  "results": [
+    {
+      "word": "cathedral",
+      "category": "高踩钉子户",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "shape",
+      "approach": [
+        "① 拼写切成 cat + he + dral：前三个字母是猫，中间两个字母是他，剩下 dral 这一截留作 /drəl/ 的尾音。",
+        "② 猫蹲在教堂长椅上，他站在下面抬头看彩窗，屋顶太高，声音拖成 /drəl/ 的回响。",
+        "③ 这个词真读 /kəˈθiːdrəl/，开头不是 cat 的 /kæt/，而是轻轻的 /kə/，cat 只当眼睛认拼写的钩子。",
+        "④ 猫、他、长椅、彩窗和拖长的回声全挤进一座尖顶高耸的大房子 ——> 大教堂。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 43.3,
+        "polish_1": 17.1,
+        "judge_1": 7.0,
+        "total": 67.4
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "第1次执行：PipelineError: 两轮都没有可用结果：第1轮：生成结果不是 JSON：{\"method\":\"shape\",\"split\":[\"cat\",\"he\",\"dral\"],\"elements\":[{\"part\":\"cat\",\"method\":\"shape\",\"reasoning\":\"开头三个字母就是熟词 cat，先抓住猫这个扎眼形象，给长词一个钩子。\"},{\"part\":\"he\",\"method\":\"shape\",\"reasoning\":\"紧接着就是熟；第2轮：WB 冷却中 30s：HTTP 503 {\"error\":{\"type\":\"router_unavailable\",\"message\":\"wb-router: no eligible",
+      "elapsed_s": 155.7,
+      "runs": 2,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_cathedral.log"
+    },
+    {
+      "word": "obscure",
+      "category": "高踩钉子户",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "root",
+      "approach": [
+        "① ob 就是挡在前面往上盖，obstacle 拦在路上的那种盖上来，这里取「盖上来」。",
+        "② scure 几乎就是 cure，cure 把毛病弄清楚、治好，人心里就亮堂。",
+        "③ 拿 ob 那股盖劲儿压住 cure 的亮堂，亮的地方被挡住，脑子里就弄不清、看不明白。",
+        "④ 看不清、听不懂、被遮住 ——> 晦涩的；使模糊；adj. 无名的。"
+      ],
+      "passed": false,
+      "unverified": true,
+      "attempts": 2,
+      "timings": {
+        "generate_2": 75.7,
+        "polish_2": 66.6,
+        "judge_2": 21.2,
+        "total": 239.8
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": true,
+        "violates_user_intent": null
+      },
+      "binary_missing": [
+        "violates_user_intent"
+      ],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": true,
+            "violates_user_intent": null
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 0,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [
+            "用了 ob+scure 拼写拆法但全程没提醒真实读音和音标"
+          ],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 0,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "两轮都没过评审判定，交付历史最佳（第2轮）；最后一轮问题：用了 ob+scure 拼写拆法但全程没提醒真实读音和音标；作废轮次：第1轮：生成结果不是 JSON：{\n  \"method\": \"sound\",\n  \"split\": [\"ob",
+      "error": "",
+      "elapsed_s": 240.0,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_obscure.log"
+    },
+    {
+      "word": "endeavor",
+      "category": "高踩钉子户",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "sound",
+      "approach": [
+        "① endeavor 念 /ɪnˈdevər/，一口气念下来像「俺待我」：俺在这儿等我、替我顶着，尾音 vor 收住。",
+        "② 一个人把活儿往自己身上揽，说「俺来、俺待在这儿不走了」，咬着牙也要办成。",
+        "③ 咬牙使劲去办一件难事 ——> 努力；尽力；endeavor 作名词就是「努力、尝试」。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 80.2,
+        "polish_1": 41.9,
+        "judge_1": 11.8,
+        "total": 133.9
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 134.2,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_endeavor.log"
+    },
+    {
+      "word": "monopoly",
+      "category": "高踩钉子户",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "sound",
+      "approach": [
+        "① monopoly 读 /məˈnɒpəli/，拆两半念：mono 轻读像人名「莫诺」，poly 像「破例」，连起来就是「莫诺破例」。",
+        "② 这条街的规矩对谁都一样，唯独莫诺能破例：别人摆摊都被赶走，他一句话就把整排铺面全占了。",
+        "③ 他能破例，靠的是这行买卖只剩他一家，别人连摆张桌子的缝都插不进去。",
+        "④ 一个行业只剩他一家、规矩全由他定 ——> 垄断；专营（权）。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 2,
+      "timings": {
+        "generate_1": 22.6,
+        "polish_1": 15.6,
+        "judge_1": 38.4,
+        "generate_2": 36.4,
+        "polish_2": 35.7,
+        "judge_2": 7.9,
+        "total": 156.7
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": null
+      },
+      "binary_missing": [
+        "violates_user_intent"
+      ],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        },
+        {
+          "attempt": 2,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": true,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 0,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [
+            "「拿」谐 /nɒ/ 时元音对不上（ɒ 近「噢」而非「a」），「把」对 /pə/ 也偏得明显，与音标不符。"
+          ],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        },
+        {
+          "attempt": 2,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": null
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 156.9,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_monopoly.log"
+    },
+    {
+      "word": "subtle",
+      "category": "高踩钉子户",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "shape",
+      "approach": [
+        "① 把 subtle 切成 sub + tle：sub 是“在下面”，tle 借 little 的尾巴记“小”。",
+        "② 把“小”压到“下面”：表面扫一眼看不出差别，真正那一点小差异藏在底下。",
+        "③ 藏在底下、小到不扎眼，差别就在那儿，得凑近才看得见。",
+        "④ 真读音是 /ˈsʌtəl/，这个词里 sub 的 b 不发音，别按字母念成“萨布头” ——> 微妙的；细微的；不易察觉的。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 29.9,
+        "polish_1": 18.7,
+        "judge_1": 7.9,
+        "total": 56.5
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 56.6,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_subtle.log"
+    },
+    {
+      "word": "conducive",
+      "category": "高踩钉子户",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "root",
+      "approach": [
+        "① con 是「一起」，duc 是「引、带路」，合起来就是把人一起往一个方向引。",
+        "② 加上 ive 变成「……的」，形容某样东西有本事把大家伙一起引到某个结果上去。",
+        "③ 好东西把人一起引向健康、引向成功，就是「有助于……的」。",
+        "④ 所以 conducive 就是「能引导到好结果上去的」 ——> 有助于……的；促成的。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 2,
+      "timings": {
+        "generate_2": 108.2,
+        "polish_2": 62.6,
+        "judge_2": 9.2,
+        "total": 180.1
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 180.2,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_conducive.log"
+    },
+    {
+      "word": "subsidy",
+      "category": "高踩钉子户",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "root",
+      "approach": [
+        "① subsidy 拆成 sub、sid、y，sub 是在下面，就像 sub-way 是地下通道，所以 sub 先记成「底下垫着」，整词读 /ˈsʌbsədi/，sid 别念成 side。",
+        "② sid 跟 sit 同源，都是「坐」，有人坐在你下面托着你、撑着你。",
+        "③ 底下有人坐着托你一把，就是给你垫钱、帮你把事撑住，这笔垫着的钱就叫补贴。",
+        "④ 所以 subsidy 就是政府或机构在下面垫着、帮你撑住的那笔钱 ——> 补贴；津贴。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 81.1,
+        "polish_1": 58.7,
+        "judge_1": 5.6,
+        "total": 145.4
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": null
+      },
+      "binary_missing": [
+        "violates_user_intent"
+      ],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": null
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 145.6,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_subsidy.log"
+    },
+    {
+      "word": "adolescent",
+      "category": "高踩钉子户",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "shape",
+      "approach": [
+        "① adolescent 拆成 a + dole + scent：a 是轻轻一个「啊」，dole 按 /doʊl/ 读像「兜」，scent 是熟词「气味」。",
+        "② 一个「啊」刚冒头的人，兜里揣着奶香，身上的气味没换成大人的。",
+        "③ 拼写记 a-dole-scent，真读音是 /ˌædəˈlesnt/，中间的 dole 别照 /doʊl/ 硬念，听着像「勒」 ——> 青少年；青春期的。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 78.4,
+        "polish_1": 16.6,
+        "judge_1": 10.2,
+        "total": 105.3
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 105.5,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_adolescent.log"
+    },
+    {
+      "word": "substantial",
+      "category": "高踩钉子户",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "shape",
+      "approach": [
+        "① substantial 按字形切成 sub-stan-tial：sub 是在下面，stan 像 stand 的“站”，tial 收成词尾。",
+        "② 三块连起来，就是有东西在下面站住、撑住，上面的重量压下来也不晃。",
+        "③ 真读音是 /səbˈstænʃəl/，tial 念 /ʃəl/，别按字母硬拼，心里只留“下面站得住”。",
+        "④ 下面站得住、撑得起分量，就是有实体、有底气 ——> 大量的；重大的；结实的；实质的。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 56.8,
+        "polish_1": 14.7,
+        "judge_1": 4.8,
+        "total": 76.4
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 76.5,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_substantial.log"
+    },
+    {
+      "word": "casual",
+      "category": "高踩钉子户",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "sound",
+      "approach": [
+        "① casual 读 /ˈkæʒuəl/，前头 kæ 像「咖」，后面 ʒuəl 连起来像「坐儿」，我脑子里立马冒出咖啡店里随便往椅子上一坐。",
+        "② 不用穿正装、不用约时间，套上便服推门就坐，坐下也不摆正经架势，随随便便，压根没把这场合当正经事。",
+        "③ 我把穿着随便、态度随便、碰巧遇上这几样摆到一起 ——> 随意的；随便的；非正式的。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 73.4,
+        "polish_1": 15.3,
+        "judge_1": 7.7,
+        "total": 96.4
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 96.6,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_casual.log"
+    },
+    {
+      "word": "diminish",
+      "category": "常规对照",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "root",
+      "approach": [
+        "① mini 你闭眼认识，就是“迷你、小号”，把末尾的 i 摘掉，剩下的 min 就是“小”。",
+        "② diminish 中间正好嵌着 min 这三个字母，眼睛扫到这一段，我马上把 min 认成“小”。",
+        "③ 把一样东西改小，就是尺寸往小缩、数量变少、分量变轻。",
+        "④ 连它有多要紧也一路往下缩 ——> 减少；缩小；降低。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 40.5,
+        "polish_1": 28.6,
+        "judge_1": 12.1,
+        "total": 81.2
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": null
+      },
+      "binary_missing": [
+        "violates_user_intent"
+      ],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": null
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 81.4,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_diminish.log"
+    },
+    {
+      "word": "random",
+      "category": "常规对照",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "shape",
+      "approach": [
+        "① random 开头正好是 ran，也就是 run 的过去式：人已经跑出去了。",
+        "② 末尾 dom 取 kingdom 的尾巴记成“地盘”；random 真读 /ˈrændəm/，dom 只轻轻收成 dəm。",
+        "③ ran + dom 合起来，就是一个人在自己的地盘里没路线地乱跑，跑到哪儿算哪儿 ——> 随机的；随意的。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 25.5,
+        "polish_1": 7.1,
+        "judge_1": 6.3,
+        "total": 38.9
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 39.1,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_random.log"
+    },
+    {
+      "word": "avoid",
+      "category": "常规对照",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "shape",
+      "approach": [
+        "① avoid 拆成 a + void，void 读 /vɔɪd/，是一块空地方，里面什么都没有；整词读 /əˈvɔɪd/，别按「a-void」硬念。",
+        "② 在 void 前面添上 a，a 就是一个，我把它念成「一条」，合起来记成「一条空当」。",
+        "③ 眼前横着一条空当，踩下去会落空，脚一迈就绕开、不往里踩。",
+        "④ 人侧身让过那条空当，就是 avoid ——> 避开；避免。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 83.7,
+        "polish_1": 29.5,
+        "judge_1": 12.5,
+        "total": 125.6
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 125.8,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_avoid.log"
+    },
+    {
+      "word": "allege",
+      "category": "常规对照",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "shape",
+      "approach": [
+        "① allege 开头 alle 眼看就是 all 多一个 e，我把前半块认成 all 那一整块“全部”。",
+        "② 真读音是 /əˈledʒ/，听着像“呃-来吉”，末尾 ge 落在“吉”上，两个 l 只出一个音，别照字母念成“阿勒格”。",
+        "③ 我把“全部”的东西公开摆到台面上讲，把一整件事说成是真的。",
+        "④ 台上把一整件事说成真的，至于有没有证据另说 ——> 声称；指认。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 2,
+      "timings": {
+        "generate_1": 80.4,
+        "polish_1": 29.8,
+        "judge_1": 22.8,
+        "generate_2": 76.0,
+        "polish_2": 15.9,
+        "judge_2": 5.2,
+        "total": 230.1
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        },
+        {
+          "attempt": 2,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": true,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 0,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [
+            "谐音「阿来指」的「来」读 lái，对不上 /ledʒ/ 里的 /lɛ/，且「指」的 zhǐ 给尾音平添一个元音，整体与两音节的 /əˈledʒ/ 逐段不齐"
+          ],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        },
+        {
+          "attempt": 2,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 230.3,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_allege.log"
+    },
+    {
+      "word": "pledge",
+      "category": "常规对照",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "shape",
+      "approach": [
+        "① ple 是 please（请）的前三个字母，这声“请”就是抓手。",
+        "② dge 是 judge（法官）的最后三个字母，和 ple 一合，人就站到法官面前。",
+        "③ 在法官面前说“请”不是求饶，而是把话押上，先立誓，再交出保证物，真读音是 /pledʒ/，开头别按 please 的 /pliːz/ 念，整个词一口气读完。",
+        "④ 当着法官把话和保证物一起押上 ——> 誓言；保证；抵押。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 65.2,
+        "polish_1": 24.7,
+        "judge_1": 5.5,
+        "total": 95.5
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 95.7,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_pledge.log"
+    },
+    {
+      "word": "beforehand",
+      "category": "常规对照",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "root",
+      "approach": [
+        "① before 是“在……之前”，hand 是“手”，beforehand 一眼拆成 before + hand，真读 /bɪˈfɔːrhænd/，重音落在 before 的 fore。",
+        "② hand 想成事情到手的那一刻：事情到手，你才轮得到接住、处理。",
+        "③ 事情还没到手前，你就想好、备好，人已经站到事情前头。",
+        "④ 所以 beforehand 指事情发生前已经备好 ——> 事先；提前。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 18.7,
+        "polish_1": 30.9,
+        "judge_1": 7.4,
+        "total": 57.1
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 57.3,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_beforehand.log"
+    },
+    {
+      "word": "stumble",
+      "category": "常规对照",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "shape",
+      "approach": [
+        "① stumble 拆成 st + umble，st 是 street 的开头，umble 一读就是「俺不」。",
+        "② 大街上走着一个人，嘴里直喊「俺不」，可脚偏偏不听话。",
+        "③ 他一脚踩空，身子往前一栽，差点撞到路边的台阶。",
+        "④ 记住拼写 st-umble，真读音是 /ˈstʌmbl/，umble 别按字母念成「乌姆布勒」 ——> 踉跄；绊倒；结结巴巴地说。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 77.6,
+        "polish_1": 8.3,
+        "judge_1": 14.2,
+        "total": 100.0
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [
+            "谐音「俺不」的「俺」以 n 收尾，与 /ʌm/ 的 m 收尾略有出入，属小瑕疵"
+          ],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 100.2,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_stumble.log"
+    },
+    {
+      "word": "message",
+      "category": "常规对照",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "root",
+      "approach": [
+        "① 我记 message 就抓 mess 这团乱：桌上摊开的纸、杂七杂八堆成一堆，整个词读 /ˈmesɪdʒ/，age 那截收成 /ɪdʒ/，不念 /eɪdʒ/。",
+        "② 后面的 age 一接上来，就把这堆乱东西收拢、打包，捆成一整份能送出去、也能摔过来的东西。",
+        "③ 这包乱码递到你面前，你打开一看，里面是对方想说的内容。",
+        "④ 递到你手里的不是那包东西，是要你接住的信息 ——> 消息；信息。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 2,
+      "timings": {
+        "generate_2": 79.8,
+        "polish_2": 36.9,
+        "judge_2": 5.1,
+        "total": 162.7
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 162.9,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_message.log"
+    },
+    {
+      "word": "behavior",
+      "category": "常规对照",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "shape",
+      "approach": [
+        "① behavior 能清楚切成 be + hav + ior 三块，中间的 hav 就是 have 去掉末尾 e 的样子。",
+        "② 把 be 记成“是”，把 hav 记成 have 的“有”：一个人“是”什么姿态、身上“有”什么动作，合起来就是旁人看到他怎么做。",
+        "③ 别照熟词 have 硬念，behavior 的真读音是 /bɪˈheɪvjər/，中间的 hav 读 /heɪv/，不是 /hæv/。",
+        "④ 最后的 ior 只负责收尾，把前面“是什么样、有什么动作”收成一个名词 ——> 行为；举止。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 63.8,
+        "polish_1": 9.2,
+        "judge_1": 4.5,
+        "total": 77.5
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": null
+      },
+      "binary_missing": [
+        "violates_user_intent"
+      ],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": null
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 77.8,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_behavior.log"
+    },
+    {
+      "word": "emotion",
+      "category": "常规对照",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "root",
+      "approach": [
+        "① motion 我熟，就是“运动”，东西一动，这一段动就叫 motion；emotion 念 /ɪˈmoʊʃən/，开头的 e 一带而过。",
+        "② 前面的 e 借 exit 记，exit 是出口、人往外走，e 就取“向外”。",
+        "③ 心里先起一阵动，再把那股动往外放，放出来的就是高兴、生气、害怕这些反应。",
+        "④ 从心里往外动出来的那股劲 ——> 情绪；情感。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 39.0,
+        "polish_1": 36.9,
+        "judge_1": 7.0,
+        "total": 82.9
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": false
+      },
+      "binary_missing": [],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": false
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 83.1,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\dsv41full_emotion.log"
+    }
+  ]
+}
