@@ -1,0 +1,22 @@
+{
+  "template_viewb": "D:/codex/MindForge_MF/english_production/word_pipeline/prompts/template-viewb.api.json",
+  "template_viewa": "D:/codex/MindForge_MF/english_production/word_pipeline/prompts/template-viewa.api.json",
+  "model": "deepseek-v4.1-flash",
+  "text_reasoning_effort": "none",
+  "vision_model": "deepseek-v4.1-flash",
+  "provider": "wb",
+  "base_url": "http://127.0.0.1:8788",
+  "wb_key": "sk-wb-local-8788",
+  "vision_enabled": true,
+  "scene_review_enabled": false,
+  "prompt_enrichment_enabled": true,
+  "steps": 12,
+  "anki_auto_delivery_enabled": false,
+  "credential_fingerprints": {
+    "primary": "<redacted-credential-fingerprint>",
+    "fallback": "<redacted-credential-fingerprint>"
+  },
+  "python": "C:\\Users\\<user>\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+  "requests_deps": "D:\\codex\\MindForge_MF\\experiments\\pipeline-route-sol-20261016\\runtime-deps",
+  "denoise_b": 0.85
+}

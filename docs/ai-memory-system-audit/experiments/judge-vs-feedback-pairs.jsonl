@@ -1,0 +1,26 @@
+{"word": "adolescent", "rev": 1, "vote": "down", "method": "root", "judge_scores": {"拆分成立": 9, "方法选对": 9, "谐音过关": 10, "逻辑连贯": 8, "文本充足": 9, "像人说话": 9}, "judge_mean": 9.0, "attempts": 2}
+{"word": "ambiguous", "rev": 1, "vote": "down", "method": "contrast", "judge_scores": {"拆分成立": 8, "方法选对": 8, "谐音过关": 9, "逻辑连贯": 8, "文本充足": 9, "像人说话": 8}, "judge_mean": 8.333, "attempts": 1}
+{"word": "appropriate", "rev": 14, "vote": "down", "method": "root", "judge_scores": {"拆分成立": 10, "方法选对": 10, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 9, "像人说话": 9}, "judge_mean": 9.5, "attempts": 1}
+{"word": "cathedral", "rev": 7, "vote": "down", "method": "root", "judge_scores": {"拆分成立": 9, "方法选对": 9, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 9, "像人说话": 9, "诉求落实": 8}, "judge_mean": 9.0, "attempts": 1}
+{"word": "cathedral", "rev": 8, "vote": "down", "method": "meaning", "judge_scores": {"拆分成立": 8, "方法选对": 8, "谐音过关": 9, "逻辑连贯": 8, "文本充足": 8, "像人说话": 9}, "judge_mean": 8.333, "attempts": 2}
+{"word": "cognitive", "rev": 4, "vote": "down", "method": "root", "judge_scores": {"拆分成立": 9, "方法选对": 9, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 9, "像人说话": 8}, "judge_mean": 9.0, "attempts": 1}
+{"word": "conducive", "rev": 1, "vote": "down", "method": "root", "judge_scores": {"拆分成立": 10, "方法选对": 10, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 9, "像人说话": 9}, "judge_mean": 9.5, "attempts": 1}
+{"word": "endeavor", "rev": 3, "vote": "down", "method": "root", "judge_scores": {"拆分成立": 10, "方法选对": 9, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 9, "像人说话": 9}, "judge_mean": 9.333, "attempts": 1}
+{"word": "endeavor", "rev": 4, "vote": "down", "method": "contrast", "judge_scores": {"拆分成立": 9, "方法选对": 9, "谐音过关": 10, "逻辑连贯": 8, "文本充足": 9, "像人说话": 8}, "judge_mean": 8.833, "attempts": 1}
+{"word": "excerpt", "rev": 2, "vote": "down", "method": null, "judge_scores": {"拆分成立": 10, "方法选对": 8, "谐音过关": 10, "链条闭合": 10, "文本充足": 10}, "judge_mean": 9.6, "attempts": 1}
+{"word": "hemisphere", "rev": 2, "vote": "down", "method": "root", "judge_scores": {"拆分成立": 10, "方法选对": 10, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 10, "像人说话": 9}, "judge_mean": 9.667, "attempts": 1}
+{"word": "monopoly", "rev": 1, "vote": "down", "method": "root", "judge_scores": {"拆分成立": 9, "方法选对": 9, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 9, "像人说话": 9}, "judge_mean": 9.167, "attempts": 1}
+{"word": "obscure", "rev": 7, "vote": "down", "method": "shape", "judge_scores": {"拆分成立": 6, "方法选对": 8, "谐音过关": 10, "逻辑连贯": 8, "文本充足": 9, "像人说话": 9, "诉求落实": 8}, "judge_mean": 8.286, "attempts": 1}
+{"word": "pyramid", "rev": 1, "vote": "down", "method": "shape", "judge_scores": {"拆分成立": 8, "方法选对": 9, "谐音过关": 10, "逻辑连贯": 8, "文本充足": 9, "像人说话": 9}, "judge_mean": 8.833, "attempts": 2}
+{"word": "stereotype", "rev": 3, "vote": "down", "method": "root", "judge_scores": {"拆分成立": 9, "方法选对": 9, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 10, "像人说话": 9}, "judge_mean": 9.333, "attempts": 1}
+{"word": "subsidy", "rev": 1, "vote": "down", "method": "root", "judge_scores": {"拆分成立": 10, "方法选对": 10, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 10, "像人说话": 10}, "judge_mean": 9.833, "attempts": 1}
+{"word": "substantial", "rev": 1, "vote": "down", "method": "root", "judge_scores": {"拆分成立": 10, "方法选对": 10, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 9, "像人说话": 9}, "judge_mean": 9.5, "attempts": 1}
+{"word": "subtle", "rev": 2, "vote": "down", "method": "shape", "judge_scores": {"拆分成立": 9, "方法选对": 9, "谐音过关": 9, "逻辑连贯": 9, "文本充足": 9, "像人说话": 9}, "judge_mean": 9.0, "attempts": 1}
+{"word": "trait", "rev": 1, "vote": "down", "method": "root", "judge_scores": {"拆分成立": 8, "方法选对": 9, "谐音过关": 10, "逻辑连贯": 8, "文本充足": 9, "像人说话": 8, "诉求落实": 9}, "judge_mean": 8.714, "attempts": 1}
+{"word": "cognitive", "rev": 5, "vote": "up", "method": "root", "judge_scores": {"拆分成立": 9, "方法选对": 9, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 9, "像人说话": 9}, "judge_mean": 9.167, "attempts": 2}
+{"word": "diminish", "rev": 1, "vote": "up", "method": "root", "judge_scores": {"拆分成立": 10, "方法选对": 9, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 9, "像人说话": 9}, "judge_mean": 9.333, "attempts": 1}
+{"word": "individual", "rev": 2, "vote": "up", "method": "root", "judge_scores": {"拆分成立": 10, "方法选对": 10, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 10, "像人说话": 10}, "judge_mean": 9.833, "attempts": 1}
+{"word": "mental", "rev": 2, "vote": "up", "method": "sound", "judge_scores": {"拆分成立": 8, "方法选对": 9, "谐音过关": 7, "逻辑连贯": 8, "文本充足": 9, "像人说话": 9, "诉求落实": 9}, "judge_mean": 8.429, "attempts": 1}
+{"word": "premium", "rev": 4, "vote": "up", "method": "shape", "judge_scores": {"拆分成立": 8, "方法选对": 8, "谐音过关": 9, "逻辑连贯": 9, "文本充足": 9, "像人说话": 9}, "judge_mean": 8.667, "attempts": 1}
+{"word": "prevent", "rev": 1, "vote": "up", "method": null, "judge_scores": {"拆分成立": 10, "方法选对": 9, "谐音过关": 10, "链条闭合": 9, "文本充足": 10}, "judge_mean": 9.6, "attempts": 1}
+{"word": "random", "rev": 1, "vote": "up", "method": "shape", "judge_scores": {"拆分成立": 8, "方法选对": 9, "谐音过关": 10, "逻辑连贯": 9, "文本充足": 9, "像人说话": 8}, "judge_mean": 8.833, "attempts": 1}

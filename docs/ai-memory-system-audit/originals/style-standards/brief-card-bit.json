@@ -1,0 +1,69 @@
+{
+ "subjectAnchorEn": "A woman with long wavy auburn hair, a beige trench coat, and a leather bag",
+ "pronounEn": "she",
+ "styleAnchorEn": "anime illustration, soft painterly shading, warm cinematic lighting, highly detailed, vibrant colors",
+ "propEn": "a flat stone slab",
+ "actionAEn": "stands beside a flat stone slab, one palm pressed flat against its side face",
+ "stateAEn": "the slab's top edge level with mid-air well above her head, her arm extended sideways touching the slab, her face calm",
+ "actionBEn": "steps back from a flat stone slab, tilting her head up to follow its rising edge",
+ "stateBEn": "the slab's top edge level with mid-air well above her head, her whole body in frame farther from it, her chin lifted, her face calm",
+ "castId": "c11",
+ "archetype": "scale",
+ "split": [
+  "s",
+  "b",
+  "i",
+  "t"
+ ],
+ "elements": [
+  {
+   "letter": "b",
+   "part": "字母 b",
+   "meaning": "字母 b 的形状与读音 /b/，在 bit 开头",
+   "method": "sound",
+   "reasoning": "b 在 bit 中读 /b/，是起始辅音，按读音记为 b。"
+  },
+  {
+   "letter": "i",
+   "part": "字母 i",
+   "meaning": "字母 i，单音节短音 /ɪ/，与 bit 的读音对应",
+   "method": "sound",
+   "reasoning": "i 在 bit 中读短音 /ɪ/，与拼写 i 对应，按读音记为 i。"
+  },
+  {
+   "letter": "t",
+   "part": "字母 t",
+   "meaning": "字母 t，收尾音 /t/",
+   "method": "sound",
+   "reasoning": "t 在 bit 中收尾读 /t/，是清辅音，按读音记为 t。"
+  }
+ ],
+ "derivation": [
+  "bit 为三字母短词，读音 /bɪt/；词义为名词「一点」。",
+  "字母 b + i + t 直接拼合成 bit，无词根可拆，故按 sound 记忆：/bɪt/ 单元音 + 清辅音收尾。",
+  "义项「一点」靠 meaning 记忆：想象一大片石板上只落着一点，用尺度反差把「一点」读成「极小的一点」对照「极大的整块」。——> 中文词义「一点」"
+ ],
+ "scene": "一块平坦石板立在画面里，上沿高过她的头顶，石板本身占据大部分画面；正面一侧她抬手贴住石板侧面，退开一侧她整个人缩小在画面下方仰头追着石板边缘，人和石板形成极大的比例差，画面只表达「整块石板」与「她的头顶只到石板一半以下」这个可见关系，读出「一点」的对比。",
+ "hint": [
+  "bit 读 /bɪt/，短促干净的一个音节，收尾的 t 要轻。",
+  "「一点」就是 bit：石板很大，她很小。",
+  "拼写 b-i-t，一个音节，别和 bite 混淆。"
+ ],
+ "memoryHook": "石板高过她的头顶，她只到石板的一半以下——一整块对上一点点，bit 就是「一点」。",
+ "forms": "bit（n. 一点；小块；比特）",
+ "example": "Give me a bit of water.",
+ "exampleZh": "给我一点水。",
+ "word": "bit",
+ "phonetic": "/bɪt/",
+ "pos": "n.",
+ "meaning": "一点；小块；比特",
+ "method": "sound",
+ "collocations": [
+  "a bit of",
+  "bit by bit",
+  "a little bit"
+ ],
+ "imagePromptA": "masterpiece, best quality, score_7, safe, anime, A woman with long wavy auburn hair, a beige trench coat, and a leather bag, single subject, centered, three-quarter front view, medium shot, she stands beside a flat stone slab, one palm pressed flat against its side face, the slab's top edge level with mid-air well above her head, her arm extended sideways touching the slab, her face calm, the slab's top edge level with mid-air well above her head, vertical composition, portrait orientation, anime illustration, soft painterly shading, warm cinematic lighting, highly detailed, vibrant colors",
+ "imagePromptB": "masterpiece, best quality, score_7, safe, anime, A woman with long wavy auburn hair, a beige trench coat, and a leather bag, single subject, profile, from side, full body, looking sideways, she steps back from a flat stone slab, tilting her head up to follow its rising edge, the slab's top edge level with mid-air well above her head, her whole body in frame farther from it, her chin lifted, her face calm, the slab's top edge level with mid-air well above her head, vertical composition, portrait orientation, anime illustration, soft painterly shading, warm cinematic lighting, highly detailed, vibrant colors",
+ "imagePrompt": "masterpiece, best quality, score_7, safe, anime, A woman with long wavy auburn hair, a beige trench coat, and a leather bag, single subject, centered, three-quarter front view, medium shot, she stands beside a flat stone slab, one palm pressed flat against its side face, the slab's top edge level with mid-air well above her head, her arm extended sideways touching the slab, her face calm, the slab's top edge level with mid-air well above her head, vertical composition, portrait orientation, anime illustration, soft painterly shading, warm cinematic lighting, highly detailed, vibrant colors"
+}

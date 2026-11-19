@@ -1,0 +1,16 @@
+{
+  "template_viewb": "D:/codex/MindForge_MF/english_production/word_pipeline/prompts/template-viewb.api.json",
+  "template_viewa": "D:/codex/MindForge_MF/english_production/word_pipeline/prompts/template-viewa.api.json",
+  "model": "gpt-6.1-sol",
+  "vision_model": "gpt-6.1-sol",
+  "vision_enabled": false,
+  "scene_review_enabled": false,
+  "prompt_enrichment_enabled": true,
+  "anki_auto_delivery_enabled": true,
+  "credential_fingerprints": {
+    "primary": "<redacted-credential-fingerprint>",
+    "fallback": "<redacted-credential-fingerprint>"
+  },
+  "python": "C:\\Users\\<user>\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+  "requests_deps": "D:\\codex\\MindForge_MF\\experiments\\pipeline-route-sol-20261016\\runtime-deps"
+}

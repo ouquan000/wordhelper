@@ -1,0 +1,62 @@
+目标词：{WORD}
+考纲义项：{SENSE}
+词性：{POS}
+背景：{BACKGROUND}
+
+除 <schema> 要求的字段外，必须额外输出下面这些字段。**注意分工：你只提供"内容"，程序负责拼装完整英文提示词**，所以不要自己拼整段提示词，也不要写机位、构图、画风、安全词（这些由程序统一添加）。
+
+## 画面必须遵守的可画性契约（实测得出，违反会导致配图丢失关键道具）
+
+本地图像模型（Anima / Qwen3-0.6B 编码器，832×1216）的实测结论：
+- 单一道具 + 人物对它的动作 → **画得很准**（实测"桌上一个木质节拍器"完美还原）
+- 多个道具 + 它们之间的互动 → **名词都画出来了，但关系丢失**（实测"音波伸出小手推节拍器摆针"里音乐盒、音波、小手都画了，但小手没推任何东西，节拍器也没画对）
+
+因此每一张图都必须满足：
+
+0. **先确定一个可见关系，再写中文场景与英文分镜，两边必须一致。**
+   attach这类关系需要“主道具＋承载面”，衣袖/桌面属于关系承载对象，可出现，不能为了凑单道具把连接关系删掉。
+   关系必须在静态图里看得见：接触点不要被手掌遮住，物体状态要清楚；不要让“拿着”冒充“连接”。
+   不要写必须靠“猛地”“扯两下”“已经牢固”这类时间或力度词才能成立的记忆点；用可见结果表达。
+   中文scene、derivation、hint、memoryHook所依赖的核心对象必须出现在英文动作和结果字段里。
+   镜子、布景等不是记忆必需的装饰可以省去，不能让装饰变成审核时的新硬要求。
+   A是正前方三分之四中景，B是侧面全身构图。B必须从侧面看，人物看向侧方；不要只变表情。
+
+1. **只有一个主道具**（`propEn`），必须是一个图像模型认识的**具体英语名词**（metronome / music box / umbrella / mirror / ladder …）。不要自造复合意象。
+   **并且这个道具不能天然带字** —— 实测主道具是"申请表"时，模型会在纸上画满假文字，既违反"图上无文字"的验收线，又踩在文字渲染这个公认弱项上。表单 / 证件 / 书页 / 招牌 / 海报 / 屏幕 / 手机 / 报纸 这类**一律不要**；要表达"申请"就换成不带字的实体（一枚印章、一个信封、一把钥匙）。
+   **也不要用动物当主道具** —— 动漫向模型的动物生成质量明显更差（社区助记图项目的原话："AI for Anime image generation is bad at generating animals"）；确实需要动物元素时，改用**人物的兽耳 / 尾巴等局部特征**代替整只动物。
+   **一幅图只画一个义项**：不要多面板、拼贴、分屏；若本词多个义项无法自然共存于同一张连贯画面，只画**最常见的那个义项**，其余交给卡文文字。
+2. **动作主体由本卡主体模式决定**（模式写在「本卡由程序指定」段落里）：
+   - person：主角亲自完成，可以是用手、用身体其他部位（肩/背/头顶/膝/脚），也可以是「人不在接触、道具自己说话」的姿态；具体用哪一种，看本卡由程序指定的构图骨架。
+   - duo：两个人一起完成，动作句用复数动词，两个人必须都出现在 A 和 B 里。
+   - scene：画面里没有人，动作主体是物件本身，actionAEn 以主道具本身开头、写成完整主谓（the 或 a/an + 名词）。
+   **严禁引入第三行动者**：不要写音波/魔法/光/影子/拟人化物件"伸出手""长出小手""自己动起来"。人亲身去做，画面才立得住。
+3. **只画结果状态，不画过程**。写"摆针被按到一侧停住"，不要写"正在把摆针推得东倒西歪"。
+4. **不要在子句里写多步时间线**（"先…然后…"）。一张图 = 一个瞬间。
+5. 不要写任何否定词（no text / no watermark …）；防文字与防畸形由程序的负向提示统一负责。
+6. **动作必须由本卡的记忆点决定，不是先想动作再套词**：先有记忆思路（derivation/hint/scene），再问"这个记忆点如果用一张静止照片证明，画面里必须出现什么"，最后才写 actionAEn/stateAEn。画面与卡文对不上，等于卡废。
+7. **动作要敢换种类**：除了"手持"，还有扛、背、顶、夹、抱、踩、抵、蹲、跪、坐、躺、倒挂、踮脚、背对、旁观、尺度反差、留下痕迹。同一个动作句式连续出现三次以上就换一种。
+8. **只写能画的关系族**：缠绕、套入、整面贴合、穿过大孔、整只手抓住、堆叠、整块覆盖在平面上、留下痕迹、尺度反差。**不要写「被整个罩住 / 被压住 / 从下方穿过 / 含在内部」这类包含与承压关系**——模型只会画「人站在道具旁边」，关系必丢（require 的「人被铜铃罩住」、support 的「前臂从石板下穿过」、critical 的「平躺被石板压住」都是这么废的）。记忆点天然需要这种关系时，换一个能承载同一个词义的物体关系，不要硬写。
+9. **画面里可以没有人，也可以有建筑、树木、道路、地形、器物**——但只有承担记忆关系时才写。scene 模式下画面不出现任何人物；"a street with some trees" 这种背景装饰既画不稳、审核也不判。无人场景必须让两个物件之间产生可见关系：树根顶裂石墙、车辙压进泥路、藤蔓绕满木架、石阶被磨出凹痕、水渠把田地切成两半。最多两个人（duo 模式正好两个人，禁止第三人与背景人群）。
+10. **画面主关系必须匹配词义**。先自问：只凭这两张图，一个不认识这个词的人会把它读成什么？如果主导读法是一个与义项无关的具体动作（背着行李、搬箱子、站在路边），就换关系。不要指望靠道具名承载词义——encourage 的「勇气装麻袋」画出来只是「背着行李赶路」。抽象词让关系本身表达它：支撑、阻挡、连接、累积、超出、缺失、重复、分离。
+
+## 需要输出的字段
+
+1. "subjectAnchorEn" —— 主体外观锚点，**直接逐字复制"本卡由程序指定的演员"那一句**（程序最后也会用它覆盖你的值），不要自己改写，不要写动作、场景、机位。scene 模式下这一句是场景描述，同样逐字复制。
+   1b. "pronounEn" —— 主角代词：person 填本卡指定的 she 或 he；duo 填 they；scene 填空字符串 ""。
+2. "styleAnchorEn" —— 画风锚点，原样填：anime illustration, soft painterly shading, warm cinematic lighting, highly detailed, vibrant colors
+3. "propEn" —— **唯一主道具**的英文名词短语（2-6 个词），例如 "a wooden metronome"、"an open music box"。
+4. "actionAEn" —— 图 A 里主体对主道具做的事，纯英文 20-105 字符。person/duo 以第三人称动词开头（程序会自动拼上代词），**必须逐字包含 propEn**；scene 模式以 "the" 开头写成完整主谓（如 `the rope is wound three times around the post`）。例：`presses a wooden metronome's pendulum to one side with one finger`
+5. "stateAEn" —— 图 A 的**结果状态**，纯英文 30-160 字符，描述这个动作完成后的可见静止画面（道具的状态 + 她的表情）。例：`the pendulum stuck tilted at an angle, her eyes wide in shock`
+6. "actionBEn" / "stateBEn" —— 图 B 同理。**同一主体、同一主道具（propEn 不变）、同一核心记忆关系，从侧面观察。结果状态允许相同**；不能为了制造差异，把打开的伞变成闭合的伞等，导致记忆关系消失。
+
+程序会用下面的模板拼装（你不需要输出长句）：
+  person：imagePromptA = subjectAnchorEn + ", single subject, centered, three-quarter front view, medium shot, " + pronounEn + " " + actionAEn + ", " + stateAEn + ", vertical composition, portrait orientation, " + styleAnchorEn
+  duo：把构图词换成 "two people"（A：two people, centered, three-quarter front view, medium shot；B：two people, profile, from side, full body, looking sideways），动作句前拼 "they "。
+  scene：不加代词，构图词换成 "no people, centered, wide shot, the whole scene in frame"（B：no people, from the side, wide shot），actionAEn 作为完整主谓直接接上。
+  所有模式都共用：" , " + stateAEn + ", vertical composition, portrait orientation, " + styleAnchorEn
+
+硬性要求：
+- 五个说明字段都必须是**纯英文**，不出现汉字。
+- subjectAnchorEn 里不要出现动作或场景名词；actionAEn/stateAEn 里不要重复描述发型与服装。
+- actionAEn 与 actionBEn 必须包含同一个 propEn，且 A/B 必须保留同一个核心记忆关系；机位不同由程序的构图模板保证并由视觉审核检查。
+- 只输出 JSON 本体，不要 markdown 代码块，不要解释文字。
