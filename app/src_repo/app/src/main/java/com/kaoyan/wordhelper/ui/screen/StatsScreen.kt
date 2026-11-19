@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kaoyan.wordhelper.ui.component.FsrsStatsCard
 import com.kaoyan.wordhelper.ui.component.HeatmapGrid
 import com.kaoyan.wordhelper.ui.component.HeatmapLegend
 import com.kaoyan.wordhelper.ui.component.MasteryDonutChart
@@ -155,7 +156,26 @@ fun StatsContent(
         item {
             MasteryChartCard(mastery = uiState.mastery)
         }
-        if (uiState.mlEnabled) {
+        if (uiState.fsrsEnabled) {
+            item {
+                FsrsStatsCard(
+                    averageRetrievability = uiState.fsrsAverageRetrievability,
+                    averageStability = uiState.fsrsAverageStability,
+                    dueCount = uiState.fsrsDueCount,
+                    lapseCount = uiState.fsrsLapseCount,
+                    nextIntervalDays = uiState.fsrsNextIntervalDays,
+                    desiredRetention = uiState.fsrsDesiredRetention,
+                    hasData = uiState.fsrsHasData
+                )
+            }
+            if (uiState.fsrsHasData) {
+                item {
+                    Box(modifier = Modifier.testTag("stats_fsrs_heatmap")) {
+                        MemoryHeatmapCard(data = uiState.fsrsHeatmapData)
+                    }
+                }
+            }
+        } else if (uiState.mlEnabled) {
             item {
                 MemoryStabilityCard(
                     stabilityIndex = uiState.mlStabilityIndex,

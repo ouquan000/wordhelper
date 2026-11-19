@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -135,7 +136,17 @@ data class StatsUiState(
     val mlOptimalHourStart: Int = 9,
     val mlOptimalHourEnd: Int = 11,
     val mlHeatmapData: List<MemoryHeatmapEntry> = emptyList(),
-    val mlEnabled: Boolean = false
+    val mlEnabled: Boolean = false,
+    /** FSRS-5 统计（1.4.8）：开关来自设置，指标来自当前词书的 Progress。 */
+    val fsrsEnabled: Boolean = false,
+    val fsrsHasData: Boolean = false,
+    val fsrsAverageRetrievability: Float = 0f,
+    val fsrsAverageStability: Float = 0f,
+    val fsrsDueCount: Int = 0,
+    val fsrsLapseCount: Int = 0,
+    val fsrsNextIntervalDays: Int = 0,
+    val fsrsDesiredRetention: Float = 0.90f,
+    val fsrsHeatmapData: List<MemoryHeatmapEntry> = emptyList()
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -171,6 +182,19 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
             fallbackRetention = modelState?.userBaseRetention ?: DEFAULT_RETENTION
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), defaultMlInsights(DEFAULT_RETENTION))
+
+    /** FSRS-5 开关与目标留存率；统计页文案与卡片都跟随这两项。 */
+    private val fsrsSettingsFlow = settingsRepository.settingsFlow
+        .map { it.fsrsEnabled to it.desiredRetention }
+
+    /**
+     * FSRS-5 指标：一次性聚合，不做整本 Progress 的持续监听。
+     *
+     * 只在进入统计页 / 切书 / 改留存率时于 Dispatchers.IO 里 `getProgressByBook(bookId)` 取一次，
+     * 再交给纯函数 buildFsrsInsights 汇总。不要改成 getProgressByBookFlow 那种整本实体化
+     * （5000+ 词会掉帧，见 WordRepository 按书统计聚合处的注释）。
+     */
+    private val fsrsInsightsFlow = MutableStateFlow(FsrsInsights())
 
     private val lineDataFlow = rangeFlow.flatMapLatest { range ->
         val (startDate, endDate) = DateUtils.learningDateRange(days = range.days, zoneId = zoneId)
@@ -305,10 +329,47 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                 mlHeatmapData = mlInsights.heatmapData
             )
         }
+        .combine(fsrsSettingsFlow) { state, settings ->
+            state.copy(
+                fsrsEnabled = settings.first,
+                fsrsDesiredRetention = settings.second
+            )
+        }
+        .combine(fsrsInsightsFlow) { state, insights ->
+            state.copy(
+                fsrsHasData = insights.hasData,
+                fsrsAverageRetrievability = insights.averageRetrievability,
+                fsrsAverageStability = insights.averageStability,
+                fsrsDueCount = insights.dueCount,
+                fsrsLapseCount = insights.lapseCount,
+                fsrsNextIntervalDays = insights.nextIntervalDays,
+                fsrsHeatmapData = insights.heatmap
+            )
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StatsUiState())
 
     init {
         refreshForecast()
+        observeFsrsInsights()
+    }
+
+    private fun observeFsrsInsights() {
+        viewModelScope.launch {
+            combine(
+                repository.getActiveBookFlow(),
+                settingsRepository.settingsFlow
+            ) { book, settings -> book to settings }
+                .collectLatest { (book, settings) ->
+                    val rows = withContext(Dispatchers.IO) {
+                        book?.let { repository.getProgressByBook(it.id) } ?: emptyList()
+                    }
+                    fsrsInsightsFlow.value = buildFsrsInsights(
+                        rows = rows,
+                        now = System.currentTimeMillis(),
+                        retention = settings.desiredRetention
+                    )
+                }
+        }
     }
 
     fun updateRange(range: StatsRange) {
