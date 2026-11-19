@@ -43,6 +43,7 @@ tools/cardback-editor/__pycache__/
 tools/cardback-editor/.cardback_instance
 tools/rewrite-service/__pycache__/
 tools/rewrite-service/data/
+tools/rewrite-service/tests/_canary_data_*/
 artifacts-test/
 
 # 真机/模拟器数据库备份（含用户学习数据，不入库）
