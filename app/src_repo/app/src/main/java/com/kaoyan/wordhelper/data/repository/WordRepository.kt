@@ -26,6 +26,7 @@ import com.kaoyan.wordhelper.data.model.WordDraft
 import com.kaoyan.wordhelper.ml.core.SchedulingAdjustment
 import com.kaoyan.wordhelper.ml.integration.MLEnhancedScheduler
 import com.kaoyan.wordhelper.util.DateUtils
+import com.kaoyan.wordhelper.util.FsrsScheduler
 import com.kaoyan.wordhelper.util.Sm2Scheduler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -531,6 +532,8 @@ class WordRepository(private val database: AppDatabase) {
         wordId: Long,
         bookId: Long,
         rating: StudyRating,
+        fsrsEnabled: Boolean = true,
+        desiredRetention: Float = 0.90f,
         algorithmV4Enabled: Boolean = false,
         mlScheduler: MLEnhancedScheduler? = null,
         mlEnabled: Boolean = false,
@@ -540,31 +543,50 @@ class WordRepository(private val database: AppDatabase) {
     ) {
         database.withTransaction {
             val existing = progressDao.getProgress(wordId, bookId)
+            // v8：FSRS-5 主调度；关闭时整段回落到旧的 SM-2 + ML 分支。
+            val fsrs = if (fsrsEnabled) {
+                FsrsScheduler.schedule(
+                    current = existing,
+                    rating = rating,
+                    easy = false,
+                    desiredRetention = desiredRetention
+                )
+            } else {
+                null
+            }
             val schedule = Sm2Scheduler.schedule(
                 current = existing,
                 rating = rating,
                 algorithmV4Enabled = algorithmV4Enabled
             )
 
-            // ML微调
-            val mlAdjustment = mlScheduler?.adjust(
-                baseIntervalDays = schedule.intervalDays,
-                baseEaseFactor = schedule.easeFactor,
-                progress = existing,
-                sessionPosition = sessionPosition,
-                sessionTotal = sessionTotal,
-                mlEnabled = mlEnabled
-            )
-            val finalIntervalDays = mlAdjustment?.adjustedIntervalDays ?: schedule.intervalDays
-            val finalEaseFactor = if (mlAdjustment != null && mlAdjustment.confidence > 0.1f) {
-                mlAdjustment.adjustedEaseFactor
+            // ML微调（只服务旧分支；FSRS 分支不再叠加 ML）
+            val mlAdjustment = if (fsrs == null) {
+                mlScheduler?.adjust(
+                    baseIntervalDays = schedule.intervalDays,
+                    baseEaseFactor = schedule.easeFactor,
+                    progress = existing,
+                    sessionPosition = sessionPosition,
+                    sessionTotal = sessionTotal,
+                    mlEnabled = mlEnabled
+                )
             } else {
-                schedule.easeFactor
+                null
             }
-            val finalNextReviewTime = if (finalIntervalDays != schedule.intervalDays && finalIntervalDays > 0) {
-                Sm2Scheduler.nextReviewTimeByDays(finalIntervalDays)
-            } else {
-                schedule.nextReviewTime
+            val finalIntervalDays = fsrs?.intervalDays
+                ?: mlAdjustment?.adjustedIntervalDays
+                ?: schedule.intervalDays
+            val finalEaseFactor = when {
+                // FSRS 不产出 ease；保留旧值只为兼容旧字段与旧阅读逻辑。
+                fsrs != null -> existing?.easeFactor ?: 2.5f
+                mlAdjustment != null && mlAdjustment.confidence > 0.1f -> mlAdjustment.adjustedEaseFactor
+                else -> schedule.easeFactor
+            }
+            val finalNextReviewTime = when {
+                fsrs != null -> fsrs.nextReviewTime
+                finalIntervalDays != schedule.intervalDays && finalIntervalDays > 0 ->
+                    Sm2Scheduler.nextReviewTimeByDays(finalIntervalDays)
+                else -> schedule.nextReviewTime
             }
 
             val previousReviewCount = existing?.reviewCount ?: 0
@@ -598,8 +620,8 @@ class WordRepository(private val database: AppDatabase) {
                 id = existing?.id ?: 0,
                 wordId = wordId,
                 bookId = bookId,
-                status = schedule.status,
-                repetitions = schedule.repetitions,
+                status = fsrs?.status ?: schedule.status,
+                repetitions = fsrs?.repetitions ?: schedule.repetitions,
                 intervalDays = finalIntervalDays,
                 nextReviewTime = finalNextReviewTime,
                 easeFactor = finalEaseFactor,
@@ -610,7 +632,11 @@ class WordRepository(private val database: AppDatabase) {
                 lastEasyTime = existing?.lastEasyTime ?: 0L,
                 consecutiveCorrect = newConsecutiveCorrect,
                 avgResponseTimeMs = newAvgResponseTime,
-                lastReviewTime = now
+                lastReviewTime = now,
+                fsrsStability = fsrs?.stability ?: existing?.fsrsStability ?: 0f,
+                fsrsDifficulty = fsrs?.difficulty ?: existing?.fsrsDifficulty ?: 0f,
+                fsrsLapses = fsrs?.lapses ?: existing?.fsrsLapses ?: 0,
+                fsrsState = fsrs?.state ?: existing?.fsrsState ?: FsrsScheduler.STATE_NEW
             )
             if (existing != null) {
                 progressDao.update(progress)
@@ -645,6 +671,8 @@ class WordRepository(private val database: AppDatabase) {
         outcome: SpellingOutcome,
         attemptCount: Int,
         durationMillis: Long = 0L,
+        fsrsEnabled: Boolean = true,
+        desiredRetention: Float = 0.90f,
         algorithmV4Enabled: Boolean = false,
         mlScheduler: MLEnhancedScheduler? = null,
         mlEnabled: Boolean = false,
@@ -653,31 +681,55 @@ class WordRepository(private val database: AppDatabase) {
     ) {
         database.withTransaction {
             val existing = progressDao.getProgress(wordId, bookId)
+            // v8：拼写结果折算成 FSRS rating；PERFECT 额外按 easy 处理。
+            val fsrsRating = when (outcome) {
+                SpellingOutcome.PERFECT -> StudyRating.GOOD
+                SpellingOutcome.HINTED, SpellingOutcome.RETRY_SUCCESS -> StudyRating.HARD
+                SpellingOutcome.FAILED -> StudyRating.AGAIN
+            }
+            val fsrs = if (fsrsEnabled) {
+                FsrsScheduler.schedule(
+                    current = existing,
+                    rating = fsrsRating,
+                    easy = outcome == SpellingOutcome.PERFECT,
+                    desiredRetention = desiredRetention
+                )
+            } else {
+                null
+            }
             val schedule = Sm2Scheduler.scheduleSpelling(
                 current = existing,
                 outcome = outcome,
                 algorithmV4Enabled = algorithmV4Enabled
             )
 
-            // ML微调
-            val mlAdjustment = mlScheduler?.adjust(
-                baseIntervalDays = schedule.intervalDays,
-                baseEaseFactor = schedule.easeFactor,
-                progress = existing,
-                sessionPosition = sessionPosition,
-                sessionTotal = sessionTotal,
-                mlEnabled = mlEnabled
-            )
-            val finalIntervalDays = mlAdjustment?.adjustedIntervalDays ?: schedule.intervalDays
-            val finalEaseFactor = if (mlAdjustment != null && mlAdjustment.confidence > 0.1f) {
-                mlAdjustment.adjustedEaseFactor
+            // ML微调（只服务旧分支；FSRS 分支不再叠加 ML）
+            val mlAdjustment = if (fsrs == null) {
+                mlScheduler?.adjust(
+                    baseIntervalDays = schedule.intervalDays,
+                    baseEaseFactor = schedule.easeFactor,
+                    progress = existing,
+                    sessionPosition = sessionPosition,
+                    sessionTotal = sessionTotal,
+                    mlEnabled = mlEnabled
+                )
             } else {
-                schedule.easeFactor
+                null
             }
-            val finalNextReviewTime = if (finalIntervalDays != schedule.intervalDays && finalIntervalDays > 0) {
-                Sm2Scheduler.nextReviewTimeByDays(finalIntervalDays)
-            } else {
-                schedule.nextReviewTime
+            val finalIntervalDays = fsrs?.intervalDays
+                ?: mlAdjustment?.adjustedIntervalDays
+                ?: schedule.intervalDays
+            val finalEaseFactor = when {
+                // FSRS 不产出 ease；保留旧值只为兼容旧字段与旧阅读逻辑。
+                fsrs != null -> existing?.easeFactor ?: 2.5f
+                mlAdjustment != null && mlAdjustment.confidence > 0.1f -> mlAdjustment.adjustedEaseFactor
+                else -> schedule.easeFactor
+            }
+            val finalNextReviewTime = when {
+                fsrs != null -> fsrs.nextReviewTime
+                finalIntervalDays != schedule.intervalDays && finalIntervalDays > 0 ->
+                    Sm2Scheduler.nextReviewTimeByDays(finalIntervalDays)
+                else -> schedule.nextReviewTime
             }
 
             val previousReviewCount = existing?.reviewCount ?: 0
@@ -714,8 +766,8 @@ class WordRepository(private val database: AppDatabase) {
                 id = existing?.id ?: 0,
                 wordId = wordId,
                 bookId = bookId,
-                status = schedule.status,
-                repetitions = schedule.repetitions,
+                status = fsrs?.status ?: schedule.status,
+                repetitions = fsrs?.repetitions ?: schedule.repetitions,
                 intervalDays = finalIntervalDays,
                 nextReviewTime = finalNextReviewTime,
                 easeFactor = finalEaseFactor,
@@ -726,7 +778,11 @@ class WordRepository(private val database: AppDatabase) {
                 lastEasyTime = existing?.lastEasyTime ?: 0L,
                 consecutiveCorrect = newConsecutiveCorrect,
                 avgResponseTimeMs = newAvgResponseTime,
-                lastReviewTime = now
+                lastReviewTime = now,
+                fsrsStability = fsrs?.stability ?: existing?.fsrsStability ?: 0f,
+                fsrsDifficulty = fsrs?.difficulty ?: existing?.fsrsDifficulty ?: 0f,
+                fsrsLapses = fsrs?.lapses ?: existing?.fsrsLapses ?: 0,
+                fsrsState = fsrs?.state ?: existing?.fsrsState ?: FsrsScheduler.STATE_NEW
             )
             if (existing != null) {
                 progressDao.update(progress)

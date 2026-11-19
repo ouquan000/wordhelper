@@ -1,5 +1,6 @@
 package com.kaoyan.wordhelper.data.repository
 
+import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
 import com.kaoyan.wordhelper.data.dao.BookDao
@@ -9,12 +10,15 @@ import com.kaoyan.wordhelper.data.dao.RewriteQueueDao
 import com.kaoyan.wordhelper.data.dao.RewriteSkippedDao
 import com.kaoyan.wordhelper.data.dao.WordDao
 import com.kaoyan.wordhelper.data.dao.WordMemoryDao
+import com.kaoyan.wordhelper.data.entity.Book
 import com.kaoyan.wordhelper.data.entity.BookMemory
+import com.kaoyan.wordhelper.data.entity.Progress
 import com.kaoyan.wordhelper.data.entity.RewriteFeedback
 import com.kaoyan.wordhelper.data.entity.RewriteFeedbackRating
 import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
 import com.kaoyan.wordhelper.data.entity.RewriteSkippedResult
 import com.kaoyan.wordhelper.data.entity.RewriteStatus
+import com.kaoyan.wordhelper.data.entity.Word
 import com.kaoyan.wordhelper.data.entity.WordMemory
 import com.kaoyan.wordhelper.data.model.ApproachReview
 import com.kaoyan.wordhelper.data.model.ApproachRevision
@@ -128,7 +132,8 @@ internal fun buildRewriteRequest(
     model: String,
     instruction: String,
     now: Long,
-    newRequestId: String
+    newRequestId: String,
+    priority: Int = 0
 ): RewriteQueueItem {
     val prior = existing?.takeIf { it.wordId == wordId && it.bookId == bookId }
     val trimmed = instruction.trim()
@@ -136,7 +141,8 @@ internal fun buildRewriteRequest(
         prior.instruction == trimmed && prior.model == model &&
         DateUtils.currentLearningDate(prior.createdAt) == DateUtils.currentLearningDate(now)
     ) {
-        return prior.copy(updatedAt = now)
+        // 同一天同指令重复入队：保留原行，并保留更高优先级（数值更小者）。
+        return prior.copy(updatedAt = now, priority = minOf(prior.priority, priority))
     }
     return RewriteQueueItem(
         id = prior?.id ?: 0,
@@ -148,7 +154,8 @@ internal fun buildRewriteRequest(
         needsReinsert = prior?.needsReinsert == true,
         createdAt = prior?.takeIf { it.needsReinsert }?.createdAt ?: now,
         updatedAt = now,
-        requestId = newRequestId
+        requestId = newRequestId,
+        priority = priority
     )
 }
 
@@ -168,6 +175,10 @@ class RewriteRepository(
     private val bookDao: BookDao
 ) {
     private val gson = Gson()
+    /** v8：FSRS 记忆信号与自动换招的本地去重/冷却（旁路数据，丢了最多多重报一次）。 */
+    private val memorySignalPrefs by lazy {
+        settingsRepository.appContext.getSharedPreferences(MEMORY_SIGNAL_PREFS, Context.MODE_PRIVATE)
+    }
     private val syncMutex = Mutex()
     private val queueWriteMutex = Mutex()
     private var lastLegacyResultReplay = 0L
@@ -411,7 +422,8 @@ class RewriteRepository(
         word: String,
         model: String,
         instruction: String,
-        bookId: Long = 0L
+        bookId: Long = 0L,
+        priority: Int = 0
     ): Boolean {
         syncMutex.withLock {
             queueWriteMutex.withLock {
@@ -424,7 +436,8 @@ class RewriteRepository(
                         instruction = instruction,
                         model = model,
                         now = System.currentTimeMillis(),
-                        newRequestId = newRewriteRequestId(wordId, bookId)
+                        newRequestId = newRewriteRequestId(wordId, bookId),
+                        priority = priority
                     )
                 )
             }
@@ -433,6 +446,105 @@ class RewriteRepository(
         val status = queueDao.getForBook(wordId, bookId)?.status
         return status == RewriteStatus.QUEUED || status == RewriteStatus.DONE
     }
+
+    /**
+     * v8：把一次真实复习的记忆信号（retained / lapsed）报给电脑端。
+     *
+     * 纯旁路：连不上、没地址、服务端不认识这个接口都静默吞掉，绝不能影响作答。
+     * 同一个 (词, 书) 的 retained 只报一次；lapsed 24 小时内最多一条，避免每轮复习刷屏。
+     */
+    suspend fun reportMemorySignal(
+        wordId: Long,
+        bookId: Long,
+        word: String,
+        method: String,
+        event: String,
+        stability: Float,
+        difficulty: Float,
+        lapses: Int
+    ) {
+        runCatching {
+            val prefs = memorySignalPrefs
+            val now = System.currentTimeMillis()
+            if (event == EVENT_RETAINED) {
+                if (prefs.getBoolean(retainedKey(wordId, bookId), false)) return
+            } else if (event == EVENT_LAPSED) {
+                if (now - prefs.getLong(lapsedKey(wordId, bookId), 0L) < MEMORY_SIGNAL_MIN_INTERVAL_MS) return
+            }
+            // 服务端按 clientId 幂等：带按天分桶，lapsed 过 24h 冷却后才会新开一条，
+            // 同一天内的重试仍然会被吞成同一条，不会刷屏。
+            val bucket = now / 86_400_000L
+            val payload = gson.toJson(
+                mapOf(
+                    "clientId" to "fsrs-$wordId-$bookId-$event-$bucket",
+                    "word" to word,
+                    "bookId" to bookId,
+                    "method" to method,
+                    "event" to event,
+                    "stability" to stability,
+                    "difficulty" to difficulty,
+                    "lapses" to lapses
+                )
+            )
+            val outcome = send(
+                path = "/rewrite/memory-signal",
+                payload = payload,
+                attempts = 1,
+                respectRateLimit = true,
+                report = false
+            )
+            if (outcome.kind == RetryPolicy.Kind.OK) {
+                val editor = prefs.edit()
+                if (event == EVENT_RETAINED) {
+                    editor.putBoolean(retainedKey(wordId, bookId), true)
+                } else if (event == EVENT_LAPSED) {
+                    editor.putLong(lapsedKey(wordId, bookId), now)
+                }
+                editor.apply()
+            }
+        }
+    }
+
+    /**
+     * v8：多次遗忘 + 难度过高时，自动给这个词重排一版更直白的记忆思路。
+     *
+     * 已经在队列里 / 24 小时内换过招就跳过；入队失败同样静默。优先级 20 让这条
+     * 自动任务排在手点重写之后、普通补写之前（由 DAO 按 priority 升序读取）。
+     */
+    suspend fun maybeAutoRewriteAfterLapse(word: Word, book: Book, progress: Progress) {
+        runCatching {
+            val queued = queueDao.getVisibleForBook(word.id, book.id)
+            if (queued != null &&
+                (queued.status == RewriteStatus.PENDING || queued.status == RewriteStatus.QUEUED)
+            ) {
+                return
+            }
+            val prefs = memorySignalPrefs
+            val now = System.currentTimeMillis()
+            if (now - prefs.getLong(autoKey(word.id, book.id), 0L) < AUTO_REWRITE_COOLDOWN_MS) return
+            Log.d(
+                TAG,
+                "FSRS lapse trigger: word=${word.word} lapses=${progress.fsrsLapses} " +
+                    "difficulty=${progress.fsrsDifficulty}"
+            )
+            val model = runCatching { settingsRepository.rewriteModel() }.getOrDefault("")
+            val sent = enqueueAndSync(
+                wordId = word.id,
+                word = word.word,
+                model = model,
+                instruction = FSRS_LAPSE_INSTRUCTION,
+                bookId = book.id,
+                priority = AUTO_REWRITE_PRIORITY
+            )
+            if (sent) prefs.edit().putLong(autoKey(word.id, book.id), now).apply()
+        }
+    }
+
+    private fun retainedKey(wordId: Long, bookId: Long) = "retained_${wordId}_${bookId}"
+
+    private fun lapsedKey(wordId: Long, bookId: Long) = "lapsed_${wordId}_${bookId}"
+
+    private fun autoKey(wordId: Long, bookId: Long) = "auto_${wordId}_${bookId}"
 
     /** 已投递或还欠作答的任务不能通过取消删掉。 */
     suspend fun cancel(wordId: Long, bookId: Long = 0L): Boolean = syncMutex.withLock {
@@ -1752,5 +1864,23 @@ class RewriteRepository(
         private val POS_PREFIX = Regex("^([a-zA-Z]{1,5}(?:\\.[a-zA-Z]{1,5})?)\\.")
         const val NO_ADDRESS = "先去「我的」页填电脑地址"
         const val UNREACHABLE = "电脑没连上"
+
+        /** v8：记忆信号与遗忘自动换招的本地账本（只存本机，不与后端共享）。 */
+        private const val MEMORY_SIGNAL_PREFS = "fsrs_memory_signal"
+        private const val EVENT_RETAINED = "retained"
+        private const val EVENT_LAPSED = "lapsed"
+
+        /** retained 只报一次；lapsed 用 24 小时节流，避免每轮复习都发一条。 */
+        private const val MEMORY_SIGNAL_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000L
+
+        /** 自动换招的 24 小时冷却：同一词一天最多自动重排一次。 */
+        private const val AUTO_REWRITE_COOLDOWN_MS = 24 * 60 * 60 * 1000L
+
+        /** 自动换招的队列优先级：数值越小越先做；20 排在用户手点重写之后。 */
+        private const val AUTO_REWRITE_PRIORITY = 20
+
+        private const val FSRS_LAPSE_INSTRUCTION =
+            "FSRS 监测到该词真实复习多次遗忘（难度过高），请彻底废弃当前思路与方法，" +
+                "改用更直白、基于初高中熟词或一跳谐音的聪明室友小抄写法。"
     }
 }
