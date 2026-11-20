@@ -551,9 +551,12 @@ private fun ModelPicker(
         MaterialTheme(
             colorScheme = MaterialTheme.colorScheme.copy(
                 surface = menuSurface,
+                surfaceContainerLowest = menuSurface,
+                surfaceContainerLow = menuSurface,
                 surfaceContainer = menuSurface,
                 surfaceContainerHigh = menuSurface,
-                surfaceContainerHighest = menuSurface
+                surfaceContainerHighest = menuSurface,
+                surfaceTint = menuSurface
             )
         ) {
             DropdownMenu(
