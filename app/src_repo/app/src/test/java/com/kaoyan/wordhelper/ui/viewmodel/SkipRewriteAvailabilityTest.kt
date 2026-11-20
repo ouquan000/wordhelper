@@ -30,10 +30,12 @@ class SkipRewriteAvailabilityTest {
     )
 
     @Test
-    fun availableForSameBookPendingResult() {
+    fun pendingAndQueuedMarksMakeSkipAvailable() {
+        // 离线点「重写」时 markRewrite 也会先落本地队列，留下的是 PENDING；
+        // 联网补发成功后变 QUEUED。两种状态都必须让「跳过」入口可用。
         assertEquals(
             SkipRewriteAvailability.AVAILABLE,
-            skipRewriteAvailability(11L, 2L, mark())
+            skipRewriteAvailability(11L, 2L, mark(status = RewriteStatus.QUEUED))
         )
         assertEquals(
             SkipRewriteAvailability.AVAILABLE,
