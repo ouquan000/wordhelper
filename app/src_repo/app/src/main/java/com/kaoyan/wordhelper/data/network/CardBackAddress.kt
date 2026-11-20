@@ -39,14 +39,23 @@ object CardBackAddress {
     }
 
     /**
-     * 轮试顺序：本次会话里连通过的那个 → 手填的地址 → 上次成功的地址。
+     * 轮试顺序：本次会话里连通过的那个 → 手填的地址 → 云端域名（可选）→ 上次成功的地址。
      *
-     * 同一个 origin 只留一次（用户手填的和上次成功的经常是同一个）；
+     * 同一个 origin 只留一次（用户手填的、云端域名和上次成功的经常是同一个）；
      * 空值直接跳过，全空时返回空列表 = 没配地址。
+     *
+     * [cloudFallback] 是 1.4.8 的域名兜底（例如 `https://sync.ouquansdiary.cn`）：
+     * 只有调用方确认「已配对、带 token」时才传，否则保持 null。它排在 lastGood 之前，
+     * 因为 lastGood 很可能是已经失效的局域网地址，而域名是最后一个还能走通的出口。
      */
-    fun candidates(active: String?, current: String?, lastGood: String?): List<String> {
-        val result = LinkedHashSet<String>(3)
-        listOf(active, current, lastGood).forEach { raw ->
+    fun candidates(
+        active: String?,
+        current: String?,
+        lastGood: String?,
+        cloudFallback: String? = null
+    ): List<String> {
+        val result = LinkedHashSet<String>(4)
+        listOf(active, current, cloudFallback, lastGood).forEach { raw ->
             originOf(raw)?.let(result::add)
         }
         return result.toList()
@@ -58,7 +67,7 @@ object CardBackAddress {
      * 优先「本次会话已经连通过的」，其次手填的，最后才是上次成功的。
      * 手填的是用户最近一次明确意图；last-good 只有在本次会话没连通过、手填又为空/不可解析时
      * 才顶上（例如清空了输入框，仍然记得上次能用的地址）。
-     * 轮试路径不受影响：那边三个候选都会走到。
+     * 轮试路径不受影响：那边所有候选（含可选的云端域名）都会走到。
      */
     fun preferred(active: String?, current: String?, lastGood: String?): String? {
         return originOf(active) ?: originOf(current) ?: originOf(lastGood)

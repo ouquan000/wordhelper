@@ -48,8 +48,9 @@ private const val DEFAULT_CARD_BACK_INSTANCE_ID = ""
 // 只应由 HTTPS 配置地址的 /identity（tls_spki_sha256）或用户手填写入。
 private const val DEFAULT_CARD_BACK_TLS_PIN = ""
 private const val DEFAULT_CARD_BACK_TLS_PORT = 8443
-// 同 WiFi 自动直连默认关闭：即使走 HTTPS + SPKI pin，也应由用户在设置页显式开启。
-private const val DEFAULT_CARD_BACK_LAN_AUTO = false
+// 1.4.8：同 WiFi 自动直连默认开启。resolveLan 仍要求 instanceId + token + pin，
+// 未配对（缺 instanceId/pin）不会自动发现，也不会退回明文 HTTP。
+private const val DEFAULT_CARD_BACK_LAN_AUTO = true
 private val Context.dataStore by preferencesDataStore(name = "user_settings")
 
 data class UserSettings(
@@ -96,7 +97,8 @@ data class UserSettings(
     val cardBackInstanceId: String = DEFAULT_CARD_BACK_INSTANCE_ID,
     /**
      * 1.4.7.2 W4：是否允许同 WiFi 自动发现并优先走局域网 HTTPS。
-     * 默认关闭，必须由用户显式开启；没有 pin 时发现会直接拒绝，不会退回明文 HTTP。
+     * 1.4.8 起默认开启；但只有 instanceId + pin 都在时才会真正发现，
+     * 未配对不会自动发现，没有 pin 时直接拒绝，不会退回明文 HTTP。
      */
     val cardBackLanAuto: Boolean = DEFAULT_CARD_BACK_LAN_AUTO,
     /**
@@ -403,7 +405,7 @@ class SettingsRepository(private val context: Context) {
 
     /**
      * 1.4.7.2 W4-B：同 WiFi 自动直连开关。
-     * 默认关闭；开启后设置页会显示「仅可信家庭 WiFi」的风险提示。
+     * 1.4.8 起默认开启；未配对时即使开着也不会自动发现，设置页仍保留「仅可信家庭 WiFi」的提示。
      */
     suspend fun updateCardBackLanAuto(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[KEY_CARD_BACK_LAN_AUTO] = enabled }

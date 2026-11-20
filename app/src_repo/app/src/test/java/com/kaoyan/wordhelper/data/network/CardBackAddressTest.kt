@@ -72,6 +72,58 @@ class CardBackAddressTest {
     }
 
     @Test
+    fun `candidates try cloud fallback after manual and before last good`() {
+        val result = CardBackAddress.candidates(
+            active = "192.168.1.9:8765",
+            current = "192.168.1.5:8765",
+            lastGood = "192.168.1.7:8765",
+            cloudFallback = "https://sync.ouquansdiary.cn"
+        )
+        assertEquals(
+            listOf(
+                "http://192.168.1.9:8765",
+                "http://192.168.1.5:8765",
+                "https://sync.ouquansdiary.cn",
+                "http://192.168.1.7:8765"
+            ),
+            result
+        )
+    }
+
+    @Test
+    fun `candidates dedupe cloud fallback against the same manual address`() {
+        val result = CardBackAddress.candidates(
+            active = null,
+            current = "https://sync.ouquansdiary.cn/cardback.json",
+            lastGood = null,
+            cloudFallback = "https://sync.ouquansdiary.cn/"
+        )
+        assertEquals(listOf("https://sync.ouquansdiary.cn"), result)
+    }
+
+    @Test
+    fun `candidates skip cloud fallback when it is null or blank`() {
+        // 未配对（没有 token）时调用方传 null：候选里不能凭空多出域名。
+        assertEquals(
+            listOf("http://192.168.1.5:8765"),
+            CardBackAddress.candidates(
+                active = null,
+                current = "192.168.1.5:8765",
+                lastGood = null,
+                cloudFallback = null
+            )
+        )
+        assertTrue(
+            CardBackAddress.candidates(
+                active = null,
+                current = null,
+                lastGood = null,
+                cloudFallback = ""
+            ).isEmpty()
+        )
+    }
+
+    @Test
     fun `candidates dedupe the same address written differently`() {
         val result = CardBackAddress.candidates(
             active = null,
