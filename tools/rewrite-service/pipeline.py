@@ -184,13 +184,20 @@ def _prompt(name):
 
 
 def prompt_hash():
-    """三个提示词的稳定指纹；换提示词后旧结果不能冒充新版本复用。"""
+    """提示词 + 硬规则文件的稳定指纹；任一变化都不能复用旧成品。"""
     digest = hashlib.sha256()
     for name in ("generate", "polish", "judge"):
         digest.update(name.encode("ascii"))
         digest.update(b"\0")
         digest.update(_prompt(name).encode("utf-8"))
         digest.update(b"\0")
+    # rules_hard 改了，旧结果可能已不满足新硬门槛；一起纳指纹，宁可少复用。
+    try:
+        with open(os.path.join(HERE, "rules_hard.py"), "r", encoding="utf-8-sig") as fh:
+            digest.update(b"rules_hard\0")
+            digest.update(fh.read().encode("utf-8"))
+    except OSError:
+        pass
     return digest.hexdigest()
 
 
