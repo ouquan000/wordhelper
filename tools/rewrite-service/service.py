@@ -23,6 +23,7 @@ if HERE not in sys.path:
 
 import history  # noqa: E402
 import exemplars  # noqa: E402
+import batch_pipeline  # noqa: E402
 import pipeline  # noqa: E402
 import profile  # noqa: E402
 import providers  # noqa: E402
@@ -51,6 +52,10 @@ def _default_concurrency():
 
 CONCURRENCY = _int_env("REWRITE_CONCURRENCY", _default_concurrency())
 REUSE_HISTORY = os.environ.get("REUSE_HISTORY", "1").strip().lower() not in (
+    "0", "false", "no", "off",
+)
+BATCH_SIZE = batch_pipeline.batch_size()
+BATCH_ENABLED = os.environ.get("BATCH_MODE", "1").strip().lower() not in (
     "0", "false", "no", "off",
 )
 MAX_LOG_BYTES = 2 * 1024 * 1024
@@ -176,14 +181,166 @@ def _work(item):
         log("[%s] 本条用时 %.1fs" % (item["word"], time.time() - started))
 
 
+def _finish_reuse(item, reused, prompt_hash, instruction_hash):
+    store = _state["store"]
+    meta = {
+        "method": reused.get("method") or "",
+        "scores": reused.get("scores") or {},
+        "attempts": 0,
+        "unverified": False,
+        "reason": "复用历史结果",
+        "promptHash": prompt_hash,
+        "instructionHash": instruction_hash,
+        "reused": True,
+        "reuseOf": reused.get("seq"),
+    }
+    entry = store.finish_ok(item, reused.get("approach") or [], meta)
+    if entry:
+        log("[%s] 复用历史 seq=%s -> 新 seq=%s（未调用模型）" % (
+            item["word"], reused.get("seq"), entry["seq"]))
+    return entry
+
+
+def _claim_batch(limit):
+    """先等一条，再尽量多抓几条组成小批；抓不到就按实际条数跑。"""
+    store = _state["store"]
+    first = store.claim(60)
+    if first is None:
+        return []
+    items = [first]
+    while len(items) < limit:
+        nxt = store.claim(0.05)
+        if nxt is None:
+            break
+        items.append(nxt)
+    return items
+
+
+def _work_batch(items):
+    """小批量通道：批量 generate + 批量 judge，坏一条只回退那一条。
+
+    polish 仍是单条：它只改文字，批量收益小，且失败隔离必须精确到词。
+    任何批量/单项异常都交给 _work(item) 走原有单词精修通道，不拖累同批。
+    """
+    store = _state["store"]
+    prepared = []
+    for raw in items:
+        item = dict(raw)
+        item["history"] = history.build(
+            store.data_dir, item.get("word") or "", item.get("instruction") or "", scope=item,
+        )
+        prompt_hash = pipeline.prompt_hash()
+        instruction_hash = pipeline.instruction_hash(item)
+        if REUSE_HISTORY:
+            reused = store.find_reusable_result(item, prompt_hash, instruction_hash)
+            if reused:
+                _finish_reuse(item, reused, prompt_hash, instruction_hash)
+                continue
+        prepared.append((item, prompt_hash, instruction_hash))
+    if not prepared:
+        return
+
+    log("批处理 %d 词：%s" % (len(prepared), "、".join(i["word"] for i, _, _ in prepared)))
+    for item, _, _ in prepared:
+        try:
+            store.set_stage(item["clientId"], "generate")
+        except Exception:  # noqa: BLE001 - 埋点别拖垮生成
+            pass
+    try:
+        drafts = batch_pipeline.generate_batch([item for item, _, _ in prepared])
+    except Exception as exc:  # noqa: BLE001 - 批通道坏了整批回退单条
+        log("批生成失败，整批回退单条：%s" % str(exc)[:200])
+        for item, _, _ in prepared:
+            _work(item)
+        return
+
+    ready = []
+    fallback = []
+    for item, prompt_hash, instruction_hash in prepared:
+        word = item["word"]
+        draft = drafts.get(word) or drafts.get(word.casefold()) or drafts.get(word.lower())
+        if not isinstance(draft, dict):
+            fallback.append((item, prompt_hash, instruction_hash))
+            continue
+        try:
+            store.set_stage(item["clientId"], "polish")
+            approach = pipeline.polish(item, draft)
+            bans = pipeline.banned_terms(item.get("instruction"))
+            violations = list(draft.get("violations") or [])
+            if bans:
+                for hit in pipeline._text_hits(bans, approach, allow_last_note=True):
+                    if hit not in violations:
+                        violations.append(hit)
+            hard = pipeline.rules_hard.check(
+                approach,
+                instruction=str(item.get("instruction") or ""),
+                banned_terms=[ban["needle"] for ban in bans] if bans else None,
+            )
+            if hard.ok and not violations:
+                ready.append((item, draft, approach, prompt_hash, instruction_hash))
+            else:
+                fallback.append((item, prompt_hash, instruction_hash))
+        except Exception as exc:  # noqa: BLE001 - 单条润色坏了只回退该词
+            log("[%s] 批润色失败，回退单条：%s" % (word, str(exc)[:160]))
+            fallback.append((item, prompt_hash, instruction_hash))
+
+    if ready:
+        try:
+            judged = batch_pipeline.judge_batch(
+                [item for item, _, _, _, _ in ready],
+                {item["word"]: draft for item, draft, _, _, _ in ready},
+                {item["word"]: approach for item, _, approach, _, _ in ready},
+            )
+        except Exception as exc:  # noqa: BLE001 - 批评审坏了整批回退
+            log("批评审失败，整批回退单条：%s" % str(exc)[:200])
+            judged = {}
+        for item, draft, approach, prompt_hash, instruction_hash in ready:
+            result = judged.get(item["word"]) or judged.get(item["word"].casefold())
+            if result is None:
+                fallback.append((item, prompt_hash, instruction_hash))
+                continue
+            scores, issues, intent, same_method, history_repeat = result
+            binary = getattr(result, "binary", None)
+            if not pipeline._passed(
+                item, scores, intent, same_method, history_repeat,
+                binary=binary, hard_ok=True,
+            ):
+                fallback.append((item, prompt_hash, instruction_hash))
+                continue
+            meta = {
+                "method": draft.get("method") or "",
+                "scores": scores,
+                "attempts": 1,
+                "unverified": False,
+                "reason": "",
+                "promptHash": prompt_hash,
+                "instructionHash": instruction_hash,
+            }
+            if store.finish_ok(item, approach, meta):
+                log("[%s] 批完成（未回退）" % item["word"])
+
+    for item, _, _ in fallback:
+        _work(item)
+
+
 def _worker(index):
     store = _state["store"]
     while True:
-        item = store.claim(60)
-        if item is None:
-            log("工人 %d 退出" % index)
-            return
-        _work(item)
+        if BATCH_ENABLED and BATCH_SIZE > 1:
+            items = _claim_batch(BATCH_SIZE)
+            if not items:
+                log("工人 %d 退出" % index)
+                return
+            if len(items) == 1:
+                _work(items[0])
+            else:
+                _work_batch(items)
+        else:
+            item = store.claim(60)
+            if item is None:
+                log("工人 %d 退出" % index)
+                return
+            _work(item)
 
 
 # ------------------------------------------------------------------ 生命周期
