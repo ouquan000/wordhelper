@@ -141,11 +141,11 @@ class WbGateTest(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads), "并发线程未退出")
         return max_active
 
-    def test_default_slots_is_five(self):
-        self.assertEqual(wb_gate.slot_count(), 5)
+    def test_default_slots_is_six(self):
+        self.assertEqual(wb_gate.slot_count(), 6)
         state = wb_gate.status()
-        self.assertEqual(state["slots"], 5)
-        self.assertEqual(state["effectiveLimit"], 5)
+        self.assertEqual(state["slots"], 6)
+        self.assertEqual(state["effectiveLimit"], 6)
         self.assertEqual(state["waitTimeout"], 300.0)
 
     def test_pool_allows_three_parallel_slots(self):

@@ -47,7 +47,7 @@ def _default_concurrency():
     try:
         return int(wb_gate.slot_count())
     except (AttributeError, TypeError, ValueError):
-        return _int_env("WB_GATE_SLOTS", 5)
+        return _int_env("WB_GATE_SLOTS", 6)
 
 
 CONCURRENCY = _int_env("REWRITE_CONCURRENCY", _default_concurrency())
@@ -55,7 +55,7 @@ REUSE_HISTORY = os.environ.get("REUSE_HISTORY", "1").strip().lower() not in (
     "0", "false", "no", "off",
 )
 BATCH_SIZE = batch_pipeline.batch_size()
-BATCH_ENABLED = os.environ.get("BATCH_MODE", "1").strip().lower() not in (
+BATCH_ENABLED = os.environ.get("BATCH_MODE", "0").strip().lower() not in (
     "0", "false", "no", "off",
 )
 MAX_LOG_BYTES = 2 * 1024 * 1024
@@ -201,13 +201,18 @@ def _finish_reuse(item, reused, prompt_hash, instruction_hash):
     return entry
 
 
-def _claim_batch(limit):
-    """先等一条，再尽量多抓几条组成小批；抓不到就按实际条数跑。"""
+def _claim_batch(limit, claimed=None):
+    """先等一条，再尽量多抓几条组成小批；抓不到就按实际条数跑。
+
+    claimed 由调用方传入时把每条认领立即记进去：中途 claim 抛异常，_worker
+    也能看到本轮已经拿到的任务并逐个释放，不会留下僵尸 running。
+    """
     store = _state["store"]
+    items = claimed if claimed is not None else []
     first = store.claim(60)
     if first is None:
-        return []
-    items = [first]
+        return items
+    items.append(first)
     while len(items) < limit:
         nxt = store.claim(0.05)
         if nxt is None:
@@ -239,6 +244,17 @@ def _work_batch(items):
         prepared.append((item, prompt_hash, instruction_hash))
     if not prepared:
         return
+
+    # 批量通道也要按本轮任务重设优先级：providers 的优先级是 thread-local，
+    # 复用上一单残留值会让前台批被 foreground 阶段误挡（或让离线批冒充前台）。
+    # 一批可能混有不同优先级，取最高的一个，避免把前台任务挡在门外。
+    priorities = []
+    for item, _, _ in prepared:
+        try:
+            priorities.append(int(item.get("priority", 100)))
+        except (TypeError, ValueError):
+            priorities.append(100)
+    providers.set_task_priority(max(priorities))
 
     log("批处理 %d 词：%s" % (len(prepared), "、".join(i["word"] for i, _, _ in prepared)))
     for item, _, _ in prepared:
@@ -326,9 +342,13 @@ def _work_batch(items):
 def _worker(index):
     store = _state["store"]
     while True:
+        # 整轮包住：_claim_batch / _work / _work_batch 任何一步抛异常，
+        # 都把本轮已经拿到、仍停在 running 的任务退回 retry_wait，
+        # 杜绝 chair 类僵尸 running 占着工位却没人再管。
+        claimed = []
         try:
             if BATCH_ENABLED and BATCH_SIZE > 1:
-                items = _claim_batch(BATCH_SIZE)
+                items = _claim_batch(BATCH_SIZE, claimed)
                 if not items:
                     log("工人 %d 退出" % index)
                     return
@@ -341,9 +361,21 @@ def _worker(index):
                 if item is None:
                     log("工人 %d 退出" % index)
                     return
+                claimed.append(item)
                 _work(item)
         except Exception as exc:  # noqa: BLE001 - 工人不能因为一次抢单/落盘抖动就永久消失
             log("工人 %d 异常，1s 后继续：%r" % (index, exc))
+            for item in claimed:
+                try:
+                    released = store.release_claim(item, "工人异常：%r" % (exc,))
+                except Exception as release_exc:  # noqa: BLE001 - 一条释放失败不能挡住其余
+                    log("[%s] 释放认领失败：%r" % (item.get("word") or "?", release_exc))
+                    continue
+                # release_claim 只在 generation 未变且 state 仍 running 时生效，
+                # 已经完成的同轮任务会返回 None，这里不会误释放。
+                if released:
+                    log("[%s] 工人异常，已释放回重试：%s" % (
+                        item.get("word") or "?", released.get("nextRunAt", "")))
             time.sleep(1.0)
 
 

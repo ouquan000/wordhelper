@@ -26,6 +26,9 @@ SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
 # 质量不合格/传输失败后的退避：不设总次数，间隔逐级拉长，避免把网关打穿。
 RETRY_DELAYS = (30, 120, 300, 900, 1800, 3600)
+# 工人整轮异常时把 running 退回队列的短退避：不是这条词本身的失败，
+# 只是当前线程没跑完，稍等就让别的工人接手，别按失败次数长退避。
+RELEASE_DELAY_SECONDS = 5
 
 
 def _priority_value(value, default=100):
@@ -43,6 +46,12 @@ def _retry_at(failures):
     """第 N 次失败后多久再试；超出表长就停在最后一档。"""
     index = max(0, min(int(failures or 1) - 1, len(RETRY_DELAYS) - 1))
     return (datetime.now().astimezone() + timedelta(seconds=RETRY_DELAYS[index])).isoformat(
+        timespec="seconds"
+    )
+
+
+def _seconds_from_now(seconds):
+    return (datetime.now().astimezone() + timedelta(seconds=seconds)).isoformat(
         timespec="seconds"
     )
 
@@ -697,6 +706,33 @@ class Store:
             self._cond.notify_all()
             return {"state": "retry_wait", "failures": failures, "nextRunAt": next_at}
 
+    def release_claim(self, item, reason="工人异常"):
+        """工人本轮异常：把还处于 running 的认领退回重试，杜绝僵尸 running。
+
+        只在 generation 未变且记录仍是 running 时生效：本轮已经 finish_ok /
+        finish_retry / 被 stop 的任务不能被一次迟到的释放覆盖。attempts 保留，
+        面板上仍能看到真实尝试次数；nextRunAt 用短退避，让别的工人很快接手。
+        """
+        with self._cond:
+            live = self._find((item or {}).get("clientId"))
+            if live is None or not self._same_generation(item, live):
+                return None
+            if live.get("state") != "running":
+                return None
+            reason = str(reason or "工人异常")[:400]
+            next_at = _seconds_from_now(RELEASE_DELAY_SECONDS)
+            live.update(
+                state="retry_wait",
+                stage="",
+                error=reason,
+                lastReason=reason,
+                nextRunAt=next_at,
+                updatedAt=_now(),
+            )
+            self._save_queue()
+            self._cond.notify_all()
+            return {"state": "retry_wait", "nextRunAt": next_at}
+
     def stop(self, word="", client_id=""):
         """停止：待运行、等重试、运行中的都标 stopped；运行中的靠 generation+1 丢晚到结果。"""
         with self._cond:
@@ -836,8 +872,7 @@ class Store:
         word = str((item or {}).get("word") or "")
         if not word:
             return None
-        want_book_id = int((item or {}).get("bookId") or 0)
-        want_book = str((item or {}).get("book") or "")
+        want_book_id, want_book = book_scope(item)
         want_model = str((item or {}).get("model") or "")
         with self._lock:
             record = self.results.get(word) or {"entries": []}
@@ -850,9 +885,20 @@ class Store:
                     continue
                 if str(entry.get("instructionHash") or "") != instruction_hash:
                     continue
-                entry_book_id = int(entry.get("bookId") or 0)
-                entry_book = str(entry.get("book") or "")
-                if entry_book_id != want_book_id and entry_book != want_book:
+                entry_book_id, entry_book = book_scope(entry)
+                # 精确书范围：知道 ID 就按 ID（同时知道书名时两者都要等），
+                # 只剩书名按书名，两者都空只认 (0, "")。不能用「ID 或书名
+                # 任一相等」——bookId=0 / book="" 的空值会跨书误命中。
+                if want_book_id and want_book:
+                    if entry_book_id != want_book_id or entry_book != want_book:
+                        continue
+                elif want_book_id:
+                    if entry_book_id != want_book_id:
+                        continue
+                elif want_book:
+                    if entry_book != want_book:
+                        continue
+                elif entry_book_id != 0 or entry_book:
                     continue
                 found = dict(entry)
                 found["approach"] = list(entry.get("approach") or [])
