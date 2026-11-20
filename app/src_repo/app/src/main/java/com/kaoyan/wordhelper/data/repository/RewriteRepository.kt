@@ -1549,11 +1549,16 @@ class RewriteRepository(
                 lanPort = lan.port
             }
         }
+        // 1.4.8：只有已配对（有 token）才把公网域名作为兜底候选。
+        // 没 token 时强行请求域名只会换回一个无意义的 401，不如直接报「没配置地址」。
+        // 域名走系统信任，不拿 LAN 的 SPKI pin 校验证书（httpClientFor 按 origin 区分）。
+        val cloudFallback = CLOUD_CARD_BACK_URL.takeIf { settings.cardBackToken.isNotBlank() }
         val origins = if (rotate) {
             CardBackAddress.candidates(
                 active = activeOrigin,
                 current = settings.cardBackUrl,
-                lastGood = settings.cardBackLastGoodUrl
+                lastGood = settings.cardBackLastGoodUrl,
+                cloudFallback = cloudFallback
             )
         } else {
             listOfNotNull(
@@ -1820,6 +1825,13 @@ class RewriteRepository(
         /** HTTPS 配置地址的 TLS 锚点刷新间隔；pin 轮换时不必等下次冷启动。 */
         private const val ANCHOR_REFRESH_MS = 10 * 60_000L
         private const val DEFAULT_TLS_PORT = 8443
+
+        /**
+         * 1.4.8：局域网不通时的公网兜底域名。
+         * 只在已配对（cardBackToken 非空）时进候选，避免未配对先撞 401；
+         * 域名证书走系统信任，不受同一台电脑的 LAN SPKI pin 影响。
+         */
+        private const val CLOUD_CARD_BACK_URL = "https://sync.ouquansdiary.cn"
 
         /** /health 能力清单里重写链路真正依赖的两项。 */
         private const val CAP_REWRITE = "rewrite"
