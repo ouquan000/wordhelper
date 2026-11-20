@@ -499,7 +499,7 @@ private fun ProgressRow(progress: RewriteProgressUi?) {
 }
 
 private fun progressLabel(fraction: Float?, failed: Boolean, offline: Boolean): String = when {
-    offline -> "等电脑上线（连不上就重贴那一行）"
+    offline -> "已记下，等电脑上线后自动重写"
     failed -> "重写失败"
     fraction == null -> "生成中…"
     else -> "${(fraction * 100).roundToInt()}%"
@@ -548,7 +548,14 @@ private fun ModelPicker(
         // 卡背的 HoloCardTheme 把 surface 改成了 35% 白，菜单沿用默认色会透出正文。
         // 用局部 MaterialTheme 覆盖 surface：亮色纯白，暗色不透明深灰。
         val menuSurface = if (LocalAppDarkTheme.current) Color(0xFF1C1F26) else Color.White
-        MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(surface = menuSurface)) {
+        MaterialTheme(
+            colorScheme = MaterialTheme.colorScheme.copy(
+                surface = menuSurface,
+                surfaceContainer = menuSurface,
+                surfaceContainerHigh = menuSurface,
+                surfaceContainerHighest = menuSurface
+            )
+        ) {
             DropdownMenu(
                 expanded = open,
                 onDismissRequest = { open = false },
