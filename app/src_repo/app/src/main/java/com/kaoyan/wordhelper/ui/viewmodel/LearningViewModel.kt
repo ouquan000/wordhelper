@@ -655,12 +655,11 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         pendingTerminalSync = true
         _rewriteProgress.value = null
         viewModelScope.launch {
-            if (!rewriteRepository.hasAddress()) {
-                _message.value = RewriteRepository.NO_ADDRESS
-                return@launch
-            }
-            // W3：只有真的落了队列才锁存「这次停留可以跳过」；没配地址时不能留下
-            // 一个没有 mark 的幽灵按钮。生成完成（DONE）也保持位置，换词由 updateQueue 清。
+            // 1.4.8v1：不再因为「没填电脑地址」提前 return。enqueueAndSync 内部是
+            // 「先 queueDao.upsert 落本地，再 sync() 试发」；离线时 sync 失败但 PENDING
+            // 行已经留下，跳过入口才有依据。否则没地址连 mark 都没有，点重写完全没反应。
+            // W3：先确认还是同一张卡，再锁存「这次停留可以跳过」；换词/换书后不能锁。
+            // 生成完成（DONE）也保持位置，换词由 updateQueue 清。
             if (_currentWord.value?.id != word.id || (activeBook.value?.id ?: 0L) != bookId) return@launch
             _skipRewriteLatchedWordId.value = word.id
             val sent = rewriteRepository.enqueueAndSync(
@@ -671,8 +670,14 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 bookId = bookId
             )
             if (!sent) {
-                _message.value = if (rewriteRepository.consumeAuthFailure()) CardbackAuth.HINT
-                else "已记下，等电脑端可以处理时自动发送"
+                // 没地址/电脑没开都只是「已记下」；只有确实带了口令、且这次请求
+                // 真被 401 拦下时，才提示重粘配对行，别把离线误报成口令错。
+                val authFailed = rewriteRepository.consumeAuthFailure()
+                val hasToken = runCatching {
+                    CardbackAuth.headerValue(settingsRepository.settingsFlow.first().cardBackToken) != null
+                }.getOrDefault(false)
+                _message.value = if (authFailed && hasToken) CardbackAuth.HINT
+                else "已记下，等电脑上线后自动重写"
             }
         }
     }
