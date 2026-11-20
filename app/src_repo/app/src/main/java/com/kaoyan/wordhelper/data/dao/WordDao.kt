@@ -7,6 +7,7 @@ import androidx.room.Query
 import com.kaoyan.wordhelper.data.entity.BookWordContent
 import com.kaoyan.wordhelper.data.entity.Word
 import com.kaoyan.wordhelper.data.entity.WordEntity
+import com.kaoyan.wordhelper.data.model.PresetContentRow
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -150,6 +151,23 @@ interface WordDao {
            WHERE c.book_id = :bookId"""
     )
     suspend fun getWordKeysByBook(bookId: Long): List<String>
+
+    /**
+     * 预设书内容指纹用的正文投影：只取 upsert 会覆盖的列，按词键对齐。
+     * 词数不变但释义/例句改过的书，靠它才能识别出「需要刷新」。
+     */
+    @Query(
+        """SELECT w.word_key AS wordKey,
+                  IFNULL(c.meaning, '') AS meaning,
+                  IFNULL(c.example, '') AS example,
+                  IFNULL(c.phrases, '') AS phrases,
+                  IFNULL(c.synonyms, '') AS synonyms,
+                  IFNULL(c.rel_words, '') AS relWords
+           FROM tb_book_word_content c
+           INNER JOIN tb_word w ON c.word_id = w.id
+           WHERE c.book_id = :bookId"""
+    )
+    suspend fun getBookContentForFingerprint(bookId: Long): List<PresetContentRow>
 
     @Query("SELECT DISTINCT book_id FROM tb_book_word_content WHERE word_id = :wordId")
     suspend fun getBookIdsByWordId(wordId: Long): List<Long>
