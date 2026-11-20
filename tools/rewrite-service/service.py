@@ -31,7 +31,28 @@ import wb_gate  # noqa: E402
 
 DATA_DIR = os.environ.get("REWRITE_DATA_DIR") or os.path.join(HERE, "data")
 LOG_PATH = os.path.join(DATA_DIR, "logs", "service.log")
-CONCURRENCY = 2  # 两个工人：够用，也不至于把网关打满（spec §4.2）
+
+
+def _int_env(name, default, low=1, high=64):
+    try:
+        value = int(str(os.environ.get(name, default)).strip())
+    except (TypeError, ValueError):
+        value = default
+    return max(low, min(high, value))
+
+
+# 工人数默认跟 gate 槽位对齐；两者分开配只会让一半工人堵在锁上。
+def _default_concurrency():
+    try:
+        return int(wb_gate.slot_count())
+    except (AttributeError, TypeError, ValueError):
+        return _int_env("WB_GATE_SLOTS", 5)
+
+
+CONCURRENCY = _int_env("REWRITE_CONCURRENCY", _default_concurrency())
+REUSE_HISTORY = os.environ.get("REUSE_HISTORY", "1").strip().lower() not in (
+    "0", "false", "no", "off",
+)
 MAX_LOG_BYTES = 2 * 1024 * 1024
 CAPABILITIES = ("rewrite_scoped",)
 
@@ -86,6 +107,29 @@ def _work(item):
         item["history"] = history.build(
             store.data_dir, item.get("word") or "", item.get("instruction") or "", scope=item,
         )
+        # 同词历史复用：提示词/用户原话/模型/书全一致才命中。默认开，
+        # REUSE_HISTORY=0 可关掉做全量重跑对照。
+        prompt_hash = pipeline.prompt_hash()
+        instruction_hash = pipeline.instruction_hash(item)
+        if REUSE_HISTORY:
+            reused = store.find_reusable_result(item, prompt_hash, instruction_hash)
+            if reused:
+                meta = {
+                    "method": reused.get("method") or "",
+                    "scores": reused.get("scores") or {},
+                    "attempts": 0,
+                    "unverified": False,
+                    "reason": "复用历史结果",
+                    "promptHash": prompt_hash,
+                    "instructionHash": instruction_hash,
+                    "reused": True,
+                    "reuseOf": reused.get("seq"),
+                }
+                entry = store.finish_ok(item, reused.get("approach") or [], meta)
+                if entry:
+                    log("[%s] 复用历史 seq=%s -> 新 seq=%s（未调用模型）" % (
+                        item["word"], reused.get("seq"), entry["seq"]))
+                return
         providers.set_task_priority(item.get("priority", 100))
         out = pipeline.run(item, log=log, on_stage=on_stage)
         # 1.4.7.2：质量没过不再「照发 unverified」——那会让用户永远卡在两轮都不过

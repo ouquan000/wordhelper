@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -182,14 +183,44 @@ def _prompt(name):
         return fh.read()
 
 
+def prompt_hash():
+    """三个提示词的稳定指纹；换提示词后旧结果不能冒充新版本复用。"""
+    digest = hashlib.sha256()
+    for name in ("generate", "polish", "judge"):
+        digest.update(name.encode("ascii"))
+        digest.update(b"\0")
+        digest.update(_prompt(name).encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def instruction_hash(item):
+    """用户原话指纹；空原话也有明确值，不能和任意旧结果误配。"""
+    text = str((item or {}).get("instruction") or "").strip()
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def extract_json(text):
-    """模型爱把 JSON 包在 ```json 里或前后絮叨；抓最外层花括号试一次。"""
+    """模型爱把 JSON 包在 ```json 里或前后絮叨；抓第一个完整 JSON 对象。
+
+    不能简单用 find("{") + rfind("}")：模型在对象后面补一句带花括号的解释时，
+    rfind 会把尾巴也吞进去，明明开头是合法 JSON 却解析失败（canary 的 obscure
+    就踩过这个边界）。JSONDecoder.raw_decode 只吃第一个完整对象，后面多什么
+    都不影响；失败时再退回旧的全花括号切片，兼容被截断/嵌套说明的响应。
+    """
     if not text:
         return None
-    body = text.strip()
+    body = str(text).strip()
     fence = re.search(r"```(?:json)?\s*(.*?)```", body, re.S)
     if fence:
         body = fence.group(1).strip()
+    if body.startswith("{"):
+        try:
+            data, _ = json.JSONDecoder().raw_decode(body)
+            if isinstance(data, dict):
+                return data
+        except ValueError:
+            pass
     start, end = body.find("{"), body.rfind("}")
     if start < 0 or end <= start:
         return None
@@ -1023,24 +1054,42 @@ def run(item, log=None, on_stage=None):
         except Exception:  # noqa: BLE001 - 埋点坏了照常跑
             pass
 
+    draft = None
+    approach = None
+    resume = "generate"
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        stage("generate")
+        stage(resume)
         stamp = time.time()
         try:
-            draft = generate(item, feedback, hard=feedback_hard)
-            timings["generate_%d" % attempt] = round(time.time() - stamp, 1)
-            _safe_log(log, "[%s] 生成 %.1fs" % (item["word"], timings["generate_%d" % attempt]))
+            if resume == "generate":
+                draft = generate(item, feedback, hard=feedback_hard)
+                timings["generate_%d" % attempt] = round(time.time() - stamp, 1)
+                _safe_log(log, "[%s] 生成 %.1fs" % (item["word"], timings["generate_%d" % attempt]))
+                resume = "polish"
+            else:
+                # 断点续跑：上一次已经拿到 draft/approach，网络抖动或超时后
+                # 不要重烧前面几十秒的模型调用。
+                timings["generate_%d" % attempt] = 0.0
+                if draft is None:
+                    resume = "generate"
+                    draft = generate(item, feedback, hard=feedback_hard)
+                    timings["generate_%d" % attempt] = round(time.time() - stamp, 1)
+                    resume = "polish"
 
-            stage("polish")
-            stamp = time.time()
-            approach = polish(item, draft)
+            if resume == "polish":
+                stage("polish")
+                stamp = time.time()
+                approach = polish(item, draft)
+                timings["polish_%d" % attempt] = round(time.time() - stamp, 1)
+                resume = "judge"
+            else:
+                timings["polish_%d" % attempt] = 0.0
             # 润色可能把用户禁用的招捡回来：以最终稿再扫一遍，命中就记进 violations。
             _bans = banned_terms(item.get("instruction"))
             if _bans:
                 for hit in _text_hits(_bans, approach, allow_last_note=True):
                     if hit not in draft.setdefault("violations", []):
                         draft["violations"].append(hit)
-            timings["polish_%d" % attempt] = round(time.time() - stamp, 1)
 
             # 0ms 硬拦截：行数/箭头/教材腔/翻译腔/用户禁令命中就直接打回，
             # 不花 Judge Token。feedback 直接进下一轮生成。
@@ -1068,6 +1117,14 @@ def run(item, log=None, on_stage=None):
             fatal = fatal or exc
             _safe_log(log, "[%s] 第%d轮作废：%s" % (item["word"], attempt, str(exc)[:200]))
             feedback = ""
+            if isinstance(exc, providers.ProviderError):
+                # 网络/网关错误：保留当前断点，下一轮从失败阶段继续。
+                pass
+            elif resume == "judge" and approach:
+                # 评委返回坏 JSON：成品还在，下一轮只重判，不重写。
+                pass
+            else:
+                draft, approach, resume = None, None, "generate"
             continue
 
         low = _min_six(scores)
@@ -1130,6 +1187,8 @@ def run(item, log=None, on_stage=None):
             problems = ["最低分 %d（%s）" % (low, json.dumps(scores, ensure_ascii=False))]
         feedback = "\n".join("- " + p for p in problems)
         feedback_hard = not hard_ok
+        # 质量未过不是网络断点：下一轮必须按 feedback 重新生成，不能复用同一稿。
+        draft, approach, resume = None, None, "generate"
 
     if not history:
         detail = "；".join(errors)[:300]

@@ -126,6 +126,9 @@ def _public(entry):
     # 旧结果没有这两个字段 → 默认 false / 空串，App 端按已复核处理，兼容。
     out["unverified"] = bool(entry.get("unverified"))
     out["reason"] = str(entry.get("reason") or "")
+    out["reused"] = bool(entry.get("reused"))
+    if entry.get("reuseOf") is not None:
+        out["reuseOf"] = entry.get("reuseOf")
     return out
 
 
@@ -541,6 +544,11 @@ class Store:
                 "attempts": meta.get("attempts", 1),
                 "unverified": unverified,
                 "reason": reason,
+                # 历史复用指纹：只有提示词/用户原话/模型完全一致的新结果才允许复用。
+                "promptHash": str(meta.get("promptHash") or ""),
+                "instructionHash": str(meta.get("instructionHash") or ""),
+                "reused": bool(meta.get("reused")),
+                "reuseOf": meta.get("reuseOf"),
             }
             record["entries"] = _trim(record["entries"] + [entry])
             self._save_word(live["word"])
@@ -798,6 +806,40 @@ class Store:
         with self._lock:
             record = self.results.get(word) or {"entries": []}
             return [_public(e) for e in record["entries"]]
+
+    def find_reusable_result(self, item, prompt_hash, instruction_hash):
+        """同一词、同一本书、同一模型、同一提示词、同一用户原话的最近成品。
+
+        只复用 status=ok 且非 unverified 的 entry；任何一项指纹不同都当没命中，
+        宁可不复用，也不能把旧提示词/旧指令的稿子当成新结果交出去。
+        """
+        if not prompt_hash or not instruction_hash:
+            return None
+        word = str((item or {}).get("word") or "")
+        if not word:
+            return None
+        want_book_id = int((item or {}).get("bookId") or 0)
+        want_book = str((item or {}).get("book") or "")
+        want_model = str((item or {}).get("model") or "")
+        with self._lock:
+            record = self.results.get(word) or {"entries": []}
+            for entry in reversed(record.get("entries") or []):
+                if entry.get("status") != "ok" or entry.get("unverified"):
+                    continue
+                if str(entry.get("model") or "") != want_model:
+                    continue
+                if str(entry.get("promptHash") or "") != prompt_hash:
+                    continue
+                if str(entry.get("instructionHash") or "") != instruction_hash:
+                    continue
+                entry_book_id = int(entry.get("bookId") or 0)
+                entry_book = str(entry.get("book") or "")
+                if entry_book_id != want_book_id and entry_book != want_book:
+                    continue
+                found = dict(entry)
+                found["approach"] = list(entry.get("approach") or [])
+                return found
+        return None
 
     def records_page(self, limit=50, offset=0, book=""):
         """重写记录页：每条标记一行，按最近更新倒序，附上成品分步思路与上一版。
