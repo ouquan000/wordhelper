@@ -260,7 +260,9 @@ class WordRepository(private val database: AppDatabase) {
 
     suspend fun ensurePresetBooks(presetSeeds: List<PresetBookSeed> = PresetBookCatalog.presets) {
         database.withTransaction {
-            val books = bookDao.getAllBooksList().toMutableList()
+            // 必须连隐藏书一起读：隐藏只是软停用，同名预设回来时要原地复活，
+            // 否则会新建一本，旧书上的学习进度就永远对不上了。
+            val books = bookDao.getAllBooksIncludingHidden().toMutableList()
             if (books.none { it.type == Book.TYPE_NEW_WORDS }) {
                 val newWordsId = bookDao.insert(
                     Book(
@@ -274,44 +276,26 @@ class WordRepository(private val database: AppDatabase) {
             }
 
             val presetNames = presetSeeds.map { it.name }.toSet()
-            val stalePresets = books.filter { it.type == Book.TYPE_PRESET && it.name !in presetNames }
-            if (stalePresets.isNotEmpty()) {
-                stalePresets.forEach { preset ->
-                    earlyReviewDao.deleteByBook(preset.id)
-                    progressDao.deleteByBook(preset.id)
-                    wordDao.deleteByBook(preset.id)
-                    bookDao.delete(preset)
+            val booksToHide = PresetBookPlanner.booksToHide(books, presetNames)
+            if (booksToHide.isNotEmpty()) {
+                // P0：下架/重名的预设书只软停用（total_count 打成隐藏哨兵），
+                // 不删 tb_book、不删 tb_book_word_content、更不删 tb_progress。
+                // 学习进度全部按 book_id 保存，旧实现删书行 = 永久丢进度。
+                val hiddenIds = booksToHide.map { it.id }.toSet()
+                booksToHide.forEach { bookDao.markPresetHidden(it.id) }
+                books.replaceAll { book ->
+                    if (book.id in hiddenIds) {
+                        book.copy(isActive = false, totalCount = Book.HIDDEN_TOTAL_COUNT)
+                    } else {
+                        book
+                    }
                 }
-                wordDao.deleteOrphanWords()
-                val staleIds = stalePresets.map { it.id }.toSet()
-                books.removeAll { it.id in staleIds }
-            }
-
-            val duplicatePresets = books
-                .filter { it.type == Book.TYPE_PRESET && it.name in presetNames }
-                .groupBy { it.name }
-                .values
-                .flatMap { sameNameBooks ->
-                    sameNameBooks
-                        .sortedBy { it.id }
-                        .drop(1)
-                }
-            if (duplicatePresets.isNotEmpty()) {
-                duplicatePresets.forEach { preset ->
-                    earlyReviewDao.deleteByBook(preset.id)
-                    progressDao.deleteByBook(preset.id)
-                    wordDao.deleteByBook(preset.id)
-                    bookDao.delete(preset)
-                }
-                wordDao.deleteOrphanWords()
-                val duplicateIds = duplicatePresets.map { it.id }.toSet()
-                books.removeAll { it.id in duplicateIds }
             }
 
             var hasActiveBook = books.any { it.isActive }
             presetSeeds.forEachIndexed { index, preset ->
-                val existing = books.firstOrNull { it.type == Book.TYPE_PRESET && it.name == preset.name }
-                    ?: bookDao.findByNameAndType(preset.name, Book.TYPE_PRESET)
+                val sameNameBooks = books.filter { it.type == Book.TYPE_PRESET && it.name == preset.name }
+                val existing = sameNameBooks.firstOrNull { !it.isHidden } ?: sameNameBooks.firstOrNull()
                 val targetBook = if (existing == null) {
                     val createdId = bookDao.insert(
                         Book(
@@ -329,16 +313,34 @@ class WordRepository(private val database: AppDatabase) {
                         }
                     }
                     created
+                } else if (existing.isHidden) {
+                    // 预设重新上架：原地复活，tb_progress 原样保留。
+                    bookDao.unhidePreset(existing.id)
+                    val restored = bookDao.getBookById(existing.id)
+                    if (restored != null) {
+                        val position = books.indexOfFirst { it.id == restored.id }
+                        if (position >= 0) books[position] = restored else books.add(restored)
+                        if (restored.isActive) hasActiveBook = true
+                    }
+                    restored
                 } else {
                     existing
                 }
                 if (targetBook != null) {
                     syncPresetWords(targetBook.id, preset.drafts)
+                    // sync 只改 total_count，回读一次让内存视图与库里保持一致。
+                    val refreshed = bookDao.getBookById(targetBook.id)
+                    if (refreshed != null) {
+                        val position = books.indexOfFirst { it.id == refreshed.id }
+                        if (position >= 0) books[position] = refreshed
+                        if (refreshed.isActive) hasActiveBook = true
+                    }
                 }
             }
 
             if (!hasActiveBook) {
-                val fallbackBook = books.firstOrNull { it.type == Book.TYPE_PRESET } ?: books.firstOrNull()
+                val fallbackBook = books.firstOrNull { it.type == Book.TYPE_PRESET && !it.isHidden }
+                    ?: books.firstOrNull { !it.isHidden }
                 if (fallbackBook != null) {
                     bookDao.deactivateAll()
                     bookDao.activate(fallbackBook.id)
@@ -1087,15 +1089,16 @@ class WordRepository(private val database: AppDatabase) {
         }
 
         val currentCount = wordDao.getWordCount(bookId)
-        if (currentCount == drafts.size) {
+        // 只比词数不够：词数不变、释义/例句换了内容时旧逻辑会永远 return，用户一直看到旧正文。
+        // 词数相同且内容指纹一致才跳过；指纹只覆盖 upsert 会覆盖的正文列。
+        if (currentCount == drafts.size &&
+            PresetBookContentFingerprint.matches(drafts, wordDao.getBookContentForFingerprint(bookId))
+        ) {
             return
         }
 
-        val existingWordKeys = wordDao.getWordKeysByBook(bookId)
-            .toSet()
-        val toInsert = drafts
-            .filter { normalizeWordKey(it.word) !in existingWordKeys }
-        upsertDraftsForBook(bookId, toInsert)
+        // 全量 upsert：REPLACE 会覆盖正文列，旧词也一起刷新；tb_progress 不受影响。
+        upsertDraftsForBook(bookId, drafts)
         bookDao.updateTotalCount(bookId, wordDao.getWordCount(bookId))
     }
 
