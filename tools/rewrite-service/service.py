@@ -326,21 +326,25 @@ def _work_batch(items):
 def _worker(index):
     store = _state["store"]
     while True:
-        if BATCH_ENABLED and BATCH_SIZE > 1:
-            items = _claim_batch(BATCH_SIZE)
-            if not items:
-                log("工人 %d 退出" % index)
-                return
-            if len(items) == 1:
-                _work(items[0])
+        try:
+            if BATCH_ENABLED and BATCH_SIZE > 1:
+                items = _claim_batch(BATCH_SIZE)
+                if not items:
+                    log("工人 %d 退出" % index)
+                    return
+                if len(items) == 1:
+                    _work(items[0])
+                else:
+                    _work_batch(items)
             else:
-                _work_batch(items)
-        else:
-            item = store.claim(60)
-            if item is None:
-                log("工人 %d 退出" % index)
-                return
-            _work(item)
+                item = store.claim(60)
+                if item is None:
+                    log("工人 %d 退出" % index)
+                    return
+                _work(item)
+        except Exception as exc:  # noqa: BLE001 - 工人不能因为一次抢单/落盘抖动就永久消失
+            log("工人 %d 异常，1s 后继续：%r" % (index, exc))
+            time.sleep(1.0)
 
 
 # ------------------------------------------------------------------ 生命周期

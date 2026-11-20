@@ -191,6 +191,17 @@ def prompt_hash():
         digest.update(b"\0")
         digest.update(_prompt(name).encode("utf-8"))
         digest.update(b"\0")
+    # 批量通道的提示词也影响成品；文件存在就一起纳入指纹。
+    for name in ("generate_batch", "judge_batch"):
+        path = os.path.join(PROMPT_DIR, name + ".txt")
+        try:
+            with open(path, "r", encoding="utf-8-sig") as fh:
+                digest.update(name.encode("ascii"))
+                digest.update(b"\0")
+                digest.update(fh.read().encode("utf-8"))
+                digest.update(b"\0")
+        except OSError:
+            pass
     # rules_hard 改了，旧结果可能已不满足新硬门槛；一起纳指纹，宁可少复用。
     try:
         with open(os.path.join(HERE, "rules_hard.py"), "r", encoding="utf-8-sig") as fh:

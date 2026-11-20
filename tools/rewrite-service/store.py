@@ -12,6 +12,7 @@ import json
 import os
 import re
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta
 
@@ -57,11 +58,28 @@ def _read_json(path):
 def _write_json(path, data):
     """先写 .tmp 再替换：手机随时可能来拉，不能读到半份。"""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(data, fh, ensure_ascii=False, indent=1)
-        fh.write("\n")
-    os.replace(tmp, path)
+    # 多工人同时收尾时，Windows 的 os.replace 偶尔会撞上扫描器/读句柄；
+    # 用线程唯一的临时名，并短暂重试，避免整条工人线程被一次瞬时占用打死。
+    tmp = "%s.%d.%d.tmp" % (path, os.getpid(), threading.get_ident())
+    try:
+        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=1)
+            fh.write("\n")
+        last = None
+        for attempt in range(10):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError as exc:
+                last = exc
+                time.sleep(0.02 * (attempt + 1))
+        raise last
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
 
 def result_name(word):
