@@ -68,6 +68,43 @@ class BatchServiceTest(unittest.TestCase):
         self.assertEqual([row[0] for row in store.finished], ["a"])
         self.assertEqual([call.args[0]["word"] for call in fallback.call_args_list], ["b", "c"])
 
+    def test_batch_mode_is_off_by_default(self):
+        if os.environ.get("BATCH_MODE") is not None:
+            self.skipTest("BATCH_MODE 已由外部环境指定")
+        self.assertFalse(service.BATCH_ENABLED)
+
+    def test_default_concurrency_follows_six_gate_slots(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(service._default_concurrency(), 6)
+
+    def test_batch_sets_thread_priority_from_current_items(self):
+        items = [
+            {"clientId": "p1", "word": "a", "model": "m", "instruction": "", "bookId": 0, "book": "", "priority": 10},
+            {"clientId": "p2", "word": "b", "model": "m", "instruction": "", "bookId": 0, "book": "", "priority": 20},
+        ]
+        previous = service.providers.task_priority()
+        # 模拟上一单残留：线程里还挂着前台优先级，批处理必须按本轮任务重设。
+        service.providers.set_task_priority(100)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                store = FakeStore(tmp)
+                old_store = service._state.get("store")
+                service._state["store"] = store
+                try:
+                    with mock.patch.object(service, "REUSE_HISTORY", False), \
+                         mock.patch.object(service.history, "build", return_value=[]), \
+                         mock.patch.object(service.pipeline, "prompt_hash", return_value="p"), \
+                         mock.patch.object(service.pipeline, "instruction_hash", return_value="i"), \
+                         mock.patch.object(service.batch_pipeline, "generate_batch", return_value={}), \
+                         mock.patch.object(service, "_work") as fallback:
+                        service._work_batch(items)
+                        self.assertEqual(service.providers.task_priority(), 20)
+                finally:
+                    service._state["store"] = old_store
+            self.assertEqual([call.args[0]["word"] for call in fallback.call_args_list], ["a", "b"])
+        finally:
+            service.providers.set_task_priority(previous)
+
 
 if __name__ == "__main__":
     unittest.main()

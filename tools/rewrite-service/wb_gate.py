@@ -9,7 +9,7 @@ service.py 起两个 worker 时，生成、润色、评委和补判可以同时�
 设计边界：
 - 只管本项目的进程（rewrite-service 及其测试实例）。DSH 自己的模型调用不经过
   这里，无法从服务端强控；用 wb_phase 分阶段让路，并在报告里写清楚。
-- 槽位数由 WB_GATE_SLOTS 控制（默认 5）。进程内用 BoundedSemaphore 排队，
+- 槽位数由 WB_GATE_SLOTS 控制（默认 6）。进程内用 BoundedSemaphore 排队，
   同一 gate 路径 + 同一 N 共享一个信号量；跨进程用每个槽独立的文件锁
   （<gate_path>.slot_0.lock … <gate_path>.slot_{N-1}.lock）互斥。
 - 共享状态仍写 <gate_path>（默认 data/wb_gate.json），用 .state.lock 保护；
@@ -39,7 +39,7 @@ DEFAULT_GATE = os.path.join(
 # 超过这个时间的持有记录视为上次崩溃留下的僵尸槽，允许回收。
 STALE_ACTIVE_SECONDS = 1800.0
 
-DEFAULT_SLOTS = 5
+DEFAULT_SLOTS = 6
 DEFAULT_WAIT_TIMEOUT = 300.0
 DEFAULT_RECOVERY_SUCCESSES = 5
 # 限流降档的下限；N < 2 时以 N 为准。
@@ -172,7 +172,7 @@ def _slot_lock_path(gate_path: str, index: int) -> str:
 
 
 def slot_count() -> int:
-    """当前配置的槽位数（WB_GATE_SLOTS，默认 5）。"""
+    """当前配置的槽位数（WB_GATE_SLOTS，默认 6）。"""
     return _env_int("WB_GATE_SLOTS", DEFAULT_SLOTS)
 
 
@@ -219,11 +219,31 @@ def _read_json(path: str, default: dict) -> dict:
 
 
 def _write_json(path: str, data: dict) -> None:
+    """先写 .tmp 再替换，和 store._write_json 同一套并发口径。
+
+    Windows 上多工人同时收尾时，os.replace 会撞上扫描器/读句柄；临时名带
+    pid + 线程 ident 避免互相覆盖，短暂退避重试，最终失败也要清掉临时文件。
+    """
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(data, fh, ensure_ascii=False, sort_keys=True)
-    os.replace(tmp, path)
+    tmp = "%s.%d.%d.tmp" % (path, os.getpid(), threading.get_ident())
+    try:
+        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(data, fh, ensure_ascii=False, sort_keys=True)
+        last = None
+        for attempt in range(10):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError as exc:
+                last = exc
+                time.sleep(0.02 * (attempt + 1))
+        raise last
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
 
 def _default_state() -> dict:

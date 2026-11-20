@@ -232,9 +232,10 @@ def extract_json(text):
     fence = re.search(r"```(?:json)?\s*(.*?)```", body, re.S)
     if fence:
         body = fence.group(1).strip()
-    if body.startswith("{"):
+    pos = body.find("{")
+    if pos >= 0:
         try:
-            data, _ = json.JSONDecoder().raw_decode(body)
+            data, _ = json.JSONDecoder().raw_decode(body, pos)
             if isinstance(data, dict):
                 return data
         except ValueError:
