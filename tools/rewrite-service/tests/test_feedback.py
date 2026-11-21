@@ -23,9 +23,9 @@ import providers  # noqa: E402
 
 # 三段提示词的开头各自不同，假 providers 靠它认阶段
 STAGE_MARKERS = (
-    ("generate", "你是《单词突围》体系的领背讲师"),
-    ("polish", "你是英文单词记忆卡的中文文案编辑"),
-    ("judge", "你是《单词突围》体系的资深审稿人"),
+    ("generate", "你是刚背完这个词、顺手把记忆小抄递给同桌的聪明室友"),
+    ("polish", "你是刚背完这个词、把同一张小抄重新誊一遍的聪明室友"),
+    ("judge", "你是记忆卡的排雷员"),
 )
 
 DRAFT_LINES = [
@@ -480,6 +480,28 @@ class FeedbackTest(unittest.TestCase):
         self.prepare(instruction="", generate=["不是 JSON", "也不是 JSON"])
         with self.assertRaises(pipeline.PipelineError):
             pipeline.run(self.item)
+
+    def test_quality_fallback_log_with_ipa_does_not_crash(self):
+        """Windows GBK 控制台遇到 /ə/ 不能把 fallback 交付打断。"""
+        self.logged = []
+
+        def gbk_console(message):
+            # 模拟 Windows GBK 控制台：不可编码字符会在这里抛 UnicodeEncodeError
+            message.encode("gbk")
+            self.logged.append(message)
+
+        self.prepare(
+            instruction="",
+            generate=[draft(), draft()],
+            polish=[polished(), polished()],
+            judge=[
+                judge_json({key: 5 for key in SIX_9}, issues=["读音 /ə/ 没提醒"]),
+                judge_json({key: 5 for key in SIX_9}, issues=["读音 /ə/ 没提醒"]),
+            ],
+        )
+        out = pipeline.run(self.item, log=gbk_console)
+        self.assertTrue(out["quality_rejected"])
+        self.assertTrue(any("质量未过" in message for message in self.logged))
 
     # ------------------------------------------------------------ 用户禁令
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""G01：WB 统一串行槽 + 共享冷却 + 前台优先级。
+"""WB 网关 N 槽池 + 共享冷却降档 + 前台优先级。
 
 全部用本地假 WB / 临时 gate 文件，不碰真实 WB，也不改生产配置。
 """
@@ -85,44 +85,140 @@ class WbGateTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.old_gate = os.environ.get("REWRITE_WB_GATE")
         self.old_phase = os.environ.get("REWRITE_WB_PHASE_FILE")
+        self.old_slots = os.environ.get("WB_GATE_SLOTS")
+        self.old_wait = os.environ.get("WB_GATE_WAIT_TIMEOUT")
+        self.old_recovery = os.environ.get("WB_GATE_RECOVERY_SUCCESSES")
         self.old_base = providers.PROVIDER_BASE.get("wb")
         os.environ["REWRITE_WB_GATE"] = os.path.join(self.tmp.name, "wb_gate.json")
         os.environ["REWRITE_WB_PHASE_FILE"] = os.path.join(self.tmp.name, "wb_phase")
+        # 每个用例从默认值出发，避免宿主环境把槽位数/超时带进来。
+        os.environ.pop("WB_GATE_SLOTS", None)
+        os.environ.pop("WB_GATE_WAIT_TIMEOUT", None)
+        os.environ.pop("WB_GATE_RECOVERY_SUCCESSES", None)
         wb_gate.reset()
 
     def tearDown(self):
         providers.PROVIDER_BASE["wb"] = self.old_base
-        if self.old_gate is None:
-            os.environ.pop("REWRITE_WB_GATE", None)
-        else:
-            os.environ["REWRITE_WB_GATE"] = self.old_gate
-        if self.old_phase is None:
-            os.environ.pop("REWRITE_WB_PHASE_FILE", None)
-        else:
-            os.environ["REWRITE_WB_PHASE_FILE"] = self.old_phase
+        for key, value in (
+            ("REWRITE_WB_GATE", self.old_gate),
+            ("REWRITE_WB_PHASE_FILE", self.old_phase),
+            ("WB_GATE_SLOTS", self.old_slots),
+            ("WB_GATE_WAIT_TIMEOUT", self.old_wait),
+            ("WB_GATE_RECOVERY_SUCCESSES", self.old_recovery),
+        ):
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
         self.tmp.cleanup()
 
-    def test_serial_slot(self):
+    def _run_pool_probe(self, slots, threads_count, hold=0.3):
+        os.environ["WB_GATE_SLOTS"] = str(slots)
         active = 0
         max_active = 0
         lock = threading.Lock()
+        errors = []
 
         def worker(i):
             nonlocal active, max_active
-            with wb_gate.acquire(priority=100, timeout=5):
-                with lock:
-                    active += 1
-                    max_active = max(max_active, active)
-                time.sleep(0.12)
-                with lock:
-                    active -= 1
+            try:
+                with wb_gate.acquire(priority=100, timeout=15):
+                    with lock:
+                        active += 1
+                        max_active = max(max_active, active)
+                    time.sleep(hold)
+                    with lock:
+                        active -= 1
+            except Exception as exc:  # noqa: BLE001 - 线程里的异常要带回主线程断言
+                errors.append(exc)
 
-        threads = [threading.Thread(target=worker, args=(i,)) for i in range(4)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-        self.assertEqual(max_active, 1, "串行槽被并发穿透")
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(threads_count)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(30)
+        self.assertFalse(errors, "并发槽位探测有异常：%r" % errors)
+        self.assertFalse(any(thread.is_alive() for thread in threads), "并发线程未退出")
+        return max_active
+
+    def test_default_slots_is_six(self):
+        self.assertEqual(wb_gate.slot_count(), 6)
+        state = wb_gate.status()
+        self.assertEqual(state["slots"], 6)
+        self.assertEqual(state["effectiveLimit"], 6)
+        self.assertEqual(state["waitTimeout"], 300.0)
+
+    def test_pool_allows_three_parallel_slots(self):
+        max_active = self._run_pool_probe(slots=3, threads_count=6)
+        self.assertEqual(max_active, 3, "N=3 的槽池并发度不是 3")
+        gate = os.environ["REWRITE_WB_GATE"]
+        for index in range(3):
+            self.assertTrue(
+                os.path.exists("%s.slot_%d.lock" % (gate, index)),
+                "缺少槽锁文件 slot_%d" % index,
+            )
+        self.assertEqual(wb_gate.status()["activeCount"], 0)
+        self.assertFalse(wb_gate.status()["active"])
+
+    def test_two_gate_paths_do_not_share_slots(self):
+        # N=1 时如果两个 gate 路径共用一个进程内信号量，B 会拿不到槽。
+        os.environ["WB_GATE_SLOTS"] = "1"
+        gate_a = os.environ["REWRITE_WB_GATE"]
+        gate_b = os.path.join(self.tmp.name, "other_gate.json")
+        with wb_gate.acquire(priority=100, timeout=2):
+            self.assertEqual(wb_gate.status()["activeCount"], 1)
+            os.environ["REWRITE_WB_GATE"] = gate_b
+            try:
+                started = time.time()
+                with wb_gate.acquire(priority=100, timeout=1):
+                    self.assertLess(time.time() - started, 1.0, "不同 gate 路径串槽了")
+                    self.assertEqual(wb_gate.status()["activeCount"], 1)
+                self.assertEqual(wb_gate.status()["activeCount"], 0)
+            finally:
+                os.environ["REWRITE_WB_GATE"] = gate_a
+        self.assertEqual(wb_gate.status()["activeCount"], 0)
+
+    def test_queue_timeout_raises_gatebusy(self):
+        os.environ["WB_GATE_SLOTS"] = "1"
+        result = {}
+
+        def contender():
+            try:
+                with wb_gate.acquire(priority=100, timeout=0.4):
+                    result["acquired"] = True
+            except wb_gate.GateBusy as exc:
+                result["busy"] = str(exc)
+
+        with wb_gate.acquire(priority=100, timeout=2):
+            thread = threading.Thread(target=contender)
+            started = time.time()
+            thread.start()
+            thread.join(5)
+        elapsed = time.time() - started
+        self.assertFalse(thread.is_alive(), "等槽线程没有按 timeout 退出")
+        self.assertIn("busy", result, "等槽超时没有抛 GateBusy")
+        self.assertNotIn("acquired", result)
+        self.assertLess(elapsed, 3.0, "等槽超时没有按显式 timeout 生效")
+
+    def test_429_lowers_effective_limit_then_successes_recover(self):
+        os.environ["WB_GATE_SLOTS"] = "3"
+        wb_gate.note_http(429, retry_after="1", body='{"error":"rate limited"}')
+        state = wb_gate.status()
+        self.assertEqual(state["effectiveLimit"], 2, "429 后没有降到 2")
+        self.assertGreater(state["cooldownRemaining"], 0.0)
+        self.assertIn("429", state["cooldownReason"])
+
+        for _ in range(5):
+            wb_gate.note_success()
+        state = wb_gate.status()
+        self.assertEqual(state["effectiveLimit"], 3, "连续成功 5 次后没有恢复到 N=3")
+        self.assertEqual(state["successStreak"], 0)
+        self.assertEqual(state["cooldownRemaining"], 0.0)
+
+    def test_429_effective_limit_not_below_two(self):
+        os.environ["WB_GATE_SLOTS"] = "5"
+        wb_gate.note_http(429, retry_after="1")
+        self.assertEqual(wb_gate.status()["effectiveLimit"], 2)
 
     def test_stale_active_slot_is_recovered(self):
         # 模拟上次进程被强杀：gate 文件 active=true，但是很久以前。
@@ -150,6 +246,7 @@ class WbGateTest(unittest.TestCase):
             with self.assertRaises(providers.ProviderError):
                 providers.complete("ds-v41-flash", "s", "u", timeout=5)
             self.assertGreater(wb_gate.cooldown_remaining(), 0.0)
+            self.assertEqual(wb_gate.status()["effectiveLimit"], 2)
             time.sleep(1.2)
             out = providers.complete("ds-v41-flash", "s", "u", timeout=5)
             self.assertEqual(out, "通了")
@@ -171,6 +268,7 @@ class WbGateTest(unittest.TestCase):
                 providers.complete("ds-v41-flash", "s", "u", timeout=5)
             self.assertGreaterEqual(wb_gate.cooldown_remaining(), 10.0)
             self.assertIn("503", wb_gate.status()["cooldownReason"])
+            self.assertEqual(wb_gate.status()["effectiveLimit"], 2)
         finally:
             server.shutdown()
             server.server_close()

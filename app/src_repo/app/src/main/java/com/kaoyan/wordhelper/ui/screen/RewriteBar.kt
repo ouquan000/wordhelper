@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -52,6 +53,7 @@ import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
 import com.kaoyan.wordhelper.data.entity.RewriteStatus
 import com.kaoyan.wordhelper.data.model.RewriteModel
 import com.kaoyan.wordhelper.data.model.RewriteModels
+import com.kaoyan.wordhelper.ui.theme.LocalAppDarkTheme
 import com.kaoyan.wordhelper.ui.viewmodel.RewriteProgressUi
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -497,7 +499,7 @@ private fun ProgressRow(progress: RewriteProgressUi?) {
 }
 
 private fun progressLabel(fraction: Float?, failed: Boolean, offline: Boolean): String = when {
-    offline -> "等电脑上线（连不上就重贴那一行）"
+    offline -> "已记下，等电脑上线后自动重写"
     failed -> "重写失败"
     fraction == null -> "生成中…"
     else -> "${(fraction * 100).roundToInt()}%"
@@ -543,15 +545,34 @@ private fun ModelPicker(
                 modifier = Modifier.width(14.dp).height(14.dp)
             )
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            models.forEach { model ->
-                DropdownMenuItem(
-                    text = { Text(text = model.name, style = MaterialTheme.typography.bodyMedium) },
-                    onClick = {
-                        onSelectModel(model.id)
-                        open = false
-                    }
-                )
+        // 卡背的 HoloCardTheme 把 surface 改成了 35% 白，菜单沿用默认色会透出正文。
+        // 用局部 MaterialTheme 覆盖 surface：亮色纯白，暗色不透明深灰。
+        val menuSurface = if (LocalAppDarkTheme.current) Color(0xFF1C1F26) else Color.White
+        MaterialTheme(
+            colorScheme = MaterialTheme.colorScheme.copy(
+                surface = menuSurface,
+                surfaceContainerLowest = menuSurface,
+                surfaceContainerLow = menuSurface,
+                surfaceContainer = menuSurface,
+                surfaceContainerHigh = menuSurface,
+                surfaceContainerHighest = menuSurface,
+                surfaceTint = menuSurface
+            )
+        ) {
+            DropdownMenu(
+                expanded = open,
+                onDismissRequest = { open = false },
+                modifier = Modifier.testTag("rewrite_model_menu")
+            ) {
+                models.forEach { model ->
+                    DropdownMenuItem(
+                        text = { Text(text = model.name, style = MaterialTheme.typography.bodyMedium) },
+                        onClick = {
+                            onSelectModel(model.id)
+                            open = false
+                        }
+                    )
+                }
             }
         }
     }

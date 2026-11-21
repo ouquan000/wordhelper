@@ -790,9 +790,10 @@ private fun SettingsCard(
                 onSelect = onCardBackLanAutoChange
             )
             Text(
-                text = "开启后同一 WiFi 下会先找这台电脑的局域网地址，失败再走域名。" +
+                text = "默认开启；已配对后同一 WiFi 下会先找这台电脑的局域网地址，局域网不通再走域名。" +
+                    "未配对时不会自动发现，仍按手填地址或配对码连接。" +
                     "仅建议在可信的家庭 WiFi 使用：同一网段的主动攻击无法被明文 HTTP 完全防住；" +
-                    "在咖啡馆/公司等公共网络请保持关闭。",
+                    "在咖啡馆/公司等公共网络建议关闭。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

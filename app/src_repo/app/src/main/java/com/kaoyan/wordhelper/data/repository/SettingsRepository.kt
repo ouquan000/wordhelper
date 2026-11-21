@@ -23,6 +23,9 @@ private const val DEFAULT_FONT_SCALE = 1.0f
 private const val DEFAULT_REVIEW_PRESSURE_RELIEF_ENABLED = true
 private const val DEFAULT_REVIEW_PRESSURE_DAILY_CAP = 120
 private const val DEFAULT_ALGORITHM_V4_ENABLED = false
+// v8：FSRS-5 记忆调度默认开启；目标留存率默认 0.90（日常档）。
+private const val DEFAULT_FSRS_ENABLED = true
+private const val DEFAULT_DESIRED_RETENTION = 0.90f
 private const val DEFAULT_PRONUNCIATION_ENABLED = false
 private const val DEFAULT_PRONUNCIATION_SOURCE = 0
 private const val DEFAULT_RECOGNITION_AUTO_PRONOUNCE_ENABLED = false
@@ -45,8 +48,9 @@ private const val DEFAULT_CARD_BACK_INSTANCE_ID = ""
 // 只应由 HTTPS 配置地址的 /identity（tls_spki_sha256）或用户手填写入。
 private const val DEFAULT_CARD_BACK_TLS_PIN = ""
 private const val DEFAULT_CARD_BACK_TLS_PORT = 8443
-// 同 WiFi 自动直连默认关闭：即使走 HTTPS + SPKI pin，也应由用户在设置页显式开启。
-private const val DEFAULT_CARD_BACK_LAN_AUTO = false
+// 1.4.8：同 WiFi 自动直连默认开启。resolveLan 仍要求 instanceId + token + pin，
+// 未配对（缺 instanceId/pin）不会自动发现，也不会退回明文 HTTP。
+private const val DEFAULT_CARD_BACK_LAN_AUTO = true
 private val Context.dataStore by preferencesDataStore(name = "user_settings")
 
 data class UserSettings(
@@ -58,6 +62,10 @@ data class UserSettings(
     val reviewPressureReliefEnabled: Boolean = DEFAULT_REVIEW_PRESSURE_RELIEF_ENABLED,
     val reviewPressureDailyCap: Int = DEFAULT_REVIEW_PRESSURE_DAILY_CAP,
     val algorithmV4Enabled: Boolean = DEFAULT_ALGORITHM_V4_ENABLED,
+    /** v8：FSRS-5 记忆调度总开关；关闭时回落到旧的 SM-2 + ML 分支。 */
+    val fsrsEnabled: Boolean = DEFAULT_FSRS_ENABLED,
+    /** v8：目标留存率，越大复习越密；读写都夹在 0.80..0.97。 */
+    val desiredRetention: Float = DEFAULT_DESIRED_RETENTION,
     val pronunciationEnabled: Boolean = DEFAULT_PRONUNCIATION_ENABLED,
     val pronunciationSource: PronunciationSource = PronunciationSource.FREE_DICTIONARY,
     val recognitionAutoPronounceEnabled: Boolean = DEFAULT_RECOGNITION_AUTO_PRONOUNCE_ENABLED,
@@ -89,7 +97,8 @@ data class UserSettings(
     val cardBackInstanceId: String = DEFAULT_CARD_BACK_INSTANCE_ID,
     /**
      * 1.4.7.2 W4：是否允许同 WiFi 自动发现并优先走局域网 HTTPS。
-     * 默认关闭，必须由用户显式开启；没有 pin 时发现会直接拒绝，不会退回明文 HTTP。
+     * 1.4.8 起默认开启；但只有 instanceId + pin 都在时才会真正发现，
+     * 未配对不会自动发现，没有 pin 时直接拒绝，不会退回明文 HTTP。
      */
     val cardBackLanAuto: Boolean = DEFAULT_CARD_BACK_LAN_AUTO,
     /**
@@ -166,6 +175,9 @@ class SettingsRepository(private val context: Context) {
             reviewPressureDailyCap = (prefs[KEY_REVIEW_PRESSURE_DAILY_CAP] ?: DEFAULT_REVIEW_PRESSURE_DAILY_CAP)
                 .coerceIn(10, 500),
             algorithmV4Enabled = prefs[KEY_ALGORITHM_V4_ENABLED] ?: DEFAULT_ALGORITHM_V4_ENABLED,
+            fsrsEnabled = prefs[KEY_FSRS_ENABLED] ?: DEFAULT_FSRS_ENABLED,
+            desiredRetention = (prefs[KEY_DESIRED_RETENTION] ?: DEFAULT_DESIRED_RETENTION)
+                .coerceIn(0.80f, 0.97f),
             pronunciationEnabled = prefs[KEY_PRONUNCIATION_ENABLED] ?: DEFAULT_PRONUNCIATION_ENABLED,
             pronunciationSource = PronunciationSource.fromValue(
                 prefs[KEY_PRONUNCIATION_SOURCE] ?: DEFAULT_PRONUNCIATION_SOURCE
@@ -232,6 +244,16 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updateAlgorithmV4Enabled(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[KEY_ALGORITHM_V4_ENABLED] = enabled }
+    }
+
+    /** v8：FSRS-5 开关；关掉后学习结果回到旧的 SM-2 + ML 调度。 */
+    suspend fun updateFsrsEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_FSRS_ENABLED] = enabled }
+    }
+
+    /** v8：目标留存率，越高考复习越密（0.80..0.97）。 */
+    suspend fun updateDesiredRetention(value: Float) {
+        dataStore.edit { prefs -> prefs[KEY_DESIRED_RETENTION] = value.coerceIn(0.80f, 0.97f) }
     }
 
     suspend fun updatePronunciationEnabled(enabled: Boolean) {
@@ -383,7 +405,7 @@ class SettingsRepository(private val context: Context) {
 
     /**
      * 1.4.7.2 W4-B：同 WiFi 自动直连开关。
-     * 默认关闭；开启后设置页会显示「仅可信家庭 WiFi」的风险提示。
+     * 1.4.8 起默认开启；未配对时即使开着也不会自动发现，设置页仍保留「仅可信家庭 WiFi」的提示。
      */
     suspend fun updateCardBackLanAuto(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[KEY_CARD_BACK_LAN_AUTO] = enabled }
@@ -510,6 +532,8 @@ class SettingsRepository(private val context: Context) {
             booleanPreferencesKey("review_pressure_relief_enabled")
         private val KEY_REVIEW_PRESSURE_DAILY_CAP = intPreferencesKey("review_pressure_daily_cap")
         private val KEY_ALGORITHM_V4_ENABLED = booleanPreferencesKey("algorithm_v4_enabled")
+        private val KEY_FSRS_ENABLED = booleanPreferencesKey("fsrs_enabled")
+        private val KEY_DESIRED_RETENTION = floatPreferencesKey("desired_retention")
         private val KEY_PRONUNCIATION_ENABLED = booleanPreferencesKey("pronunciation_enabled")
         private val KEY_PRONUNCIATION_SOURCE = intPreferencesKey("pronunciation_source")
         private val KEY_RECOGNITION_AUTO_PRONOUNCE_ENABLED =

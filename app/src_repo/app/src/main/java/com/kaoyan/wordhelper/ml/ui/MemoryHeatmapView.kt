@@ -35,7 +35,9 @@ import com.kaoyan.wordhelper.ui.theme.KnownGreen
 data class MemoryHeatmapEntry(
     val dayOfWeek: Int, // 0=周一 ... 6=周日
     val hour: Int,      // 0-23
-    val efficiency: Float // 0.0-1.0
+    val efficiency: Float, // 0.0-1.0
+    /** false = 该时段没有复习记录，画成中性灰，不参与效率着色。 */
+    val hasData: Boolean = true
 )
 
 @Composable
@@ -75,6 +77,13 @@ fun MemoryHeatmapCard(
 
             // 图例
             HeatmapEfficiencyLegend()
+            if (data.any { !it.hasData }) {
+                Text(
+                    text = "灰色格子表示该时段暂无复习记录",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -89,6 +98,7 @@ private fun MemoryHeatmapView(
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val lowColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
     val highColor = KnownGreen.copy(alpha = 0.92f)
+    val emptyColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
 
     Canvas(
         modifier = modifier
@@ -125,7 +135,11 @@ private fun MemoryHeatmapView(
             for (hour in 0..23) {
                 val entry = data.firstOrNull { it.dayOfWeek == dayIndex && it.hour == hour }
                 val efficiency = entry?.efficiency ?: 0f
-                val color = lerpColor(lowColor, highColor, efficiency)
+                val color = if (entry?.hasData == true) {
+                    lerpColor(lowColor, highColor, efficiency)
+                } else {
+                    emptyColor
+                }
                 val x = leftMargin + hour * cellWidth
                 drawRect(
                     color = color,

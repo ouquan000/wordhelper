@@ -485,6 +485,12 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     val algorithmV4Enabled: StateFlow<Boolean> = settingsRepository.settingsFlow
         .map { it.algorithmV4Enabled }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    val fsrsEnabled: StateFlow<Boolean> = settingsRepository.settingsFlow
+        .map { it.fsrsEnabled }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+    val desiredRetention: StateFlow<Float> = settingsRepository.settingsFlow
+        .map { it.desiredRetention }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0.90f)
     val reviewPressureReliefEnabled: StateFlow<Boolean> = settingsRepository.settingsFlow
         .map { it.reviewPressureReliefEnabled }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
@@ -649,12 +655,11 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         pendingTerminalSync = true
         _rewriteProgress.value = null
         viewModelScope.launch {
-            if (!rewriteRepository.hasAddress()) {
-                _message.value = RewriteRepository.NO_ADDRESS
-                return@launch
-            }
-            // W3：只有真的落了队列才锁存「这次停留可以跳过」；没配地址时不能留下
-            // 一个没有 mark 的幽灵按钮。生成完成（DONE）也保持位置，换词由 updateQueue 清。
+            // 1.4.8v1：不再因为「没填电脑地址」提前 return。enqueueAndSync 内部是
+            // 「先 queueDao.upsert 落本地，再 sync() 试发」；离线时 sync 失败但 PENDING
+            // 行已经留下，跳过入口才有依据。否则没地址连 mark 都没有，点重写完全没反应。
+            // W3：先确认还是同一张卡，再锁存「这次停留可以跳过」；换词/换书后不能锁。
+            // 生成完成（DONE）也保持位置，换词由 updateQueue 清。
             if (_currentWord.value?.id != word.id || (activeBook.value?.id ?: 0L) != bookId) return@launch
             _skipRewriteLatchedWordId.value = word.id
             val sent = rewriteRepository.enqueueAndSync(
@@ -665,8 +670,14 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 bookId = bookId
             )
             if (!sent) {
-                _message.value = if (rewriteRepository.consumeAuthFailure()) CardbackAuth.HINT
-                else "已记下，等电脑端可以处理时自动发送"
+                // 没地址/电脑没开都只是「已记下」；只有确实带了口令、且这次请求
+                // 真被 401 拦下时，才提示重粘配对行，别把离线误报成口令错。
+                val authFailed = rewriteRepository.consumeAuthFailure()
+                val hasToken = runCatching {
+                    CardbackAuth.headerValue(settingsRepository.settingsFlow.first().cardBackToken) != null
+                }.getOrDefault(false)
+                _message.value = if (authFailed && hasToken) CardbackAuth.HINT
+                else "已记下，等电脑上线后自动重写"
             }
         }
     }
@@ -996,6 +1007,53 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /**
+     * v8：作答落库后的 FSRS 旁路 —— 记忆信号上报 + 遗忘自动换招。
+     *
+     * 单开 IO 协程：电脑不在线时最多等到请求超时，不会拖慢下一张卡的出现，
+     * 也不会因为上报失败改变这次作答的结果。
+     */
+    private fun dispatchFsrsSignalsInBackground(word: Word, book: Book, rating: StudyRating) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { dispatchFsrsSignals(word, book, rating) }
+        }
+    }
+
+    private suspend fun dispatchFsrsSignals(word: Word, book: Book, rating: StudyRating) {
+        val updated = repository.getProgress(word.id, book.id) ?: return
+        val method = runCatching { rewriteRepository.methodOf(word.id, book.id) }.getOrDefault("")
+        if (fsrsEnabled.value) {
+            if (rating == StudyRating.AGAIN) {
+                rewriteRepository.reportMemorySignal(
+                    wordId = word.id,
+                    bookId = book.id,
+                    word = word.word,
+                    method = method,
+                    event = "lapsed",
+                    stability = updated.fsrsStability,
+                    difficulty = updated.fsrsDifficulty,
+                    lapses = updated.fsrsLapses
+                )
+            } else if (updated.fsrsStability >= 14f) {
+                rewriteRepository.reportMemorySignal(
+                    wordId = word.id,
+                    bookId = book.id,
+                    word = word.word,
+                    method = method,
+                    event = "retained",
+                    stability = updated.fsrsStability,
+                    difficulty = updated.fsrsDifficulty,
+                    lapses = updated.fsrsLapses
+                )
+            }
+        }
+        if (fsrsEnabled.value &&
+            (updated.fsrsLapses >= 2 || updated.fsrsDifficulty >= 8.5f)
+        ) {
+            rewriteRepository.maybeAutoRewriteAfterLapse(word, book, updated)
+        }
+    }
+
     fun submitAnswer(rating: StudyRating) {
         val word = _currentWord.value ?: return
         val book = activeBook.value ?: return
@@ -1033,6 +1091,8 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     bookId = book.id,
                     rating = effectiveRating,
                     algorithmV4Enabled = algorithmV4Enabled.value,
+                    fsrsEnabled = fsrsEnabled.value,
+                    desiredRetention = desiredRetention.value,
                     mlScheduler = if (currentMlEnabled) mlScheduler else null,
                     mlEnabled = currentMlEnabled,
                     sessionPosition = currentSessionPosition,
@@ -1043,6 +1103,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 // 只结清当前这本书：同一个词可能同时属于别的书，不能把别的书的欠卡一起清掉。
                 rewriteRepository.clearNeedsReinsert(word.id, book.id)
             }
+            dispatchFsrsSignalsInBackground(word, book, effectiveRating)
             forgetPendingReinsert(word.id)
             if (effectiveRating == StudyRating.AGAIN) {
                 enqueueImmediateRetry(word)
@@ -1097,6 +1158,8 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     bookId = book.id,
                     rating = effectiveRating,
                     algorithmV4Enabled = algorithmV4Enabled.value,
+                    fsrsEnabled = fsrsEnabled.value,
+                    desiredRetention = desiredRetention.value,
                     mlScheduler = if (currentMlEnabled) mlScheduler else null,
                     mlEnabled = currentMlEnabled,
                     sessionPosition = currentSessionPosition,
@@ -1106,6 +1169,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 // 1.4.7.2 W2：用户真的答完这张重写卡，才清待插回标记（生成/合格/插回都不算）。
                 rewriteRepository.clearNeedsReinsert(word.id, book.id)
             }
+            dispatchFsrsSignalsInBackground(word, book, effectiveRating)
             forgetPendingReinsert(word.id)
             markAnswered()
             loadQueueForBook(
@@ -1127,6 +1191,11 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         recordAnswerPace(responseTimeMs)
         val currentSessionPosition = answeredInSession
         val currentSessionTotal = _totalCount.value.coerceAtLeast(1)
+        val effectiveRating = when (outcome) {
+            SpellingOutcome.PERFECT -> StudyRating.GOOD
+            SpellingOutcome.HINTED, SpellingOutcome.RETRY_SUCCESS -> StudyRating.HARD
+            SpellingOutcome.FAILED -> StudyRating.AGAIN
+        }
         launchSubmit {
             val currentMlEnabled = resolveMlEnabledForSubmission()
             if (outcome == SpellingOutcome.FAILED) {
@@ -1163,6 +1232,8 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     attemptCount = attemptCount,
                     durationMillis = durationMillis,
                     algorithmV4Enabled = algorithmV4Enabled.value,
+                    fsrsEnabled = fsrsEnabled.value,
+                    desiredRetention = desiredRetention.value,
                     mlScheduler = if (currentMlEnabled) mlScheduler else null,
                     mlEnabled = currentMlEnabled,
                     sessionPosition = currentSessionPosition,
@@ -1174,6 +1245,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     rewriteRepository.clearNeedsReinsert(word.id, book.id)
                 }
             }
+            dispatchFsrsSignalsInBackground(word, book, effectiveRating)
             if (outcome == SpellingOutcome.FAILED) {
                 return@launchSubmit
             }

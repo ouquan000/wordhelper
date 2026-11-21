@@ -12,6 +12,7 @@ import json
 import os
 import re
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta
 
@@ -20,10 +21,14 @@ import providers
 KEEP_FINISHED = 500  # 队列只留最近这么多条已完成的，防止一年后扫盘变慢
 KEEP_OK = 5  # 每词最多 5 版（spec §4.4）
 KEEP_FAIL = 3
+MEMORY_COOLDOWN_SECONDS = 30 * 60  # lapsed 同词同方法 30 分钟冷却
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
 # 质量不合格/传输失败后的退避：不设总次数，间隔逐级拉长，避免把网关打穿。
 RETRY_DELAYS = (30, 120, 300, 900, 1800, 3600)
+# 工人整轮异常时把 running 退回队列的短退避：不是这条词本身的失败，
+# 只是当前线程没跑完，稍等就让别的工人接手，别按失败次数长退避。
+RELEASE_DELAY_SECONDS = 5
 
 
 def _priority_value(value, default=100):
@@ -45,6 +50,12 @@ def _retry_at(failures):
     )
 
 
+def _seconds_from_now(seconds):
+    return (datetime.now().astimezone() + timedelta(seconds=seconds)).isoformat(
+        timespec="seconds"
+    )
+
+
 def _read_json(path):
     try:
         with open(path, "r", encoding="utf-8-sig") as fh:
@@ -56,11 +67,28 @@ def _read_json(path):
 def _write_json(path, data):
     """先写 .tmp 再替换：手机随时可能来拉，不能读到半份。"""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(data, fh, ensure_ascii=False, indent=1)
-        fh.write("\n")
-    os.replace(tmp, path)
+    # 多工人同时收尾时，Windows 的 os.replace 偶尔会撞上扫描器/读句柄；
+    # 用线程唯一的临时名，并短暂重试，避免整条工人线程被一次瞬时占用打死。
+    tmp = "%s.%d.%d.tmp" % (path, os.getpid(), threading.get_ident())
+    try:
+        with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=1)
+            fh.write("\n")
+        last = None
+        for attempt in range(10):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError as exc:
+                last = exc
+                time.sleep(0.02 * (attempt + 1))
+        raise last
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
 
 def result_name(word):
@@ -125,6 +153,9 @@ def _public(entry):
     # 旧结果没有这两个字段 → 默认 false / 空串，App 端按已复核处理，兼容。
     out["unverified"] = bool(entry.get("unverified"))
     out["reason"] = str(entry.get("reason") or "")
+    out["reused"] = bool(entry.get("reused"))
+    if entry.get("reuseOf") is not None:
+        out["reuseOf"] = entry.get("reuseOf")
     return out
 
 
@@ -149,6 +180,10 @@ class Store:
         self.results_dir = os.path.join(data_dir, "results")
         # 1.4.6：卡背 👍/👎 只追加、不改队列；按 clientId 幂等去重。
         self.feedback_path = os.path.join(data_dir, "feedback.jsonl")
+        # v8：单词复习的 retained/lapsed 信号，落盘做幂等与冷却。
+        self.memory_signals_path = os.path.join(data_dir, "memory_signals.json")
+        self._memory_signals = {}
+        self._memory_cooldowns = {}
         self._feedback_ids = None
         self.items = []
         self.accepted_mark_ids = set()
@@ -177,6 +212,20 @@ class Store:
             self.seq = stored_seq
             if isinstance(stored_stream, str) and re.fullmatch(r"[0-9a-f]{32}", stored_stream):
                 self.stream_id = stored_stream
+        signals = _read_json(self.memory_signals_path)
+        if isinstance(signals, dict):
+            saved_signals = signals.get("signals")
+            if isinstance(saved_signals, dict):
+                self._memory_signals = {
+                    str(key): value for key, value in saved_signals.items()
+                    if isinstance(value, dict)
+                }
+            saved_cooldowns = signals.get("cooldowns")
+            if isinstance(saved_cooldowns, dict):
+                self._memory_cooldowns = {
+                    str(key): value for key, value in saved_cooldowns.items()
+                    if isinstance(value, str) and value
+                }
         # 只有未被替换的旧 running 任务才接续；过期任务不再占工位。
         self._retire_superseded(("pending", "running", "retry_wait"))
         for item in self.items:
@@ -284,6 +333,60 @@ class Store:
                     self._feedback_ids.add(client_id)
                     accepted.append(client_id)
         return accepted, rejected
+
+    # ------------------------------------------------------ 复习记忆信号（v8）
+
+    def record_memory_signal(self, payload):
+        """记录一条 retained/lapsed 复习信号。
+
+        幂等键：clientId + word + bookId + method + event；同一事件只生效一次。
+        lapsed 额外加 30 分钟冷却（同词同方法），避免手机端补传把一次遗忘记成多次。
+        返回 (applied, reason)。
+        """
+        client_id = str(payload.get("clientId") or "").strip()
+        word = str(payload.get("word") or "").strip()
+        book_id = str(payload.get("bookId") or "0").strip()
+        method = str(payload.get("method") or "").strip()
+        event = str(payload.get("event") or "").strip().lower()
+        key = "|".join((client_id, word, book_id, method, event))
+        with self._lock:
+            if key in self._memory_signals:
+                return False, "重复信号，已生效过"
+            if event == "lapsed":
+                cooldown_key = word + "|" + method
+                last = self._memory_cooldowns.get(cooldown_key)
+                if last:
+                    try:
+                        last_at = datetime.fromisoformat(last)
+                        if last_at.tzinfo is None:
+                            last_at = last_at.replace(tzinfo=datetime.now().astimezone().tzinfo)
+                        elapsed = (datetime.now().astimezone() - last_at).total_seconds()
+                        if elapsed < MEMORY_COOLDOWN_SECONDS:
+                            return False, "同词同方法 30 分钟冷却中"
+                    except (TypeError, ValueError):
+                        pass
+            record = {
+                "clientId": client_id,
+                "word": word,
+                "bookId": book_id,
+                "method": method,
+                "event": event,
+                "stability": payload.get("stability"),
+                "difficulty": payload.get("difficulty"),
+                "lapses": payload.get("lapses"),
+                "receivedAt": _now(),
+            }
+            self._memory_signals[key] = record
+            if event == "lapsed":
+                self._memory_cooldowns[word + "|" + method] = record["receivedAt"]
+            self._save_memory_signals()
+        return True, ""
+
+    def _save_memory_signals(self):
+        _write_json(self.memory_signals_path, {
+            "signals": self._memory_signals,
+            "cooldowns": self._memory_cooldowns,
+        })
 
     def _load_feedback_ids(self):
         """第一次收到反馈时扫一遍文件，把已有 clientId 读进内存。"""
@@ -468,6 +571,11 @@ class Store:
                 "attempts": meta.get("attempts", 1),
                 "unverified": unverified,
                 "reason": reason,
+                # 历史复用指纹：只有提示词/用户原话/模型完全一致的新结果才允许复用。
+                "promptHash": str(meta.get("promptHash") or ""),
+                "instructionHash": str(meta.get("instructionHash") or ""),
+                "reused": bool(meta.get("reused")),
+                "reuseOf": meta.get("reuseOf"),
             }
             record["entries"] = _trim(record["entries"] + [entry])
             self._save_word(live["word"])
@@ -598,6 +706,33 @@ class Store:
             self._cond.notify_all()
             return {"state": "retry_wait", "failures": failures, "nextRunAt": next_at}
 
+    def release_claim(self, item, reason="工人异常"):
+        """工人本轮异常：把还处于 running 的认领退回重试，杜绝僵尸 running。
+
+        只在 generation 未变且记录仍是 running 时生效：本轮已经 finish_ok /
+        finish_retry / 被 stop 的任务不能被一次迟到的释放覆盖。attempts 保留，
+        面板上仍能看到真实尝试次数；nextRunAt 用短退避，让别的工人很快接手。
+        """
+        with self._cond:
+            live = self._find((item or {}).get("clientId"))
+            if live is None or not self._same_generation(item, live):
+                return None
+            if live.get("state") != "running":
+                return None
+            reason = str(reason or "工人异常")[:400]
+            next_at = _seconds_from_now(RELEASE_DELAY_SECONDS)
+            live.update(
+                state="retry_wait",
+                stage="",
+                error=reason,
+                lastReason=reason,
+                nextRunAt=next_at,
+                updatedAt=_now(),
+            )
+            self._save_queue()
+            self._cond.notify_all()
+            return {"state": "retry_wait", "nextRunAt": next_at}
+
     def stop(self, word="", client_id=""):
         """停止：待运行、等重试、运行中的都标 stopped；运行中的靠 generation+1 丢晚到结果。"""
         with self._cond:
@@ -725,6 +860,50 @@ class Store:
         with self._lock:
             record = self.results.get(word) or {"entries": []}
             return [_public(e) for e in record["entries"]]
+
+    def find_reusable_result(self, item, prompt_hash, instruction_hash):
+        """同一词、同一本书、同一模型、同一提示词、同一用户原话的最近成品。
+
+        只复用 status=ok 且非 unverified 的 entry；任何一项指纹不同都当没命中，
+        宁可不复用，也不能把旧提示词/旧指令的稿子当成新结果交出去。
+        """
+        if not prompt_hash or not instruction_hash:
+            return None
+        word = str((item or {}).get("word") or "")
+        if not word:
+            return None
+        want_book_id, want_book = book_scope(item)
+        want_model = str((item or {}).get("model") or "")
+        with self._lock:
+            record = self.results.get(word) or {"entries": []}
+            for entry in reversed(record.get("entries") or []):
+                if entry.get("status") != "ok" or entry.get("unverified"):
+                    continue
+                if str(entry.get("model") or "") != want_model:
+                    continue
+                if str(entry.get("promptHash") or "") != prompt_hash:
+                    continue
+                if str(entry.get("instructionHash") or "") != instruction_hash:
+                    continue
+                entry_book_id, entry_book = book_scope(entry)
+                # 精确书范围：知道 ID 就按 ID（同时知道书名时两者都要等），
+                # 只剩书名按书名，两者都空只认 (0, "")。不能用「ID 或书名
+                # 任一相等」——bookId=0 / book="" 的空值会跨书误命中。
+                if want_book_id and want_book:
+                    if entry_book_id != want_book_id or entry_book != want_book:
+                        continue
+                elif want_book_id:
+                    if entry_book_id != want_book_id:
+                        continue
+                elif want_book:
+                    if entry_book != want_book:
+                        continue
+                elif entry_book_id != 0 or entry_book:
+                    continue
+                found = dict(entry)
+                found["approach"] = list(entry.get("approach") or [])
+                return found
+        return None
 
     def records_page(self, limit=50, offset=0, book=""):
         """重写记录页：每条标记一行，按最近更新倒序，附上成品分步思路与上一版。

@@ -22,14 +22,42 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
 import history  # noqa: E402
+import exemplars  # noqa: E402
+import batch_pipeline  # noqa: E402
 import pipeline  # noqa: E402
+import profile  # noqa: E402
 import providers  # noqa: E402
 import store as store_mod  # noqa: E402
 import wb_gate  # noqa: E402
 
 DATA_DIR = os.environ.get("REWRITE_DATA_DIR") or os.path.join(HERE, "data")
 LOG_PATH = os.path.join(DATA_DIR, "logs", "service.log")
-CONCURRENCY = 2  # 两个工人：够用，也不至于把网关打满（spec §4.2）
+
+
+def _int_env(name, default, low=1, high=64):
+    try:
+        value = int(str(os.environ.get(name, default)).strip())
+    except (TypeError, ValueError):
+        value = default
+    return max(low, min(high, value))
+
+
+# 工人数默认跟 gate 槽位对齐；两者分开配只会让一半工人堵在锁上。
+def _default_concurrency():
+    try:
+        return int(wb_gate.slot_count())
+    except (AttributeError, TypeError, ValueError):
+        return _int_env("WB_GATE_SLOTS", 6)
+
+
+CONCURRENCY = _int_env("REWRITE_CONCURRENCY", _default_concurrency())
+REUSE_HISTORY = os.environ.get("REUSE_HISTORY", "1").strip().lower() not in (
+    "0", "false", "no", "off",
+)
+BATCH_SIZE = batch_pipeline.batch_size()
+BATCH_ENABLED = os.environ.get("BATCH_MODE", "0").strip().lower() not in (
+    "0", "false", "no", "off",
+)
 MAX_LOG_BYTES = 2 * 1024 * 1024
 CAPABILITIES = ("rewrite_scoped",)
 
@@ -84,6 +112,29 @@ def _work(item):
         item["history"] = history.build(
             store.data_dir, item.get("word") or "", item.get("instruction") or "", scope=item,
         )
+        # 同词历史复用：提示词/用户原话/模型/书全一致才命中。默认开，
+        # REUSE_HISTORY=0 可关掉做全量重跑对照。
+        prompt_hash = pipeline.prompt_hash()
+        instruction_hash = pipeline.instruction_hash(item)
+        if REUSE_HISTORY:
+            reused = store.find_reusable_result(item, prompt_hash, instruction_hash)
+            if reused:
+                meta = {
+                    "method": reused.get("method") or "",
+                    "scores": reused.get("scores") or {},
+                    "attempts": 0,
+                    "unverified": False,
+                    "reason": "复用历史结果",
+                    "promptHash": prompt_hash,
+                    "instructionHash": instruction_hash,
+                    "reused": True,
+                    "reuseOf": reused.get("seq"),
+                }
+                entry = store.finish_ok(item, reused.get("approach") or [], meta)
+                if entry:
+                    log("[%s] 复用历史 seq=%s -> 新 seq=%s（未调用模型）" % (
+                        item["word"], reused.get("seq"), entry["seq"]))
+                return
         providers.set_task_priority(item.get("priority", 100))
         out = pipeline.run(item, log=log, on_stage=on_stage)
         # 1.4.7.2：质量没过不再「照发 unverified」——那会让用户永远卡在两轮都不过
@@ -130,17 +181,214 @@ def _work(item):
         log("[%s] 本条用时 %.1fs" % (item["word"], time.time() - started))
 
 
-def _worker(index):
+def _finish_reuse(item, reused, prompt_hash, instruction_hash):
     store = _state["store"]
-    while True:
-        item = store.claim(60)
-        if item is None:
-            log("工人 %d 退出" % index)
-            return
+    meta = {
+        "method": reused.get("method") or "",
+        "scores": reused.get("scores") or {},
+        "attempts": 0,
+        "unverified": False,
+        "reason": "复用历史结果",
+        "promptHash": prompt_hash,
+        "instructionHash": instruction_hash,
+        "reused": True,
+        "reuseOf": reused.get("seq"),
+    }
+    entry = store.finish_ok(item, reused.get("approach") or [], meta)
+    if entry:
+        log("[%s] 复用历史 seq=%s -> 新 seq=%s（未调用模型）" % (
+            item["word"], reused.get("seq"), entry["seq"]))
+    return entry
+
+
+def _claim_batch(limit, claimed=None):
+    """先等一条，再尽量多抓几条组成小批；抓不到就按实际条数跑。
+
+    claimed 由调用方传入时把每条认领立即记进去：中途 claim 抛异常，_worker
+    也能看到本轮已经拿到的任务并逐个释放，不会留下僵尸 running。
+    """
+    store = _state["store"]
+    items = claimed if claimed is not None else []
+    first = store.claim(60)
+    if first is None:
+        return items
+    items.append(first)
+    while len(items) < limit:
+        nxt = store.claim(0.05)
+        if nxt is None:
+            break
+        items.append(nxt)
+    return items
+
+
+def _work_batch(items):
+    """小批量通道：批量 generate + 批量 judge，坏一条只回退那一条。
+
+    polish 仍是单条：它只改文字，批量收益小，且失败隔离必须精确到词。
+    任何批量/单项异常都交给 _work(item) 走原有单词精修通道，不拖累同批。
+    """
+    store = _state["store"]
+    prepared = []
+    for raw in items:
+        item = dict(raw)
+        item["history"] = history.build(
+            store.data_dir, item.get("word") or "", item.get("instruction") or "", scope=item,
+        )
+        prompt_hash = pipeline.prompt_hash()
+        instruction_hash = pipeline.instruction_hash(item)
+        if REUSE_HISTORY:
+            reused = store.find_reusable_result(item, prompt_hash, instruction_hash)
+            if reused:
+                _finish_reuse(item, reused, prompt_hash, instruction_hash)
+                continue
+        prepared.append((item, prompt_hash, instruction_hash))
+    if not prepared:
+        return
+
+    # 批量通道也要按本轮任务重设优先级：providers 的优先级是 thread-local，
+    # 复用上一单残留值会让前台批被 foreground 阶段误挡（或让离线批冒充前台）。
+    # 一批可能混有不同优先级，取最高的一个，避免把前台任务挡在门外。
+    priorities = []
+    for item, _, _ in prepared:
+        try:
+            priorities.append(int(item.get("priority", 100)))
+        except (TypeError, ValueError):
+            priorities.append(100)
+    providers.set_task_priority(max(priorities))
+
+    log("批处理 %d 词：%s" % (len(prepared), "、".join(i["word"] for i, _, _ in prepared)))
+    for item, _, _ in prepared:
+        try:
+            store.set_stage(item["clientId"], "generate")
+        except Exception:  # noqa: BLE001 - 埋点别拖垮生成
+            pass
+    try:
+        drafts = batch_pipeline.generate_batch([item for item, _, _ in prepared])
+    except Exception as exc:  # noqa: BLE001 - 批通道坏了整批回退单条
+        log("批生成失败，整批回退单条：%s" % str(exc)[:200])
+        for item, _, _ in prepared:
+            _work(item)
+        return
+
+    ready = []
+    fallback = []
+    for item, prompt_hash, instruction_hash in prepared:
+        word = item["word"]
+        draft = drafts.get(word) or drafts.get(word.casefold()) or drafts.get(word.lower())
+        if not isinstance(draft, dict):
+            fallback.append((item, prompt_hash, instruction_hash))
+            continue
+        try:
+            store.set_stage(item["clientId"], "polish")
+            approach = pipeline.polish(item, draft)
+            bans = pipeline.banned_terms(item.get("instruction"))
+            violations = list(draft.get("violations") or [])
+            if bans:
+                for hit in pipeline._text_hits(bans, approach, allow_last_note=True):
+                    if hit not in violations:
+                        violations.append(hit)
+            hard = pipeline.rules_hard.check(
+                approach,
+                instruction=str(item.get("instruction") or ""),
+                banned_terms=[ban["needle"] for ban in bans] if bans else None,
+            )
+            if hard.ok and not violations:
+                ready.append((item, draft, approach, prompt_hash, instruction_hash))
+            else:
+                fallback.append((item, prompt_hash, instruction_hash))
+        except Exception as exc:  # noqa: BLE001 - 单条润色坏了只回退该词
+            log("[%s] 批润色失败，回退单条：%s" % (word, str(exc)[:160]))
+            fallback.append((item, prompt_hash, instruction_hash))
+
+    if ready:
+        try:
+            judged = batch_pipeline.judge_batch(
+                [item for item, _, _, _, _ in ready],
+                {item["word"]: draft for item, draft, _, _, _ in ready},
+                {item["word"]: approach for item, _, approach, _, _ in ready},
+            )
+        except Exception as exc:  # noqa: BLE001 - 批评审坏了整批回退
+            log("批评审失败，整批回退单条：%s" % str(exc)[:200])
+            judged = {}
+        for item, draft, approach, prompt_hash, instruction_hash in ready:
+            result = judged.get(item["word"]) or judged.get(item["word"].casefold())
+            if result is None:
+                fallback.append((item, prompt_hash, instruction_hash))
+                continue
+            scores, issues, intent, same_method, history_repeat = result
+            binary = getattr(result, "binary", None)
+            if not pipeline._passed(
+                item, scores, intent, same_method, history_repeat,
+                binary=binary, hard_ok=True,
+            ):
+                fallback.append((item, prompt_hash, instruction_hash))
+                continue
+            meta = {
+                "method": draft.get("method") or "",
+                "scores": scores,
+                "attempts": 1,
+                "unverified": False,
+                "reason": "",
+                "promptHash": prompt_hash,
+                "instructionHash": instruction_hash,
+            }
+            if store.finish_ok(item, approach, meta):
+                log("[%s] 批完成（未回退）" % item["word"])
+
+    for item, _, _ in fallback:
         _work(item)
 
 
+def _worker(index):
+    store = _state["store"]
+    while True:
+        # 整轮包住：_claim_batch / _work / _work_batch 任何一步抛异常，
+        # 都把本轮已经拿到、仍停在 running 的任务退回 retry_wait，
+        # 杜绝 chair 类僵尸 running 占着工位却没人再管。
+        claimed = []
+        try:
+            if BATCH_ENABLED and BATCH_SIZE > 1:
+                items = _claim_batch(BATCH_SIZE, claimed)
+                if not items:
+                    log("工人 %d 退出" % index)
+                    return
+                if len(items) == 1:
+                    _work(items[0])
+                else:
+                    _work_batch(items)
+            else:
+                item = store.claim(60)
+                if item is None:
+                    log("工人 %d 退出" % index)
+                    return
+                claimed.append(item)
+                _work(item)
+        except Exception as exc:  # noqa: BLE001 - 工人不能因为一次抢单/落盘抖动就永久消失
+            log("工人 %d 异常，1s 后继续：%r" % (index, exc))
+            for item in claimed:
+                try:
+                    released = store.release_claim(item, "工人异常：%r" % (exc,))
+                except Exception as release_exc:  # noqa: BLE001 - 一条释放失败不能挡住其余
+                    log("[%s] 释放认领失败：%r" % (item.get("word") or "?", release_exc))
+                    continue
+                # release_claim 只在 generation 未变且 state 仍 running 时生效，
+                # 已经完成的同轮任务会返回 None，这里不会误释放。
+                if released:
+                    log("[%s] 工人异常，已释放回重试：%s" % (
+                        item.get("word") or "?", released.get("nextRunAt", "")))
+            time.sleep(1.0)
+
+
 # ------------------------------------------------------------------ 生命周期
+
+
+def _profile_state():
+    """按当前 DATA_DIR 取画像实例；测试改 DATA_DIR 后也不会串库。"""
+    return profile.get_profile(os.path.join(DATA_DIR, "profile.json"))
+
+
+def _exemplar_state():
+    return exemplars.get_exemplars(DATA_DIR)
 
 
 def startup():
@@ -154,6 +402,12 @@ def startup():
         _state["store"] = store
         _state["startedAt"] = datetime.now().astimezone().isoformat(timespec="seconds")
         _state["ready"] = True
+        # 预热跨词画像与样例池：坏了也只记日志，不能让重写服务起不来。
+        try:
+            _profile_state()
+            _exemplar_state()
+        except Exception as exc:  # noqa: BLE001
+            log("预热 profile/exemplars 失败：%r" % (exc,))
         pending = store.status()["pending"]
         log("重写服务启动：并发 %d，待跑 %d 条，seq=%s" % (CONCURRENCY, pending, store.seq))
         for index in range(CONCURRENCY):
@@ -211,7 +465,7 @@ def _marks(body):
 
 
 def _feedback(body):
-    """卡背 👍/👎（1.4.6）：只落盘，不触发任何重写。"""
+    """卡背 👍/👎（1.4.6）：落盘，同时喂跨词画像与样例池。"""
     payload = _read_body(body)
     items = payload.get("items") if isinstance(payload, dict) else payload
     if not isinstance(items, list):
@@ -220,7 +474,68 @@ def _feedback(body):
         raise ApiError("一次最多 200 条反馈")
     accepted, rejected = _state["store"].add_feedback(items)
     log("收反馈 %d 条：接受 %d 拒绝 %d" % (len(items), len(accepted), len(rejected)))
+    # add_feedback 对重复 clientId 也回 accepted，不能拿返回值判断新增；
+    # 直接用原始 items，profile/exemplars 各自按 id 幂等。
+    # store 只拒收「非对象 / 缺 clientId / rating 非 up/down」，下面三道校验天然排除，
+    # 被拒的非法反馈不会算进画像。
+    try:
+        current = _profile_state()
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+            client_id = str(raw.get("clientId") or "").strip()
+            method = profile.normalize_method(raw.get("method"))
+            rating = str(raw.get("rating") or "").strip().lower()
+            if client_id and method and rating in ("up", "down"):
+                current.update_feedback(method, rating, event_id="feedback:" + client_id)
+        _exemplar_state().ingest_feedback(items)
+    except Exception as exc:  # noqa: BLE001 - 旁路学习失败不能影响已落盘的反馈
+        log("更新画像/样例失败：%r" % (exc,))
     return {"ok": True, "accepted": accepted, "rejected": rejected}
+
+
+def _memory_signal(body):
+    """复习结果信号（v8）：retained / lapsed → 更新六招画像。"""
+    data = _read_body(body)
+    if not isinstance(data, dict):
+        raise ApiError("请求体要是对象")
+    client_id = str(data.get("clientId") or "").strip()
+    word = str(data.get("word") or "").strip()
+    book_id = str(data.get("bookId") or "0").strip()
+    method = profile.normalize_method(data.get("method"))
+    event = str(data.get("event") or "").strip().lower()
+    if not client_id:
+        raise ApiError("缺 clientId")
+    if not word:
+        raise ApiError("缺 word")
+    if not method:
+        raise ApiError("method 只能是 sound/root/contrast/shape/polysemy/meaning")
+    if event not in ("retained", "lapsed"):
+        raise ApiError("event 只能是 retained/lapsed")
+    applied, reason = _state["store"].record_memory_signal({
+        "clientId": client_id,
+        "word": word,
+        "bookId": book_id,
+        "method": method,
+        "event": event,
+        "stability": data.get("stability"),
+        "difficulty": data.get("difficulty"),
+        "lapses": data.get("lapses"),
+    })
+    if applied:
+        try:
+            _profile_state().update_memory_signal(
+                method,
+                event,
+                event_id="memory:" + "|".join((client_id, word, book_id, method, event)),
+            )
+        except Exception as exc:  # noqa: BLE001
+            log("更新记忆画像失败：%r" % (exc,))
+        log("记忆信号 %s/%s：%s" % (word, method, event))
+    out = {"ok": True, "applied": applied}
+    if not applied and reason:
+        out["reason"] = reason
+    return out
 
 
 PAGE_FILES = {"records": "rewrite.html", "panel": "panel.html"}
@@ -303,6 +618,8 @@ def _dispatch(method, raw_path, body):
         return _json(_marks(body))
     if method == "POST" and path == "/rewrite/feedback":
         return _json(_feedback(body))
+    if method == "POST" and path == "/rewrite/memory-signal":
+        return _json(_memory_signal(body))
     if method == "POST" and path == "/rewrite/stop":
         return _json(_stop(body))
     if method == "POST" and path == "/rewrite/gate":

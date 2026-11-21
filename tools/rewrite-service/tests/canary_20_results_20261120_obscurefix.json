@@ -1,0 +1,99 @@
+{
+  "meta": {
+    "date": "2026-11-20",
+    "script": "tests\\canary_20.py",
+    "data_dir": "tests\\_canary_data_20261120",
+    "model": "ds-v41-flash",
+    "judge_model": "wb/cn:glm-5.3",
+    "started_at": "2026-11-20T03:24:19+08:00",
+    "updated_at": "2026-11-20T03:26:27+08:00",
+    "run_wall_s": 127.2,
+    "finished_at": "2026-11-20T03:26:27+08:00"
+  },
+  "results": [
+    {
+      "word": "obscure",
+      "category": "高踩钉子户",
+      "model": "ds-v41-flash",
+      "judge_model": "wb/cn:glm-5.3",
+      "method": "sound",
+      "approach": [
+        "① obscure 拆成 ob + scure，真读音 /əbˈskjʊr/ 跟字母拆法对不上，读快了像「饿不·死去」两截，声音压在嗓子眼里。",
+        "② 把「饿不·死去」想成一个人饿得没力气、嗓子嘶哑，话像快断气一样含混，旁人竖起耳朵也听不明白。",
+        "③ 声音闷住、内容糊住，眼睛看不清，耳朵也听不懂 ——> 晦涩的；使模糊。"
+      ],
+      "passed": true,
+      "unverified": false,
+      "attempts": 1,
+      "timings": {
+        "generate_1": 75.7,
+        "polish_1": 24.0,
+        "judge_1": 27.3,
+        "total": 127.0
+      },
+      "binary": {
+        "has_unknown_part": false,
+        "is_robot_tone": false,
+        "is_logic_broken": false,
+        "phonetic_drift_unwarned": false,
+        "violates_user_intent": null
+      },
+      "binary_missing": [
+        "violates_user_intent"
+      ],
+      "judge_flags": {
+        "intent": "other",
+        "same_method": false,
+        "history_repeat": false
+      },
+      "hard_hits": [],
+      "hard_blocks": 0,
+      "hard_attempts": [
+        {
+          "attempt": 1,
+          "ok": true,
+          "hits": []
+        }
+      ],
+      "judge_calls": [
+        {
+          "attempt": 1,
+          "binary": {
+            "has_unknown_part": false,
+            "is_robot_tone": false,
+            "is_logic_broken": false,
+            "phonetic_drift_unwarned": false,
+            "violates_user_intent": null
+          },
+          "scores": {
+            "拆分成立": 10,
+            "方法选对": 10,
+            "谐音过关": 10,
+            "逻辑连贯": 10,
+            "文本充足": 10,
+            "像人说话": 10
+          },
+          "issues": [],
+          "intent": "other",
+          "same_method": false,
+          "history_repeat": false
+        }
+      ],
+      "scores": {
+        "拆分成立": 10,
+        "方法选对": 10,
+        "谐音过关": 10,
+        "逻辑连贯": 10,
+        "文本充足": 10,
+        "像人说话": 10
+      },
+      "reason": "",
+      "error": "",
+      "elapsed_s": 127.2,
+      "runs": 1,
+      "worker_rc": 0,
+      "timed_out": false,
+      "log": "tests\\_canary_data_20261120\\logs\\obscurefix_obscure.log"
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.HttpException
@@ -78,8 +79,10 @@ class AIRepositoryTest {
         val result = repository.generateMemoryAid(wordId = 2L, word = "resilient", forceRefresh = true)
 
         assertTrue(result.isSuccess)
-        assertTrue(result.getOrNull()?.contains("【词根词缀】") == true)
         assertTrue(result.getOrNull()?.contains("retry-success") == true)
+        assertFalse(result.getOrNull()?.contains("【词根词缀】") == true)
+        assertFalse(result.getOrNull()?.contains("【联想记忆】") == true)
+        assertFalse(result.getOrNull()?.contains("【复习提示】") == true)
         assertEquals(2, fakeService.callCount)
         val cached = cacheDao.getByQueryAndType("resilient", "MEMORY_AID")
         assertTrue(cached?.aiContent?.contains("retry-success") == true)

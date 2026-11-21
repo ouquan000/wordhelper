@@ -200,6 +200,40 @@ class RetryQueueTest(unittest.TestCase):
         self.assertEqual(self.store.items[0]["failures"], 1)
         self.assertEqual(self.store.results, {})
 
+    def test_release_claim_returns_running_to_retry_wait_and_keeps_attempts(self):
+        out = self.store.release_claim(self.item, "工人异常：boom")
+        self.assertEqual(out["state"], "retry_wait")
+        live = self.store.items[0]
+        self.assertEqual(live["state"], "retry_wait")
+        self.assertEqual(live["attempts"], 1)
+        self.assertEqual(live["stage"], "")
+        self.assertEqual(live["error"], "工人异常：boom")
+        self.assertEqual(live["nextRunAt"], out["nextRunAt"])
+        self.assertTrue(live["nextRunAt"])
+        # 重复释放不会再次改状态，避免把更晚的退避时间往后推。
+        self.assertIsNone(self.store.release_claim(self.item, "again"))
+        # 到点回 pending，再 claim 拿到同一代次，attempts 只由 claim 累加。
+        live["nextRunAt"] = "2000-01-01T00:00:00+08:00"
+        self.store._promote_retries_locked()
+        again = self.store.claim(timeout=1)
+        self.assertEqual(again["clientId"], self.item["clientId"])
+        self.assertEqual(again["generation"], self.item["generation"])
+        self.assertEqual(again["attempts"], 2)
+
+    def test_release_claim_does_not_overwrite_finished_item(self):
+        self.assertIsNotNone(self.store.finish_ok(self.item, ["ok"], {}))
+        self.assertIsNone(self.store.release_claim(self.item, "late"))
+        self.assertEqual(self.store.items[0]["state"], "done")
+
+    def test_release_claim_ignores_stopped_generation(self):
+        self.store.stop(word="alpha")
+        self.assertIsNone(self.store.release_claim(self.item, "late"))
+        self.assertEqual(self.store.items[0]["state"], "stopped")
+
+    def test_release_claim_ignores_unknown_item(self):
+        self.assertIsNone(self.store.release_claim({"clientId": "missing"}, "late"))
+        self.assertEqual(self.store.items[0]["state"], "running")
+
     def test_stop_discards_late_result(self):
         stopped = self.store.stop(word="alpha")
         self.assertEqual(stopped, 1)
@@ -239,6 +273,58 @@ class RetryQueueTest(unittest.TestCase):
         self.assertEqual(live["state"], "retry_wait")
         self.assertEqual(live["failures"], 2)
         self.assertEqual(live["bestApproach"], ["v2"])
+
+
+class WorkerReleaseTest(unittest.TestCase):
+    """工人整轮异常：本轮已 claim 的 running 任务必须退回队列。"""
+
+    class FakeStore:
+        def __init__(self, claims):
+            self.claims = list(claims)
+            self.released = []
+
+        def claim(self, timeout=60):
+            if not self.claims:
+                return None
+            value = self.claims.pop(0)
+            if isinstance(value, Exception):
+                raise value
+            return value
+
+        def release_claim(self, item, reason):
+            self.released.append((item["clientId"], reason))
+            return {"state": "retry_wait", "nextRunAt": "2000-01-01T00:00:00+08:00"}
+
+    def test_worker_releases_item_when_work_raises(self):
+        item = {"clientId": "c1", "word": "alpha"}
+        store = self.FakeStore([item, None])
+        with (
+            patch.object(service, "BATCH_ENABLED", False),
+            patch.object(service, "log"),
+            patch.dict(service._state, {"store": store}),
+            patch.object(service, "_work", side_effect=RuntimeError("boom")),
+            patch.object(service.time, "sleep") as sleep,
+        ):
+            service._worker(0)
+        self.assertEqual([row[0] for row in store.released], ["c1"])
+        self.assertIn("boom", store.released[0][1])
+        self.assertEqual(sleep.call_count, 1)
+
+    def test_worker_releases_partial_batch_when_claim_raises(self):
+        first = {"clientId": "c1", "word": "alpha"}
+        # 第一次 claim 成功，第二次（凑批）抛异常：已拿到的 c1 仍要释放。
+        store = self.FakeStore([first, RuntimeError("claim boom"), None])
+        with (
+            patch.object(service, "BATCH_ENABLED", True),
+            patch.object(service, "BATCH_SIZE", 3),
+            patch.object(service, "log"),
+            patch.dict(service._state, {"store": store}),
+            patch.object(service.time, "sleep") as sleep,
+        ):
+            service._worker(1)
+        self.assertEqual([row[0] for row in store.released], ["c1"])
+        self.assertIn("claim boom", store.released[0][1])
+        self.assertEqual(sleep.call_count, 1)
 
 
 if __name__ == "__main__":
