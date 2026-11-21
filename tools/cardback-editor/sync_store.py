@@ -37,6 +37,47 @@ MAX_ROWS_PER_BOOK = 6000
 # op 里必须存在的字段；缺了就当脏数据丢掉，别让它污染库。
 REQUIRED = ("op_id", "t", "w", "b", "st", "reps", "ivl", "nrt", "ef", "rc", "lrt")
 
+# 1.4.9-P1：FSRS 四字段是「向后兼容的可选字段」。
+# 老客户端（1.4.9-P0 及以前）根本不发这四项，缺省时完全走旧逻辑；
+# 一旦带了，就必须是干净的数字类型，否则整条 op 拒收，避免脏类型写进 sync.json
+# 再被 pull 下发给手机端（Gson 反序列化会直接抛异常，整页同步失败）。
+OPTIONAL_FSRS = ("fsrs_stability", "fsrs_difficulty", "fsrs_lapses", "fsrs_state")
+
+# 除 ef（允许小数）以外的契约字段都必须是整数。
+_INT_FIELDS = ("st", "reps", "ivl", "nrt", "rc", "lrt")
+
+
+def _is_number(value) -> bool:
+    """JSON 数字判定：bool 是 int 的子类，true/false 不能混进来当 1/0。"""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _type_error(op: dict) -> str:
+    """检查基础字段类型，返回第一条错误描述；类型正常返回空串。
+
+    只做「脏类型」防守，不裁决业务范围（范围由客户端和 FSRS 自己保证）。
+    """
+    if not isinstance(op.get("op_id"), str) or not op.get("op_id", "").strip():
+        return "op_id 不是有效字符串"
+    for key in ("t", "w", "b"):
+        if not isinstance(op.get(key), str):
+            return f"{key} 不是字符串"
+    for key in _INT_FIELDS:
+        value = op.get(key)
+        if not isinstance(value, int) or isinstance(value, bool):
+            return f"{key} 不是整数"
+    if not _is_number(op.get("ef")):
+        return "ef 不是数字"
+    if op.get("fsrs_stability") is not None and not _is_number(op.get("fsrs_stability")):
+        return "fsrs_stability 不是数字"
+    if op.get("fsrs_difficulty") is not None and not _is_number(op.get("fsrs_difficulty")):
+        return "fsrs_difficulty 不是数字"
+    for key in ("fsrs_lapses", "fsrs_state"):
+        value = op.get(key)
+        if value is not None and (not isinstance(value, int) or isinstance(value, bool)):
+            return f"{key} 不是整数"
+    return ""
+
 # 从坏文件原文里尽量捞回最大的 rev，避免重建后 rev 归 0，
 # 让手机端拿着旧 since_rev 永远拉不到新数据。
 _REV_RE = re.compile(r'"rev"\s*:\s*(\d+)')
@@ -295,6 +336,10 @@ class SyncStore:
                 if not op_id or missing:
                     rejected.append({"op_id": op_id, "reason": f"缺字段 {','.join(missing)}"})
                     continue
+                type_error = _type_error(op)
+                if type_error:
+                    rejected.append({"op_id": op_id, "reason": f"字段类型不对：{type_error}"})
+                    continue
                 key = _key(str(op["b"]), str(op["w"]))
                 seen = self._data.setdefault("seen", {})
                 if op_id in seen:
@@ -329,6 +374,11 @@ class SyncStore:
                         continue
                 self._data["rev"] += 1
                 row = {k: op.get(k) for k in REQUIRED}
+                # 可选字段：只有客户端真的带了才落盘，老行/老客户端保持原样。
+                # 注意：循环变量绝不能叫 key —— 上面的行键 key 还要用来写入 rows。
+                for field in OPTIONAL_FSRS:
+                    if op.get(field) is not None:
+                        row[field] = op.get(field)
                 row["device"] = str(device_id or "")[:64]
                 row["rev"] = self._data["rev"]
                 row["at"] = now

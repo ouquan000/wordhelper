@@ -12,11 +12,13 @@ import com.kaoyan.wordhelper.data.repository.RewriteRepository
 import com.kaoyan.wordhelper.data.repository.SettingsRepository
 import com.kaoyan.wordhelper.data.repository.SyncRepository
 import com.kaoyan.wordhelper.data.repository.WordRepository
+import com.kaoyan.wordhelper.data.repository.WordbookUpdateRepository
 import com.kaoyan.wordhelper.ml.core.PersonalRetentionPredictor
 import com.kaoyan.wordhelper.ml.integration.MLEnhancedScheduler
 import com.kaoyan.wordhelper.ml.training.ColdStartManager
 import com.kaoyan.wordhelper.ml.training.ModelPersistence
 import com.kaoyan.wordhelper.sync.BackgroundSync
+import com.kaoyan.wordhelper.util.AutoBackupManager
 import com.kaoyan.wordhelper.util.WordbookFullLoader
 import com.kaoyan.wordhelper.util.WordMethodMapLoader
 import com.kaoyan.wordhelper.util.BuiltinBooks
@@ -69,6 +71,11 @@ class KaoyanWordApp : Application() {
     /** 学习记录同步（1.4.4）：本地排队，只在用户点「同步学习记录」时才联网。 */
     val syncRepository: SyncRepository by lazy {
         SyncRepository(database, settingsRepository)
+    }
+
+    /** 1.5.0：词卡 JSON 热更新（局域网优先、公网兜底），免重装 APK。 */
+    val wordbookUpdateRepository: WordbookUpdateRepository by lazy {
+        WordbookUpdateRepository(this, database, settingsRepository)
     }
 
     val aiConfigRepository: AIConfigRepository by lazy {
@@ -190,6 +197,12 @@ class KaoyanWordApp : Application() {
             if (settings.mlAdaptiveEnabled) {
                 initializeMLEngine()
             }
+        }
+        // 1.5.0：零配置「抗卸载」自动备份。启动后静默跑，距上次成功满 12 小时才做；
+        // 写公共「下载/WordHelperBackups」，卸载 App 也还在。失败只记日志，绝不打扰用户。
+        appScope.launch {
+            delay(4_000)
+            runCatching { AutoBackupManager.maybeRun(this@KaoyanWordApp, database) }
         }
     }
 

@@ -60,6 +60,8 @@ import com.kaoyan.wordhelper.BuildConfig
 import com.kaoyan.wordhelper.KaoyanWordApp
 import com.kaoyan.wordhelper.data.repository.DarkMode
 import com.kaoyan.wordhelper.data.repository.SyncStatusStore
+import com.kaoyan.wordhelper.data.repository.WordbookUpdateState
+import com.kaoyan.wordhelper.util.AutoBackupManager
 import com.kaoyan.wordhelper.ui.component.HeatmapGrid
 import com.kaoyan.wordhelper.ui.component.HeatmapLegend
 import com.kaoyan.wordhelper.ui.component.MemoryLineChart
@@ -73,7 +75,9 @@ import com.kaoyan.wordhelper.ui.viewmodel.ProfileStats
 import com.kaoyan.wordhelper.ui.viewmodel.StatsScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -105,7 +109,14 @@ fun ProfileScreen(
     // 1.4.7：状态页与「我的」入口读的是同一份快照，入口那行不用再单独请求一次。
     val syncStatus by SyncStatusStore.state.collectAsStateWithLifecycle()
     val syncMessage by viewModel.syncMessage.collectAsStateWithLifecycle()
+    val wordbookState by viewModel.wordbookUpdate.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    // 自动备份在 Application 启动后异步跑；这里过几秒再读一次状态，避免页面先于备份完成渲染。
+    var autoBackupState by remember { mutableStateOf(AutoBackupManager.readState(context)) }
+    LaunchedEffect(Unit) {
+        delay(2500)
+        autoBackupState = AutoBackupManager.readState(context)
+    }
     // 1.4.7.4：全局全屏沉浸开关直接写 SettingsRepository，settingsFlow 会让整棵 UI 立即跟着变。
     val uiScope = rememberCoroutineScope()
     val settingsRepository = remember(context) {
@@ -287,7 +298,10 @@ fun ProfileScreen(
                         syncMessage = syncMessage,
                         syncStatusSummary = syncStatusEntrySummary(syncStatus),
                         onSync = viewModel::syncLearningRecords,
-                        onOpenSyncStatus = onOpenSyncStatus
+                        onOpenSyncStatus = onOpenSyncStatus,
+                        wordbookState = wordbookState,
+                        onSyncWordbook = viewModel::syncWordbook,
+                        autoBackupLabel = autoBackupStatusText(autoBackupState)
                     )
                 }
             }
@@ -305,6 +319,7 @@ fun ProfileScreen(
                         showBuiltinFullBooks = showBuiltinFullBooks,
                         cardBackUrl = settings.cardBackUrl,
                         cardBackLanAuto = settings.cardBackLanAuto,
+                        wordbookRemoteUrl = settings.wordbookRemoteUrl,
                         immersiveFullscreenEnabled = settings.immersiveFullscreenEnabled,
                         rewritePendingCount = rewritePendingCount,
                         darkThemeEnabled = darkThemeEnabled,
@@ -315,6 +330,7 @@ fun ProfileScreen(
                         onShowBuiltinFullBooksChange = viewModel::updateShowBuiltinFullBooks,
                         onCardBackUrlChange = viewModel::updateCardBackUrl,
                         onCardBackLanAutoChange = viewModel::updateCardBackLanAuto,
+                        onWordbookRemoteUrlChange = viewModel::updateWordbookRemoteUrl,
                         onDarkThemeEnabledChange = onDarkThemeEnabledChange,
                         onImmersiveFullscreenEnabledChange = { enabled ->
                             uiScope.launch {
@@ -586,7 +602,10 @@ private fun DataManageCard(
     syncMessage: String?,
     syncStatusSummary: String,
     onSync: () -> Unit,
-    onOpenSyncStatus: () -> Unit
+    onOpenSyncStatus: () -> Unit,
+    wordbookState: WordbookUpdateState,
+    onSyncWordbook: () -> Unit,
+    autoBackupLabel: String
 ) {
     // 数据管理卡：透明底 + 细描边，交给 StandardPanel 统一处理日夜两种描边色。
     StandardPanel(modifier = Modifier.fillMaxWidth()) {
@@ -602,6 +621,35 @@ private fun DataManageCard(
                 OutlinedButton(onClick = onImport) {
                     Text(text = "数据恢复")
                 }
+            }
+            Text(
+                text = autoBackupLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(text = "词卡热更", style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = "电脑端发布了新的记忆卡内容，点一下就能拉下来；不用重装 APK，" +
+                    "也不会动你的学习进度和手改过的助记。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onSyncWordbook,
+                    enabled = !wordbookState.syncing,
+                    modifier = Modifier.testTag("profile_wordbook_sync")
+                ) {
+                    Text(text = if (wordbookState.syncing) "正在同步词卡…" else "同步最新词卡")
+                }
+                Text(
+                    text = wordbookStatusText(wordbookState),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Text(
                 text = "学习记录可以跟电脑对一下：手机先在本地排队，同一 WiFi 下点同步才联网；" +
@@ -666,6 +714,26 @@ private fun DataManageCard(
     }
 }
 
+/** 自动备份状态一行：这是「安静的说明」，不抢备份/恢复按钮的位置。 */
+private fun autoBackupStatusText(state: AutoBackupManager.AutoBackupState): String {
+    val base = "自动备份已开启 · 存至 下载/${AutoBackupManager.BACKUP_DIR_NAME}"
+    if (state.lastSuccessAt <= 0L) return "$base · 启动后会自动备份一次"
+    val time = Instant.ofEpochMilli(state.lastSuccessAt)
+        .atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+    return "$base · 上次：$time"
+}
+
+/** 词卡同步状态一行：优先显示本次操作的反馈，否则显示上次成功时间。 */
+private fun wordbookStatusText(state: WordbookUpdateState): String {
+    state.lastMessage?.takeIf { it.isNotBlank() }?.let { return it }
+    if (state.lastSyncAt <= 0L) return "还没同步过"
+    val time = Instant.ofEpochMilli(state.lastSyncAt)
+        .atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+    return if (state.lastWordCount > 0) "上次同步：$time · ${state.lastWordCount} 词" else "上次同步：$time"
+}
+
 @Composable
 private fun SettingsCard(
     newWordsLimit: Int,
@@ -675,6 +743,7 @@ private fun SettingsCard(
     showBuiltinFullBooks: Boolean,
     cardBackUrl: String,
     cardBackLanAuto: Boolean,
+    wordbookRemoteUrl: String,
     immersiveFullscreenEnabled: Boolean,
     rewritePendingCount: Int,
     // 日夜双模式总开关（旧 darkMode 字段保留兼容）
@@ -687,10 +756,12 @@ private fun SettingsCard(
     onShowBuiltinFullBooksChange: (Boolean) -> Unit,
     onCardBackUrlChange: (String) -> Unit,
     onCardBackLanAutoChange: (Boolean) -> Unit,
+    onWordbookRemoteUrlChange: (String) -> Unit,
     onImmersiveFullscreenEnabledChange: (Boolean) -> Unit
 ) {
     // 电脑端给的是「地址#口令」一整行，这里只让用户粘一次，解析在 SettingsRepository 里做。
     var cardBackUrlInput by remember(cardBackUrl) { mutableStateOf(cardBackUrl) }
+    var wordbookRemoteInput by remember(wordbookRemoteUrl) { mutableStateOf(wordbookRemoteUrl) }
     var dailyNewWordsInput by remember(newWordsLimit) { mutableStateOf(newWordsLimit.toString()) }
     val parsedDailyNewWords = dailyNewWordsInput.toIntOrNull()
     val canSaveDailyNewWords = parsedDailyNewWords != null &&
@@ -842,6 +913,36 @@ private fun SettingsCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "词卡公网同步地址（可选）", style = MaterialTheme.typography.bodySmall)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = wordbookRemoteInput,
+                            onValueChange = { wordbookRemoteInput = it },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("settings_wordbook_remote_url"),
+                            placeholder = { Text(text = "https://xxx.trycloudflare.com") }
+                        )
+                        TextButton(
+                            onClick = { onWordbookRemoteUrlChange(wordbookRemoteInput.trim()) },
+                            enabled = wordbookRemoteInput.trim() != wordbookRemoteUrl
+                        ) {
+                            Text(text = "保存")
+                        }
+                    }
+                    Text(
+                        text = "在局域网「卡背结构地址」之外再配一个公网地址：同一 WiFi 先走局域网，" +
+                            "2 秒连不上就自动切这里；只填域名，不用带 /cards/... 路径。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 if (rewritePendingCount > 0) {
                     Text(
                         text = "还有 $rewritePendingCount 条重写思路在等电脑处理",

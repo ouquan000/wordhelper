@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""卡背清单本地服务（App 1.4.2）
+"""卡背清单本地服务（App 1.5.0）
 
 - 手机：GET /cardback.json（拉配置）
-- 手机/运维：GET /health（版本与能力自报，1.4.7）
-- 编辑器网页：/api/state、/api/publish、/api/history、/api/rollback
+- 手机/运维：GET /health（版本与能力自报，1.5.0）
+- 手机热更：GET /cards/manifest.json + GET /cards/cet6_cards.json（词卡包，no-store）
+- 编辑器网页：/api/state、/api/publish、/api/history、/api/rollback、POST /cards/publish
 - 只用 Python 3 标准库，零第三方依赖
-- 所有落盘都在本文件同级的 published/ 下
+- 所有落盘都在本文件同级的 published/ 下（词卡包在 published/cards/）
 
 用法：
     python server.py               # 起服务 + 自动打开浏览器
@@ -54,7 +55,7 @@ PORT = DEFAULT_PORT
 # 升版本只改 SERVICE_VERSION；加/删能力才动 HEALTH_PROTOCOL 和 CAPABILITIES。
 SERVICE_NAME = "cardback-editor"  # /health 的 service 字段
 SERVICE_PRODUCT = "CardbackEditor"  # HTTP Server 头里的产品名
-SERVICE_VERSION = "1.4.2"
+SERVICE_VERSION = "1.5.0"
 SERVER_VERSION = "%s/%s" % (SERVICE_PRODUCT, SERVICE_VERSION)
 HEALTH_PROTOCOL = 1  # App 握手用：协议变了就说清楚，别靠字段猜
 
@@ -63,8 +64,10 @@ HEALTH_PROTOCOL = 1  # App 握手用：协议变了就说清楚，别靠字段�
 # - feedback：POST /rewrite/feedback（按 clientId 去重，可重复补发）
 # - sync_push：POST /sync/push（按 lrt/op_id 去重，重复的也算 acked）
 # - sync_cursor：GET /sync/pull?since_rev= 游标翻页（回 next_since_rev）
+# - cards_ota：GET /cards/manifest.json + GET /cards/cet6_cards.json + POST /cards/publish
+#   词卡包热更（1.5.0）：App 拿 manifest 比 version/sha256，变了才下整份词卡。
 # 不列 skip / outbox：两者都是 App 本地队列（needs_reinsert、补发），服务端没有对应接口。
-CAPABILITIES = ("rewrite", "feedback", "sync_push", "sync_cursor")
+CAPABILITIES = ("rewrite", "feedback", "sync_push", "sync_cursor", "cards_ota")
 
 # 进程启动时刻：/health 的 started_at / uptime_s。import 时先记一次，main() 会再对齐。
 _STARTED_AT = datetime.now().astimezone()
@@ -82,6 +85,50 @@ HISTORY_DIR = os.path.join(PUBLISHED_DIR, "history")
 CONFIG_PATH = os.path.join(PUBLISHED_DIR, "cardback.json")
 STATE_PATH = os.path.join(PUBLISHED_DIR, "state.json")
 INDEX_PATH = os.path.join(BUNDLE_DIR, "index.html")
+
+# ---- 词卡热更（1.5.0）：词卡包落在 published/cards/，内容由 card_publisher 合并生成。
+# 用函数现算而不是 import 时冻成常量：测试会把 PUBLISHED_DIR 整体改到临时目录。
+CARDS_SUBDIR = "cards"
+CARDS_FILENAME = "cet6_cards.json"
+CARDS_MANIFEST_FILENAME = "manifest.json"
+
+
+def cards_dir():
+    """词卡发布目录：/cards/* 三个接口和启动时的 ensure_published 都用这一份。"""
+    return os.path.join(PUBLISHED_DIR, CARDS_SUBDIR)
+
+
+def _cards_module():
+    """惰性导入 card_publisher —— 发布模块坏了不能连带整个编辑器起不来。"""
+    import card_publisher
+
+    return card_publisher
+
+
+def _ensure_cards_published():
+    """启动时保证词卡发布包就绪，返回一句状态（main 打进启动日志）。
+
+    失败只打印警告、返回「未就绪」——词卡发布坏了不能挡住编辑器启动。
+    """
+    try:
+        manifest = _cards_module().ensure_published(cards_dir())
+        return "manifest v%s，%s 词" % (manifest.get("version"), manifest.get("count"))
+    except Exception as exc:  # noqa: BLE001 - 绝不让词卡连累主服务启动
+        print("  [警告] 词卡发布包初始化失败（不影响编辑器）：%s" % exc, flush=True)
+        return "还没就绪（%s）" % exc
+
+
+def _cards_manifest_ok(publish_dir):
+    """manifest 存在且能解析成 JSON 对象才算「可发」。缺字段（老版本/手改）不在此判，
+    ensure_published 那边会按 sha256 是否非空判断要不要重建。"""
+    path = os.path.join(publish_dir, CARDS_MANIFEST_FILENAME)
+    try:
+        with open(path, "rb") as fh:
+            payload = json.loads(fh.read().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return False
+    return isinstance(payload, dict)
+
 
 # ---- 局域网 TLS（1.4.7.2 W4）：同一个 Handler/CardbackServer，多包一层自签 TLS。
 # 默认 8443；端口被占/证书生成失败只打印 warning，HTTP 监听照旧。
@@ -1130,12 +1177,15 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self._responded = False
             path = urlsplit(self.path).path or "/"
+            # 先鉴权再读 body（1.5.0）：未认证来源不该让服务端把最多 4MB 的包读进内存 ——
+            # 否则匿名扫端口的流量就能拿来放大内存/带宽。被拒时直接关连接、不读 body：
+            # 客户端可能还在写，此时它看到 broken pipe 是预期内的（可接受，也好过放大）。
+            if self._guard("POST", path):
+                self.close_connection = True
+                return
             body, error = self._read_body()
             if error:
                 return self._fail(400, error)
-            # 先读完 body 再判：回包之后客户端还在写，容易把自己写成 broken pipe
-            if self._guard("POST", path):
-                return
             self._route_post(path, body)
         except ApiError as exc:
             self._fail(exc.status, exc.message)
@@ -1155,6 +1205,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_identity()
         if path == "/cardback.json":
             return self._serve_config()
+        # 词卡热更（1.5.0）：App 先拿 manifest 比 version/sha256，变了才下整份词卡
+        if path == "/cards/manifest.json":
+            return self._serve_cards_manifest()
+        if path == "/cards/cet6_cards.json":
+            return self._serve_cards_json()
         if path == "/api/state":
             return self._api_state()
         if path == "/api/history":
@@ -1181,6 +1236,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_publish(body)
         if path == "/api/rollback":
             return self._api_rollback(body)
+        if path == "/cards/publish":
+            return self._api_cards_publish()
         if path in ("/api/state", "/api/history"):
             return self._fail(405, "%s 只接受 GET" % path)
         return self._fail(404, "没有这个路径：%s" % path)
@@ -1329,6 +1386,62 @@ class Handler(BaseHTTPRequestHandler):
 
         new_revision = rollback_to(revision)
         self._send_json({"ok": True, "revision": new_revision, "restoredFrom": revision})
+
+    # ------------------------------------------------------------ 词卡热更（1.5.0）
+
+    def _serve_cards_manifest(self):
+        """GET /cards/manifest.json：原样回发布目录里的 manifest。
+
+        文件不存在时由 _serve_cards_file 里 ensure_published() 现场生成；存在但解析不了
+        （被手改坏、或半截写入残留）时也先让 ensure_published() 按 cards 的实际字节重建一次，
+        否则 App 会一直拿到坏 manifest，热更永远停在「读不懂」。
+        """
+        if not _cards_manifest_ok(cards_dir()):
+            try:
+                _cards_module().ensure_published(cards_dir())
+            except Exception as exc:  # noqa: BLE001 - 重建失败也要给出看得懂的原因
+                return self._fail(
+                    404,
+                    "词卡 manifest 不可用（缺失或损坏），自动重建也失败了：%s。"
+                    "先在电脑上跑一次 POST /cards/publish，或重启编辑器" % exc,
+                )
+        return self._serve_cards_file("manifest.json", CARDS_MANIFEST_FILENAME)
+
+    def _serve_cards_json(self):
+        """GET /cards/cet6_cards.json：整份词卡包（几 MB，同样不缓存）。"""
+        return self._serve_cards_file("词卡包", CARDS_FILENAME)
+
+    def _serve_cards_file(self, what, filename):
+        path = os.path.join(cards_dir(), filename)
+        if not os.path.isfile(path):
+            # 发布包可能还没生成（首次启动）：现场初始化一次，仍失败就回 404 + 中文提示
+            try:
+                _cards_module().ensure_published(cards_dir())
+            except Exception as exc:  # noqa: BLE001 - 初始化失败也要给出看得懂的原因
+                return self._fail(
+                    404,
+                    "词卡还没发布（%s 不存在），自动初始化也失败了：%s。"
+                    "先在电脑上跑一次 POST /cards/publish，或重启编辑器" % (what, exc),
+                )
+        try:
+            with open(path, "rb") as fh:
+                data = fh.read()
+        except FileNotFoundError:
+            return self._fail(
+                404, "词卡还没发布（%s 不存在）：先在电脑上跑 POST /cards/publish" % what
+            )
+        except OSError as exc:
+            return self._fail(500, "读 %s 失败：%s" % (path, exc))
+        # 手机按 manifest 的 version/sha256 决定要不要下；任何缓存都会让「发布了没变」变灵异
+        self._send_bytes(data, "application/json; charset=utf-8", cache="no-store")
+
+    def _api_cards_publish(self):
+        """POST /cards/publish：重新合并 results 并发布，返回新 manifest。"""
+        try:
+            manifest = _cards_module().publish(cards_dir())
+        except Exception as exc:  # noqa: BLE001 - 失败也要有中文原因；旧发布包不受影响
+            return self._fail(500, "词卡发布失败（旧发布包没动，publish 是原子写）：%s" % exc)
+        self._send_json({"ok": True, "manifest": manifest})
 
     def _serve_config(self):
         try:
@@ -1814,6 +1927,7 @@ def main(argv=None):
     os.makedirs(HISTORY_DIR, exist_ok=True)
     notes = ensure_initialized()
     ensure_token()
+    cards_note = _ensure_cards_published()
 
     lan_ips = detect_lan_ips()
     primary = next((ip for ip in lan_ips if _is_lan_ip(ip)), None)
@@ -1847,6 +1961,7 @@ def main(argv=None):
             flush=True,
         )
     print("  发布目录：%s" % PUBLISHED_DIR, flush=True)
+    print("  词卡发布目录：%s（%s）" % (cards_dir(), cards_note), flush=True)
     # 口令不再单独打印：它就在上面那一行末尾，复制一次就够。
     print("    （电脑上开编辑器不用填；口令文件 %s，删掉再启动会换新的）" % TOKEN_PATH, flush=True)
     others = [ip for ip in lan_ips if ip != primary]

@@ -27,7 +27,13 @@ data class CardSeedWord(
     val meaning: String = "",
     val example: String = "",
     val approach: List<String> = emptyList(),
-    val collocations: List<String> = emptyList()
+    val collocations: List<String> = emptyList(),
+    /**
+     * 1.5.0：词卡热更发布包里带的记忆方法标签（sound/meaning/shape/root/contrast/polysemy）。
+     * 内置种子没有这个字段 → 空串；[CardSeedLoader.toDrafts] 不消费它，
+     * 只有 WordbookUpdateRepository 在「非用户手改」的前提下才写进 tb_word_memory.method。
+     */
+    val method: String = ""
 )
 
 object CardSeedLoader {
