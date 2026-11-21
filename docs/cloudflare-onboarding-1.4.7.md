@@ -5,7 +5,7 @@
 > 唯一的"实操"是对本机 `127.0.0.1:8765` 做了几条只读探测（结果见 §5.4）。
 >
 > 目标：把电脑上的 `127.0.0.1:8765` 通过 Cloudflare Tunnel 变成一个固定的 HTTPS 域名
-> `https://anki.ouquansdiary.cn`，**手机零安装**，任何网络都能同步。
+> `https://anki.example.com`，**手机零安装**，任何网络都能同步。
 >
 > 相关文档：[`runbook-remote-1.4.7.md`](runbook-remote-1.4.7.md)（完整操作手册）、
 > [`decisions-1.4.7.md`](decisions-1.4.7.md)（为什么选这条路线）。
@@ -47,7 +47,7 @@
 | # | 检查 | 怎么查 | 通过标志 |
 |---|---|---|---|
 | 1 | 腾讯云账号能登录 | 浏览器打开 `console.cloud.tencent.com` | 能进控制台（这一步现在就可以先登一次，省得后面找密码） |
-| 2 | 域名状态正常 | 腾讯云 → 域名注册 → 我的域名 → `ouquansdiary.cn` | 状态是「正常 / ok」，**不是** ServerHold（据现有记录已解除） |
+| 2 | 域名状态正常 | 腾讯云 → 域名注册 → 我的域名 → `example.com` | 状态是「正常 / ok」，**不是** ServerHold（据现有记录已解除） |
 | 3 | 注册邮箱可用 | 打开你买域名/注册 CF 要用的邮箱 | 能收信（CF 会发验证邮件） |
 | 4 | 手机能上 4G | 关掉 WiFi，用流量打开任意 https 网站 | 能打开（后面所有"通没通"的判断都以 4G 为准） |
 | 5 | 电脑 8765 活着 | 电脑浏览器打开 `http://127.0.0.1:8765/` | 出现卡背编辑器页面 |
@@ -81,13 +81,13 @@
 
 ---
 
-### 1.2 添加站点 `ouquansdiary.cn`（约 3 分钟）
+### 1.2 添加站点 `example.com`（约 3 分钟）
 
 | 项 | 内容 |
 |---|---|
 | 在哪 | 登录后的控制台首页 |
 | 你会看到 | 右上角一个 **`Add a site`** 按钮（新版界面也可能是 `Add` → `Connect a domain` / `+ Add site`） |
-| 你要点 | `Add a site` → 输入框里填 **`ouquansdiary.cn`**（只填根域名，**不要**填 `www` 或 `anki.`）→ 点 `Continue` |
+| 你要点 | `Add a site` → 输入框里填 **`example.com`**（只填根域名，**不要**填 `www` 或 `anki.`）→ 点 `Continue` |
 | 下一步 | 选套餐页：`Free` / `Pro` / `Business` / `Enterprise`。**选 Free（$0）**，点 `Continue` |
 | 再下一步 | CF 会「扫描现有 DNS 记录」，因为你的域名现在是 **0 条解析**，扫出来是空的；直接点 `Continue` / `Add records` 跳过 |
 | 成功标志 | 页面标题大意是 **「Change your nameservers」/「Pending Nameserver Update」**，并且给出**两个** NS 名字 |
@@ -133,7 +133,7 @@ bob.ns.cloudflare.com
 | 项 | 内容 |
 |---|---|
 | 在哪 | `console.cloud.tencent.com` → **域名注册**（或「域名与网站」）→ **我的域名** |
-| 你会看到 | 域名列表里有 `ouquansdiary.cn`，右侧有 `管理` / `解析` |
+| 你会看到 | 域名列表里有 `example.com`，右侧有 `管理` / `解析` |
 | 你要点 | 进 `管理` → 找 **`DNS 服务器`**（有的版本在「DNS 解析」页顶部，叫「DNS 服务器」或「修改 DNS」）→ 点 **修改** |
 | 选什么 | 选择「**使用非腾讯云 DNS / 自定义 DNS**」，把默认的 `swallow.dnspod.net`、`baseball.dnspod.net` **替换成 1.3 抄的两个 CF 名字**（如果原来有第三、第四个，也一并替换或删掉） |
 | 确认 | 点保存；腾讯云可能要求**短信 / 微信扫码 / 交易密码**二次确认 —— 这也是你本人 |
@@ -163,8 +163,8 @@ bob.ns.cloudflare.com
 |---|---|
 | 你要做 | 什么都不用做，等。CF 会自己去查你的 NS |
 | 怎么确认（**推荐**） | 回 Cloudflare 面板 → 该域名 → **Overview**，状态从 `Pending Nameserver Update` 变成 **`Active`** |
-| 怎么确认（辅助） | 手机 4G 打开 `https://ouquansdiary.cn/cdn-cgi/trace`，如果返回一段 `fl=... / h=ouquansdiary.cn / ip=... / loc=CN` 的纯文本，说明域名已经在 CF 上（这个端点是 CF 边缘自己回的，**不经过你家电脑**；本项目尚未走到这一步，**未验证**） |
-| ❌ 不要用 | 本机 `nslookup` / `ping`。实测本机连 `nslookup ouquansdiary.cn 223.5.5.5` 都会被代理劫持成 `198.18.x.x`，看不出真假 |
+| 怎么确认（辅助） | 手机 4G 打开 `https://example.com/cdn-cgi/trace`，如果返回一段 `fl=... / h=example.com / ip=... / loc=CN` 的纯文本，说明域名已经在 CF 上（这个端点是 CF 边缘自己回的，**不经过你家电脑**；本项目尚未走到这一步，**未验证**） |
+| ❌ 不要用 | 本机 `nslookup` / `ping`。实测本机连 `nslookup example.com 223.5.5.5` 都会被代理劫持成 `198.18.x.x`，看不出真假 |
 | 超时 | 常见的说法是**最多 24 小时**（社区与早期文档口径，**本文未在 2026 版官方文档里逐字核实**）。超过 24 小时仍是 Pending → 回 1.4 检查 NS 是否真的保存、注册局侧是否还没刷新 |
 
 > 到 Active 为止，**隧道还不用建**。顺序不能反：CF 没接管域名时，
@@ -224,7 +224,7 @@ D:\cloudflared\cloudflared.exe tunnel login
 
 | 项 | 内容 |
 |---|---|
-| 会发生什么 | 命令会**自动打开浏览器**（没弹就手动复制终端里打印的 URL）；你登录 CF → **选择 `ouquansdiary.cn`** → 点 **`Authorize`** |
+| 会发生什么 | 命令会**自动打开浏览器**（没弹就手动复制终端里打印的 URL）；你登录 CF → **选择 `example.com`** → 点 **`Authorize`** |
 | 成功标志 | 终端打印成功；`%USERPROFILE%\.cloudflared\cert.pem` 出现 |
 | 这个文件是什么 | 「这台电脑被授权管理这个域名」的凭证，**等同密码**：不要发群、不要截图、不要提交进仓库 |
 | 失败 | ① 浏览器没弹 → 复制终端 URL 手动开；② 列表里没有你的域名 → zone 还没 Active，回 §1.5 等；③ 要 2FA → 用你 §1.1 配的验证器 |
@@ -252,7 +252,7 @@ tunnel: <TUNNEL-UUID>
 credentials-file: D:\cloudflared\anki-<TUNNEL-UUID>.json
 
 ingress:
-  - hostname: anki.ouquansdiary.cn
+  - hostname: anki.example.com
     service: http://127.0.0.1:8765
   - service: http_status:404
 ```
@@ -267,7 +267,7 @@ ingress:
 ### 2.5 绑域名（我做）
 
 ```powershell
-D:\cloudflared\cloudflared.exe tunnel route dns anki anki.ouquansdiary.cn
+D:\cloudflared\cloudflared.exe tunnel route dns anki anki.example.com
 ```
 
 | 项 | 内容 |
@@ -546,7 +546,7 @@ Cloudflare 不是境内接入商，所以你**根本没有提交工信备案的�
 **第 0 步：连通性（只看"到没到应用"）**
 
 ```powershell
-curl.exe -I https://anki.ouquansdiary.cn/health
+curl.exe -I https://anki.example.com/health
 ```
 
 | 你看到的 | 结论 |
@@ -566,11 +566,11 @@ curl.exe -I https://anki.ouquansdiary.cn/health
 
 ```powershell
 # 不带 token —— 公网必须是 401
-curl.exe -s -o NUL -w "%{http_code}`n" https://anki.ouquansdiary.cn/health
+curl.exe -s -o NUL -w "%{http_code}`n" https://anki.example.com/health
 
 # 带 token —— 必须是 200
 $t = (Get-Content "D:\deepseek harness\work_anki_enligish\tools\cardback-editor\.cardback_token" -Raw).Trim()
-curl.exe -s -o NUL -w "%{http_code}`n" -H "X-Cardback-Token: $t" https://anki.ouquansdiary.cn/health
+curl.exe -s -o NUL -w "%{http_code}`n" -H "X-Cardback-Token: $t" https://anki.example.com/health
 ```
 
 **期望输出**
@@ -589,7 +589,7 @@ curl.exe -s -o NUL -w "%{http_code}`n" -H "X-Cardback-Token: $t" https://anki.ou
 **第 2 步：看内容对不对（带 token）**
 
 ```powershell
-curl.exe -s -H "X-Cardback-Token: $t" https://anki.ouquansdiary.cn/health
+curl.exe -s -H "X-Cardback-Token: $t" https://anki.example.com/health
 ```
 
 期望能看到 `"protocol": 1`、`"capabilities": ["rewrite","feedback","sync_push","sync_cursor"]`、
@@ -634,7 +634,7 @@ curl.exe -s -o NUL -w "%{http_code}`n" -H "CF-Connecting-IP: 1.2.3.4" http://127
 
 | # | 动作 | 通过标准 |
 |---|---|---|
-| 1 | 手机**关 WiFi 用 4G**，App 里填 `https://anki.ouquansdiary.cn#<token>` | 能拉到卡背 |
+| 1 | 手机**关 WiFi 用 4G**，App 里填 `https://anki.example.com#<token>` | 能拉到卡背 |
 | 2 | 提交一次反馈 / 触发一次重写 | 电脑端能看到，且 App 不报错 |
 | 3 | 故意把 token 改错一位 | 手机报 401，**且不会疯狂重试**（指数退避生效） |
 | 4 | 电脑重启（不手工点任何东西） | 手机仍能用 |
@@ -646,7 +646,7 @@ curl.exe -s -o NUL -w "%{http_code}`n" -H "CF-Connecting-IP: 1.2.3.4" http://127
 
 | 坑 | 真相 |
 |---|---|
-| `ping anki.ouquansdiary.cn` 得到 `198.18.0.180`，以为通了 | 那是**代理的假 IP**。连 `nslookup ... 223.5.5.5` 在本机都会被劫持（我实测 `argotunnel.com` 也返回 `198.18.x.x`） |
+| `ping anki.example.com` 得到 `198.18.0.180`，以为通了 | 那是**代理的假 IP**。连 `nslookup ... 223.5.5.5` 在本机都会被劫持（我实测 `argotunnel.com` 也返回 `198.18.x.x`） |
 | 本机 `curl http://127.0.0.1:8765/health` 返回 200，以为公网也 200 | loopback 免票。公网必须 401 |
 | 用 `curl -I` 看到 401/200 就下结论 | HEAD 在 8765 上直接 501，走不到鉴权；必须用 GET |
 
@@ -670,7 +670,7 @@ curl.exe -s -o NUL -w "%{http_code}`n" -H "CF-Connecting-IP: 1.2.3.4" http://127
 
 ### 6.2 要你拍板的事
 
-1. **改 NS 的时间窗**：改完到 Active 之间，`ouquansdiary.cn` 上如果有别的服务会受影响。你现在是 0 条解析，理论上无损——确认一下有没有邮箱/别的子域名挂在 DNSPod。
+1. **改 NS 的时间窗**：改完到 Active 之间，`example.com` 上如果有别的服务会受影响。你现在是 0 条解析，理论上无损——确认一下有没有邮箱/别的子域名挂在 DNSPod。
 2. **2FA 现在配还是以后配**：现在配，后面 login 不卡；不配也能走，但账号安全性差。
 3. **开机自启用系统服务还是任务计划**：服务更稳但卸载麻烦（还要往 `systemprofile` 复制配置）；任务计划更好删。runbook 推荐任务计划。
 4. **要不要先跑一次 Quick Tunnel 探针**：5 分钟，能提前知道"你家网络到 CF 通不通"，避免改完 NS 才发现线路不通。**建议跑。**
@@ -713,10 +713,10 @@ curl.exe -s -o NUL -w "%{http_code}`n" -H "CF-Connecting-IP: 1.2.3.4" http://127
 
 ```powershell
 # ── 验收 ─────────────────────────────────────────────
-curl.exe -I https://anki.ouquansdiary.cn/health                 # 只看"到没到应用"：501=通了
+curl.exe -I https://anki.example.com/health                 # 只看"到没到应用"：501=通了
 $t = (Get-Content "D:\deepseek harness\work_anki_enligish\tools\cardback-editor\.cardback_token" -Raw).Trim()
-curl.exe -s -o NUL -w "%{http_code}`n" https://anki.ouquansdiary.cn/health                       # 期望 401
-curl.exe -s -o NUL -w "%{http_code}`n" -H "X-Cardback-Token: $t" https://anki.ouquansdiary.cn/health  # 期望 200
+curl.exe -s -o NUL -w "%{http_code}`n" https://anki.example.com/health                       # 期望 401
+curl.exe -s -o NUL -w "%{http_code}`n" -H "X-Cardback-Token: $t" https://anki.example.com/health  # 期望 200
 
 # ── 本机对照（排除 App 问题）────────────────────────
 curl.exe -s -o NUL -w "%{http_code}`n" -H "CF-Connecting-IP: 1.2.3.4" http://127.0.0.1:8765/health   # 期望 401
@@ -724,7 +724,7 @@ curl.exe -s -o NUL -w "%{http_code}`n" -H "CF-Connecting-IP: 1.2.3.4" http://127
 # ── cloudflared ──────────────────────────────────────
 D:\cloudflared\cloudflared.exe tunnel login
 D:\cloudflared\cloudflared.exe tunnel create anki
-D:\cloudflared\cloudflared.exe tunnel route dns anki anki.ouquansdiary.cn
+D:\cloudflared\cloudflared.exe tunnel route dns anki anki.example.com
 D:\cloudflared\cloudflared.exe tunnel --config D:\cloudflared\config.yml run anki
 D:\cloudflared\cloudflared.exe tunnel --protocol http2 --edge-ip-version 4 --config D:\cloudflared\config.yml run anki
 ```

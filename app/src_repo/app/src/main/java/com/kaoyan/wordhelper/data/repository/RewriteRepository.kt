@@ -256,6 +256,25 @@ class RewriteRepository(
         .retryOnConnectionFailure(true)
         .build()
 
+    /**
+     * 1.5.1：局域网优先的短超时客户端。
+     *
+     * 校园网/热点换 IP 后，旧局域网地址常常是「能连上但一直不回」；4 秒连接 + 12 秒读
+     * 会把一次点击拖到十几秒。局域网只给 2 秒连接窗口，失败就切公网。
+     */
+    private val lanClient = client.newBuilder()
+        .connectTimeout(2, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .callTimeout(7, TimeUnit.SECONDS)
+        .build()
+
+    /** 1.5.1：公网走系统信任，读超时放宽，避免隧道冷启动被误判成失败。 */
+    private val cloudClient = client.newBuilder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(30, TimeUnit.SECONDS)
+        .build()
+
     init {
         // 1.4.6.1：网络恢复后补一次同步。只跟系统回调走，不轮询；
         // App 被杀回调就没了 —— 不要求后台发送，下次打开时的启动同步会补。
@@ -425,7 +444,14 @@ class RewriteRepository(
         bookId: Long = 0L,
         priority: Int = 0
     ): Boolean {
-        syncMutex.withLock {
+        // 1.5.1：先落本地队列，再试发网络。
+        //
+        // 旧实现把 queueDao.upsert 包在 syncMutex 里，而 sync() 会整段占着 syncMutex
+        // 做 probeHealth / upload / 结果分页。真机网络慢或后台同步正在跑时，用户点
+        // 「重写思路」会先卡在锁上：本地一行都没写，卡背 Flow 不发射，按钮维持原样，
+        // 看起来就是「点击毫无反应」。现在本地写入只受 queueWriteMutex 保护，落库后
+        // UI 立刻能看到「已标记」，网络发送慢也不再挡住反馈。
+        val saved = runCatching {
             queueWriteMutex.withLock {
                 queueDao.upsert(
                     buildRewriteRequest(
@@ -441,7 +467,8 @@ class RewriteRepository(
                     )
                 )
             }
-        }
+        }.isSuccess
+        if (!saved) return false
         sync()
         val status = queueDao.getForBook(wordId, bookId)?.status
         return status == RewriteStatus.QUEUED || status == RewriteStatus.DONE
@@ -1551,8 +1578,12 @@ class RewriteRepository(
         }
         // 1.4.8：只有已配对（有 token）才把公网域名作为兜底候选。
         // 没 token 时强行请求域名只会换回一个无意义的 401，不如直接报「没配置地址」。
+        // 1.5.1：域名不再硬编码，统一读设置里的公网同步地址（可由本地 keystore.properties
+        // 注入 BuildConfig.DEFAULT_REMOTE_URL 后自动预填）。这样私人域名不会进 Git。
         // 域名走系统信任，不拿 LAN 的 SPKI pin 校验证书（httpClientFor 按 origin 区分）。
-        val cloudFallback = CLOUD_CARD_BACK_URL.takeIf { settings.cardBackToken.isNotBlank() }
+        val cloudFallback = settings.wordbookRemoteUrl
+            .takeIf { settings.cardBackToken.isNotBlank() }
+            ?.let(::normalizeCloudOrigin)
         val origins = if (rotate) {
             CardBackAddress.candidates(
                 active = activeOrigin,
@@ -1690,12 +1721,47 @@ class RewriteRepository(
     }
 
     /**
-     * 按 origin 选择客户端：域名/普通地址用系统信任；https + IP 的 LAN 必须用 pin。
-     * 返回 null 表示「这是 LAN HTTPS，但没有可用的 pin」，调用方必须跳过而不是降级。
+     * 按 origin 选择客户端：
+     * - 域名/普通公网地址用系统信任 + 较长超时；
+     * - 局域网 IP 用 2 秒短超时，连不上就快速切公网；
+     * - https + IP 的 LAN 必须用 pin。返回 null 表示「这是 LAN HTTPS，但没有可用的 pin」，
+     *   调用方必须跳过而不是降级。
      */
     private fun httpClientFor(origin: String, pin: String): OkHttpClient? {
-        if (!TlsPinned.isLanHttps(origin)) return client
-        return TlsPinned.clientFor(pin)
+        if (TlsPinned.isLanHttps(origin)) return TlsPinned.clientFor(pin)
+        return if (isLanOrigin(origin)) lanClient else cloudClient
+    }
+
+    /** 1.5.1：判断一个 origin 是不是内网地址（只用于选超时，不参与信任判断）。 */
+    private fun isLanOrigin(origin: String): Boolean {
+        val host = runCatching { URI(origin).host }.getOrNull()?.lowercase(Locale.ROOT)
+            ?: return false
+        if (host == "localhost" || host.endsWith(".local")) return true
+        val parts = host.split('.')
+        if (parts.size != 4 || parts.any { it.toIntOrNull() == null }) return false
+        val a = parts[0].toIntOrNull() ?: return false
+        val b = parts[1].toIntOrNull() ?: return false
+        return a == 10 || a == 127 ||
+            (a == 172 && b in 16..31) ||
+            (a == 192 && b == 168) ||
+            (a == 169 && b == 254)
+    }
+
+    /**
+     * 公网地址归一成 origin：补 https、去掉卡片路径和结尾斜杠。
+     * 解析失败返回 null，调用方按「没配置」处理，绝不拿半截字符串去请求。
+     */
+    private fun normalizeCloudOrigin(raw: String): String? {
+        val text = raw.trim()
+        if (text.isEmpty()) return null
+        val withScheme = if (text.startsWith("http://", true) || text.startsWith("https://", true)) {
+            text
+        } else {
+            "https://$text"
+        }
+        val origin = CardBackAddress.originOf(withScheme) ?: return null
+        if (!origin.startsWith("https://", ignoreCase = true) && !isLanOrigin(origin)) return null
+        return origin
     }
 
     /** 电脑端不在本机时，每个请求都得带口令；没填就照发（本机浏览器编辑卡背免票）。 */
@@ -1825,13 +1891,6 @@ class RewriteRepository(
         /** HTTPS 配置地址的 TLS 锚点刷新间隔；pin 轮换时不必等下次冷启动。 */
         private const val ANCHOR_REFRESH_MS = 10 * 60_000L
         private const val DEFAULT_TLS_PORT = 8443
-
-        /**
-         * 1.4.8：局域网不通时的公网兜底域名。
-         * 只在已配对（cardBackToken 非空）时进候选，避免未配对先撞 401；
-         * 域名证书走系统信任，不受同一台电脑的 LAN SPKI pin 影响。
-         */
-        private const val CLOUD_CARD_BACK_URL = "https://sync.ouquansdiary.cn"
 
         /** /health 能力清单里重写链路真正依赖的两项。 */
         private const val CAP_REWRITE = "rewrite"

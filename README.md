@@ -368,9 +368,9 @@ export MSYS2_ARG_CONV_EXCL='*'
 ## 远程同步（1.4.7 已交付，公网 named tunnel 待接）
 
 > 现状：**手机现在就能用公网地址同步**。Quick Tunnel 已实测 4G 单程同步通过，
-> 当前地址 `https://buying-rear-shaved-submitting.trycloudflare.com`（临时的，电脑/隧道重启就变）；
+> 当前地址 `https://your-tunnel.trycloudflare.com`（临时的，电脑/隧道重启就变）；
 > 手机已切过去，状态页显示「已连接、实际连接该域名、待发送 0」。
-> 固定域名（named tunnel，`anki.ouquansdiary.cn`）还没接：需要用户本人登录 Cloudflare、授权、改 NS，
+> 固定域名（named tunnel，`anki.example.com`）还没接：需要用户本人登录 Cloudflare、授权、改 NS，
 > 步骤见 [`docs/runbook-remote-1.4.7.md`](docs/runbook-remote-1.4.7.md) 与
 > [`docs/cloudflare-onboarding-1.4.7.md`](docs/cloudflare-onboarding-1.4.7.md)。
 
@@ -383,11 +383,11 @@ export MSYS2_ARG_CONV_EXCL='*'
 ### 一次配置（目标流程）
 
 1. 电脑装 `cloudflared`，由**用户本人**登录 Cloudflare（扫码 / 浏览器授权）。
-2. 建 named tunnel，把 `anki.ouquansdiary.cn` 指到本机 `127.0.0.1:8765`。
-3. 手机「卡背结构地址」整行粘贴：`https://anki.ouquansdiary.cn#<token>`。
+2. 建 named tunnel，把 `anki.example.com` 指到本机 `127.0.0.1:8765`。
+3. 手机「卡背结构地址」整行粘贴：`https://anki.example.com#<token>`。
 4. 之后由 PC 守护负责 cloudflared 与 8765 的存活；App 记住「上次成功」地址。
 
-域名 `ouquansdiary.cn` 已买、实名已过、ServerHold 已解除、DNSPod 0 条解析记录；NS 仍指 DNSPod，Cloudflare 尚未登录。
+域名 `example.com` 已买、实名已过、ServerHold 已解除、DNSPod 0 条解析记录；NS 仍指 DNSPod，Cloudflare 尚未登录。
 **到登录 / 2FA / 授权 / 改 NS 就停，等用户本人操作。**
 
 ### token 是什么

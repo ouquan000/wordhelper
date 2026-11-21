@@ -6,7 +6,7 @@
 ## 0 一句话
 
 把 8765 从「同 WiFi 的局域网服务」变成「手机在任何网络都能连的 HTTPS 服务」：
-Cloudflare Tunnel + `anki.ouquansdiary.cn` + token + 限流；App 侧只加连接串、状态页与可靠重试。
+Cloudflare Tunnel + `anki.example.com` + token + 限流；App 侧只加连接串、状态页与可靠重试。
 
 ## 1 通道选择
 
@@ -33,8 +33,8 @@ Cloudflare Tunnel + `anki.ouquansdiary.cn` + token + 限流；App 侧只加连�
 
 ## 3 域名与备案取舍
 
-- `ouquansdiary.cn` 已在腾讯云购买、实名通过；ServerHold 已解除（WHOIS status=ok），DNSPod 现有 0 条解析记录。
-- 本机 `anki.ouquansdiary.cn` → `198.18.0.180` 是代理假 IP，不算解析成功。
+- `example.com` 已在腾讯云购买、实名通过；ServerHold 已解除（WHOIS status=ok），DNSPod 现有 0 条解析记录。
+- 本机 `anki.example.com` → `198.18.0.180` 是代理假 IP，不算解析成功。
 - 风险：`.cn` + 国内宽带公网 Web 可能被要求 ICP 备案，也可能被墙；**先技术验证，不先承诺长期可用**。
 - 若验证失败：换非 `.cn` 域名 > Tailscale Funnel（仅电脑侧装）> 回局域网。
 
@@ -54,7 +54,7 @@ Cloudflare Tunnel + `anki.ouquansdiary.cn` + token + 限流；App 侧只加连�
 
 ## 6 拍板结果与仍待办
 
-已拍板：用 `ouquansdiary.cn` + Cloudflare Tunnel；同意改 NS（要用户本人登录/授权）；1.4.7 包含 App 侧状态页与重试（已交付）；本版不 bump 版本号。
+已拍板：用 `example.com` + Cloudflare Tunnel；同意改 NS（要用户本人登录/授权）；1.4.7 包含 App 侧状态页与重试（已交付）；本版不 bump 版本号。
 
 仍待办：公网隧道未实测（Quick Tunnel 探针 → named tunnel → 改 NS）；4G⇄WiFi、电脑重启、24h soak、远程四链路未验证。
 

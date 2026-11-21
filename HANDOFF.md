@@ -11,7 +11,7 @@
 
 1. **当前是 1.4.6.2 已交付**：`382e06b` / annotated tag `v1.4.6.2` / APK 33,788,038 B / DB20；141 项单测全过。三版合成一个 tag（1.4.6、1.4.6.1 没有单独 tag）。
 2. **下一版是 1.4.7「远程同步专版」**，只列了计划（§15.6），**没开工**；先等用户拍板做哪几条。
-3. **远程同步卡在两道 gate**：`ouquansdiary.cn` 已买、实名已过，注册局恢复解析要 1–2 个工作日；cloudflared 未装、Cloudflare 未登录、NS 未改。**到登录 / 2FA / Authorize / 改 NS 就停手，等用户本人。**
+3. **远程同步卡在两道 gate**：`example.com` 已买、实名已过，注册局恢复解析要 1–2 个工作日；cloudflared 未装、Cloudflare 未登录、NS 未改。**到登录 / 2FA / Authorize / 改 NS 就停手，等用户本人。**
 4. 红线没变：没被叫不改代码；8765（PID 32740）是常驻服务不要随意重启；真机安装/发版必须用户点头；C 盘不堆东西。
 
 ---
@@ -557,9 +557,9 @@ C 盘、`syncPresetWords` 早退、`Card(onClick)` 8dp touchSlop、`contentKey`�
 
 ### 15.4 域名与隧道：卡在哪
 
-- 域名 `ouquansdiary.cn` **已买**（腾讯云，38 元，订单处理中）；实名已通过；**注册局 1–2 个工作日恢复解析**。
+- 域名 `example.com` **已买**（腾讯云，38 元，订单处理中）；实名已通过；**注册局 1–2 个工作日恢复解析**。
 - NS 仍是 `swallow/baseball.dnspod.net`，**没有改到 Cloudflare**。
-- `anki.ouquansdiary.cn` 在本机解析到 `198.18.0.180`：这是代理的假 IP，**不是真实解析**，不能当成「域名已通」。
+- `anki.example.com` 在本机解析到 `198.18.0.180`：这是代理的假 IP，**不是真实解析**，不能当成「域名已通」。
 - `cloudflared` **未安装**；`~/.cloudflared` 只有旧 `config.yml`，**没有 `cert.pem`**；Cloudflare **未登录**。
 - 现在能做的只有「装 cloudflared + 等用户登录 / 改 NS」；**到登录、2FA、Authorize、改 NS 就停手**，等用户本人。
 
@@ -567,7 +567,7 @@ C 盘、`syncPresetWords` 早退、`Card(onClick)` 8dp touchSlop、`contentKey`�
 
 | 方案 | 手机要装什么 | 成本 | 主要风险 | 结论 |
 |---|---|---|---|---|
-| **Cloudflare Tunnel + `anki.ouquansdiary.cn`** | 什么都不用装 | 域名 38 元 + CF 免费档 | `.cn` + 国内宽带公网 Web 可能被要求 ICP 备案 / 被墙；CF 登录与 NS 变更要用户本人 | **主方案**，先技术验证 |
+| **Cloudflare Tunnel + `anki.example.com`** | 什么都不用装 | 域名 38 元 + CF 免费档 | `.cn` + 国内宽带公网 Web 可能被要求 ICP 备案 / 被墙；CF 登录与 NS 变更要用户本人 | **主方案**，先技术验证 |
 | Tailscale Funnel | 电脑装 Tailscale，手机不需要 | 免费 | 国内连通性 / 带宽待实测；电脑需常驻 | 备选，不默认 |
 | 换非 `.cn` 域名 | 什么都不用装 | 新域名年费 | 多一笔钱；仍要过 CF；旧域名闲置 | 最后手段 |
 
@@ -639,7 +639,7 @@ C 盘、`syncPresetWords` 早退、`Card(onClick)` 8dp touchSlop、`contentKey`�
 ### 15.9 下一步候选（要多久 / 风险 / 需要用户拍板什么）
 
 1. **等解析 + 配 Cloudflare Tunnel**（推荐先做）
-   - 要多久：gate 打开后 30–60 分钟（装 cloudflared、建 named tunnel、绑 `anki.ouquansdiary.cn`、设自启）。
+   - 要多久：gate 打开后 30–60 分钟（装 cloudflared、建 named tunnel、绑 `anki.example.com`、设自启）。
    - 风险：`.cn` + 家宽公网 Web 可能被要求 ICP 备案或直接不通；CF 登录 / NS 变更必须用户本人操作。
    - 要拍板：用不用这个域名、同不同意把 NS 改到 Cloudflare、能否接受可能的备案流程。
 2. **Tailscale Funnel 备选**

@@ -26,6 +26,7 @@ import com.kaoyan.wordhelper.data.model.feedbackRatingForRevision
 import com.kaoyan.wordhelper.data.repository.AddToNewWordsSource
 import com.kaoyan.wordhelper.data.repository.CheckInResult
 import com.kaoyan.wordhelper.data.repository.CardbackAuth
+import com.kaoyan.wordhelper.data.repository.RewriteMarkPolicy
 import com.kaoyan.wordhelper.data.repository.RewriteRepository
 import com.kaoyan.wordhelper.data.repository.TodayNewWordsPlan
 import com.kaoyan.wordhelper.ml.core.AdaptiveResponseThreshold
@@ -662,6 +663,9 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             // 生成完成（DONE）也保持位置，换词由 updateQueue 清。
             if (_currentWord.value?.id != word.id || (activeBook.value?.id ?: 0L) != bookId) return@launch
             _skipRewriteLatchedWordId.value = word.id
+            // 1.5.1：本地落库后会立刻有一条 PENDING 行，但网络发送可能很慢。先给一句
+            // 「已标记」，别让用户等网络等到怀疑按钮坏了。
+            _message.value = RewriteMarkPolicy.MARKING
             val sent = rewriteRepository.enqueueAndSync(
                 word.id,
                 word.word,
@@ -669,15 +673,21 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 instruction,
                 bookId = bookId
             )
-            if (!sent) {
+            if (sent) {
+                _message.value = RewriteMarkPolicy.SENT
+            } else {
                 // 没地址/电脑没开都只是「已记下」；只有确实带了口令、且这次请求
                 // 真被 401 拦下时，才提示重粘配对行，别把离线误报成口令错。
                 val authFailed = rewriteRepository.consumeAuthFailure()
                 val hasToken = runCatching {
                     CardbackAuth.headerValue(settingsRepository.settingsFlow.first().cardBackToken) != null
                 }.getOrDefault(false)
-                _message.value = if (authFailed && hasToken) CardbackAuth.HINT
-                else "已记下，等电脑上线后自动重写"
+                _message.value = RewriteMarkPolicy.result(
+                    sent = false,
+                    authFailed = authFailed,
+                    hasToken = hasToken,
+                    authHint = CardbackAuth.HINT
+                )
             }
         }
     }

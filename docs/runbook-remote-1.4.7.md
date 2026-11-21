@@ -36,10 +36,10 @@
 |---|---|---|
 | 手机连接方式 | 只能 `http://<电脑局域网IP>:8765#<token>` | 手机离开这个 WiFi 就连不上 |
 | 电脑 IP | DHCP，会变（§14.1 的旧账） | 路由器重启后IP一变，手机就得重填地址 |
-| 域名 `ouquansdiary.cn` | 已在腾讯云买（38 元）、实名通过 | 域名在手，但**还没接上任何服务** |
+| 域名 `example.com` | 已在腾讯云买（38 元）、实名通过 | 域名在手，但**还没接上任何服务** |
 | NS（域名服务器） | 还是 DNSPod 的 `swallow/baseball.dnspod.net` | 域名现在归 DNSPod 管，Cloudflare 还管不到它 |
 | 解析状态 | 注册局 1–2 个工作日恢复解析（11-09 仍在处理） | 现在查 DNS 可能查不到，**不是你的错** |
-| `anki.ouquansdiary.cn` 本机解析 | 显示 `198.18.0.180` | ⚠️ 这是代理软件的**假 IP**，**不能当成「域名已通」** |
+| `anki.example.com` 本机解析 | 显示 `198.18.0.180` | ⚠️ 这是代理软件的**假 IP**，**不能当成「域名已通」** |
 | `cloudflared` | **没装**；`~/.cloudflared` 只有旧 config.yml，没有 `cert.pem` | 隧道程序还没上，登录也没做过 |
 | Cloudflare 账号 | **未登录**这个域名 | 阶段 B 必须你本人登录 |
 | 8765 服务 | 在跑（2026-11-09 16:38 重启过，PID **21084**，绑定 `0.0.0.0:8765`；重启脚本与日志在 `_recon/1.4.7/`） | 服务本身是好的，缺的只是「怎么从外面进来」 |
@@ -160,7 +160,7 @@ curl.exe -s -o NUL -w "%{http_code}" -H "X-Cardback-Token: $t" https://<临时�
 
 ---
 
-## 4 阶段 B：正式隧道（named tunnel + `anki.ouquansdiary.cn`）
+## 4 阶段 B：正式隧道（named tunnel + `anki.example.com`）
 
 **和阶段 A 的区别**：地址固定、可以用开机自启、Cloudflare 那边有一条属于你的 tunnel 记录。
 **代价**：要动域名 NS，中间三步必须你本人。
@@ -176,7 +176,7 @@ B3 登录 cloudflared → B4 建 tunnel → B5 绑域名 → B6 写配置 → B7
 ```
 
 **为什么不能先绑域名**：`cloudflared tunnel route dns` 是往 Cloudflare 的 DNS 里写记录，
-如果 `ouquansdiary.cn` 还没被 Cloudflare 接管（NS 还没改），它会直接报找不到 zone。
+如果 `example.com` 还没被 Cloudflare 接管（NS 还没改），它会直接报找不到 zone。
 **先改 NS，等 Active，再绑域名**，可以少一次「明明照做了却报错」。
 
 ### B1 在 Cloudflare 添加站点
@@ -184,7 +184,7 @@ B3 登录 cloudflared → B4 建 tunnel → B5 绑域名 → B6 写配置 → B7
 | 项 | 内容 |
 |---|---|
 | 谁做 | 【你】登录 Cloudflare 账号 |
-| 在哪做 | 浏览器 → `dash.cloudflare.com` → Add a site → 输入 `ouquansdiary.cn` → 选 **Free** 套餐 |
+| 在哪做 | 浏览器 → `dash.cloudflare.com` → Add a site → 输入 `example.com` → 选 **Free** 套餐 |
 | 成功标志 | 页面显示 **Pending Nameserver Update**，并给出**两个** NS 名字，形如 `xxx.ns.cloudflare.com` / `yyy.ns.cloudflare.com` |
 | 失败怎么办 | 提示域名已被别人添加 → 说明这个域名在别的 CF 账号下，先解决归属；只是加载慢 → 刷新页面重试 |
 
@@ -197,7 +197,7 @@ B3 登录 cloudflared → B4 建 tunnel → B5 绑域名 → B6 写配置 → B7
 | 项 | 内容 |
 |---|---|
 | 谁做 | 🔴 **【你本人】**。这是动你域名根的地方，代理不代做 |
-| 在哪做 | 腾讯云控制台 → 域名与网站 → 我的域名 → `ouquansdiary.cn` → **DNS 解析 / DNS 服务器（修改）** |
+| 在哪做 | 腾讯云控制台 → 域名与网站 → 我的域名 → `example.com` → **DNS 解析 / DNS 服务器（修改）** |
 | 怎么做 | 把原来的 `swallow.dnspod.net`、`baseball.dnspod.net` 换成 B1 抄下来的**两个 Cloudflare NS**；有第三/第四个也一并换 |
 | 成功标志 | 腾讯云页面显示 NS 已改为 Cloudflare 的；稍后 Cloudflare 面板从 Pending 变 **Active** |
 | 失败怎么办 | ① 提示需要实名/验证 → 先按腾讯云提示完成（**也是你本人**）；② 找不到改 NS 的入口 → 腾讯云里叫「DNS 服务器」或「修改 DNS」，不同版本位置略有差别；③ 改了但一直 Pending → 见 B3 |
@@ -218,10 +218,10 @@ B3 登录 cloudflared → B4 建 tunnel → B5 绑域名 → B6 写配置 → B7
 
 ```powershell
 # 指定公共 DNS 查，绕开本机代理的假解析
-nslookup -type=NS ouquansdiary.cn 8.8.8.8
+nslookup -type=NS example.com 8.8.8.8
 ```
 
-> ⚠️ 在本机直接 `ping anki.ouquansdiary.cn` 可能得到 `198.18.0.180`，
+> ⚠️ 在本机直接 `ping anki.example.com` 可能得到 `198.18.0.180`，
 > 那是代理软件的假 IP（§15.4），**不代表域名已经通**。判断「通没通」请用：
 > ① 上面的 `nslookup ... 8.8.8.8` 看 NS 是否换成 Cloudflare；
 > ② Cloudflare 面板是否 Active；
@@ -233,9 +233,9 @@ nslookup -type=NS ouquansdiary.cn 8.8.8.8
 |---|---|
 | 谁做 | 🔴 **【你本人】**。会弹出浏览器让你登录 + 可能要 2FA + 点 Authorize |
 | 在哪做 | 电脑 PowerShell + 弹出的浏览器 |
-| 怎么做 | `D:\cloudflared\cloudflared.exe tunnel login` → 浏览器里选 `ouquansdiary.cn` → **Authorize** |
+| 怎么做 | `D:\cloudflared\cloudflared.exe tunnel login` → 浏览器里选 `example.com` → **Authorize** |
 | 成功标志 | 终端打印成功；`%USERPROFILE%\.cloudflared\cert.pem` 出现（这是「这台电脑被授权管理这个域名」的凭证） |
-| 失败怎么办 | ① 浏览器没弹 → 命令会打印一个 URL，手动复制到浏览器打开；② 登录页要求 2FA → 按你账号的验证方式过；③ 列表里没有 `ouquansdiary.cn` → 回 B1/B2，zone 还没加载好 |
+| 失败怎么办 | ① 浏览器没弹 → 命令会打印一个 URL，手动复制到浏览器打开；② 登录页要求 2FA → 按你账号的验证方式过；③ 列表里没有 `example.com` → 回 B1/B2，zone 还没加载好 |
 
 > 🔴 到「登录 / 2FA / Authorize」就停手：这是你的账号授权，别人代做等于拿到你域名的管理权。
 > `cert.pem` 等同于密码，**不要发群、不要截图、不要提交进仓库**。
@@ -258,7 +258,7 @@ nslookup -type=NS ouquansdiary.cn 8.8.8.8
 |---|---|
 | 谁做 | 【你】敲一条命令（它会往你 Cloudflare 的 DNS 里写一条记录） |
 | 在哪做 | 电脑 PowerShell |
-| 怎么做 | `D:\cloudflared\cloudflared.exe tunnel route dns anki anki.ouquansdiary.cn` |
+| 怎么做 | `D:\cloudflared\cloudflared.exe tunnel route dns anki anki.example.com` |
 | 成功标志 | 命令成功；Cloudflare 的 DNS 页面出现一条 `anki` 的 **CNAME**，指向 `<TUNNEL-UUID>.cfargotunnel.com`（橙色云朵=已代理） |
 | 失败怎么办 | 报找不到 zone / 域名不存在 → zone 还没 Active，回 B3 等；报已存在同名记录 → 去 DNS 页面删掉旧的 `anki` 记录再执行 |
 
@@ -285,18 +285,18 @@ nslookup -type=NS ouquansdiary.cn 8.8.8.8
 ```powershell
 # 域名侧自检（同样：token 从文件读，不进命令行）
 $t = (Get-Content "D:\deepseek harness\work_anki_enligish\tools\cardback-editor\.cardback_token" -Raw).Trim()
-curl.exe -s -o NUL -w "%{http_code}" https://anki.ouquansdiary.cn/cardback.json                  # 期望 401
-curl.exe -s -o NUL -w "%{http_code}" -H "X-Cardback-Token: $t" https://anki.ouquansdiary.cn/cardback.json  # 期望 200
+curl.exe -s -o NUL -w "%{http_code}" https://anki.example.com/cardback.json                  # 期望 401
+curl.exe -s -o NUL -w "%{http_code}" -H "X-Cardback-Token: $t" https://anki.example.com/cardback.json  # 期望 200
 ```
 
 > **`/health` 的两种情况**：跑着旧进程 → 404；跑着新版 → 但**它也要 token**（`_guard` 对所有路由一视同仁），
-> 所以公网自检要写成 `curl -H "X-Cardback-Token: $t" https://anki.ouquansdiary.cn/health`，
+> 所以公网自检要写成 `curl -H "X-Cardback-Token: $t" https://anki.example.com/health`，
 > **用手机浏览器直接打开会看到 401，那是设计如此，不是域名没通**（域名通不通看 `/cardback.json` 那两条）。
 
 ### B9 手机换成正式地址
 
 ```
-https://anki.ouquansdiary.cn#<token>
+https://anki.example.com#<token>
 ```
 
 整行粘，`#` 后面是 22 字符 token，**不要在中间加路径**（App 会自己补 `/cardback.json`）。
@@ -401,7 +401,7 @@ schtasks /Create /TN "Cardback Cloudflared" /SC ONLOGON /DELAY 0000:30 /TR "\"D:
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `-Url` | `http://127.0.0.1:8765/health` | 要探测的地址。查域名时换成 `https://anki.ouquansdiary.cn/health` |
+| `-Url` | `http://127.0.0.1:8765/health` | 要探测的地址。查域名时换成 `https://anki.example.com/health` |
 | `-LogPath` | 脚本同目录 `healthcheck.log` | 日志路径。建议指到仓库外，如 `D:\cardback-logs\healthcheck.log` |
 | `-TaskName` | 空 | 异常时要重启的计划任务名。**不填 = 只报警不重启**（推荐先这样用） |
 | `-FallbackUrl` | `http://127.0.0.1:8765/cardback.json` | `/health` 返回 404 时的退路，用来区分「旧版服务」和「服务挂了」 |
@@ -445,8 +445,8 @@ schtasks /Create /TN "Cardback Cloudflared" /SC ONLOGON /DELAY 0000:30 /TR "\"D:
 .\healthcheck.ps1 -TaskName "Cardback Cloudflared"
 
 # 4) 查公网域名：/health 要 token，用 -TokenFile 从文件读，别写进任务参数
-.\healthcheck.ps1 -Url "https://anki.ouquansdiary.cn/health" `
-                  -FallbackUrl "https://anki.ouquansdiary.cn/cardback.json" `
+.\healthcheck.ps1 -Url "https://anki.example.com/health" `
+                  -FallbackUrl "https://anki.example.com/cardback.json" `
                   -TokenFile "D:\deepseek harness\work_anki_enligish\tools\cardback-editor\.cardback_token"
 ```
 
@@ -487,13 +487,13 @@ schtasks /Create /TN "Cardback Cloudflared" /SC ONLOGON /DELAY 0000:30 /TR "\"D:
 | **404 访问 `/health`** | 跑着**旧进程**（1.4.6.2 没有这个接口） | `curl -i http://127.0.0.1:8765/health` 看是不是我们自己的 404 文案 | 别当成故障：改过 `server.py` 就重启 8765（§5.4）；或者继续用 `/cardback.json` 自检 |
 | **公网 `/health` 返回 401**（本机同一地址却 200） | **正常**：`_guard` 对所有路由都要 token，公网没有 loopback 豁免 | 同一条命令加上 `-H "X-Cardback-Token: $t"` 再试 | 手机浏览器**不可能**带上这个头，所以别拿浏览器当自检工具；用 curl 或 `healthcheck.ps1 -TokenFile` |
 | **429** | 重试太密被限流（POST `/rewrite*`、`/api/publish`、`/api/rollback`：单 IP 每分钟 20 次 / 每天 200 次） | 看返回里的 `Retry-After` 秒数；看 `server.log` 是不是同一 IP 连续打 | **等**，别反复点。重启 8765 能清掉计数，但那只是掩盖问题；根治是让 App 退避（1.4.7） |
-| **DNS 查不到 / 打不开域名** | NS 没改、还没生效、注册局还没恢复解析 | `nslookup -type=NS ouquansdiary.cn 8.8.8.8`；Cloudflare 面板是否 Active | 没 Active 就等（≤24h）；NS 还是 DNSPod → 回 B2；域名状态异常 → 等注册局 |
+| **DNS 查不到 / 打不开域名** | NS 没改、还没生效、注册局还没恢复解析 | `nslookup -type=NS example.com 8.8.8.8`；Cloudflare 面板是否 Active | 没 Active 就等（≤24h）；NS 还是 DNSPod → 回 B2；域名状态异常 → 等注册局 |
 | **域名解析成 `198.18.x.x`** | 代理软件的假 IP，**不是真实解析** | 换手机 4G 或 `8.8.8.8` 查 | 别拿它当「已通」的证据（§15.4 明确记过这个坑） |
 | **超时 / 连不上** | 电脑关了/睡了、cloudflared 没起、隧道断了 | 电脑上 `http://127.0.0.1:8765/` 打得开吗？cloudflared 窗口/任务在跑吗？ | 本机通+隧道没起 → 起隧道；本机也不通 → 起 8765；都通 → 看 cloudflared 日志是不是 `Retrying connection`（试 `--protocol http2`） |
 | **502 / 530** | 隧道在，但回源失败 | cloudflared 日志找 `connection refused` | = 8765 没起，或 config 的 `service` 写错（必须 `http://127.0.0.1:8765`） |
 | **能连上但数据不动** | 书/词不在本机，拉取时跳过并推进游标 | App 里拉的是哪本书？电脑端 `published\cardback.json` 里有没有这个词？ | 现在的版本会「跳过并推进游标」，所以看起来像没动；先手动重写/重拉一次。真正的修复（跳行回补）在 1.4.7 |
 | **手机 WiFi 能用、4G 不能用** | 地址还是局域网 IP | 看手机里那行地址是 `http://10.x` 还是 `https://anki...` | 换地址（§4 B9）；顺带确认没开 VPN/代理 |
-| **4G 能用、WiFi 不能用** | 家里路由器把 `anki.ouquansdiary.cn` 解析到了奇怪的地方（DNS 劫持/家长控制） | 手机 WiFi 下 `nslookup anki.ouquansdiary.cn` | 路由器换 DNS；或临时用 4G |
+| **4G 能用、WiFi 不能用** | 家里路由器把 `anki.example.com` 解析到了奇怪的地方（DNS 劫持/家长控制） | 手机 WiFi 下 `nslookup anki.example.com` | 路由器换 DNS；或临时用 4G |
 
 ---
 
@@ -508,11 +508,11 @@ schtasks /Create /TN "Cardback Cloudflared" /SC ONLOGON /DELAY 0000:30 /TR "\"D:
 | 1 | 【你】 | 关掉 8765（Ctrl+C 或结束那个计划任务） | 窗口没了 |
 | 2 | 【你】 | 删掉 `tools\cardback-editor\.cardback_token` | 文件消失 |
 | 3 | 【你】 | 重新启动 8765（`启动编辑器.bat` 或计划任务「运行」） | 终端打印出新的「手机：粘贴这一行 → …」，**`#` 后面那 22 个字符就是新 token** |
-| 4 | 【你】 | 手机上把那行**整行**重新粘一次（域名换成 `https://anki.ouquansdiary.cn#新token`） | App 能拉到卡背 |
+| 4 | 【你】 | 手机上把那行**整行**重新粘一次（域名换成 `https://anki.example.com#新token`） | App 能拉到卡背 |
 | 5 | 【你】 | 用旧 token 试一次，应该 401 | 说明旧的确实失效了 |
 
 > 注意：重启后终端打印的是**局域网地址**（`http://10.x.x.x:8765#token`）。
-> 用隧道时你要保留 `#` 后面那截 token，自己拼成 `https://anki.ouquansdiary.cn#<token>`。
+> 用隧道时你要保留 `#` 后面那截 token，自己拼成 `https://anki.example.com#<token>`。
 > 1.4.7 之后应该会直接打印域名行，现在还没有。
 
 ---
@@ -533,7 +533,7 @@ schtasks /Create /TN "Cardback Cloudflared" /SC ONLOGON /DELAY 0000:30 /TR "\"D:
 | 7 | 错 token | 手机 token 改一个字符 → 401 + 有换 token 指引；`server.log` 里请求次数**不应无限增长** | 【你】+【自动】 | ☐ |
 | 8 | 429 | 连续触发重写超过 20 次/分钟 → 状态页显示「等待 N 秒」；等过窗口后自动恢复 | 【你】 | ☐ |
 | 9 | 24h soak | 挂一天：看 8765 进程内存、`server.log` 大小、`sync.json` 大小是否持续增长；重试是否有上限 | 【自动】+【你】看数 | ☐ |
-| 10 | 四条链路 | 在 `https://anki.ouquansdiary.cn` 下各走一次：远程重写 / 跳过 / 反馈 / 回拉 | 【你】 | ☐ |
+| 10 | 四条链路 | 在 `https://anki.example.com` 下各走一次：远程重写 / 跳过 / 反馈 / 回拉 | 【你】 | ☐ |
 
 **判定规则**：10 项全过才算 1.4.7 远程同步可用。任何一项不过，按 §7 定位；
 定位不了就**保持局域网可用**（§10），别让「远程拿不到」变成「本机也用不了」。
@@ -563,7 +563,7 @@ schtasks /Create /TN "Cardback Cloudflared" /SC ONLOGON /DELAY 0000:30 /TR "\"D:
 |---|---|
 | cloudflared 安装（winget / 手动 zip） | **本机未安装、未执行**。包 id、版本号以实际为准 |
 | Quick Tunnel 在国内家宽的可达性 | **未实测**。可能超时/被拦，属预期风险 |
-| `anki.ouquansdiary.cn` 能否长期在国内访问 | **未实测**；`.cn` + 家宽 Web 可能被要求备案 |
+| `anki.example.com` 能否长期在国内访问 | **未实测**；`.cn` + 家宽 Web 可能被要求备案 |
 | `tunnel route dns` / `tunnel login` 的具体交互 | **未执行**，按官方流程写的；版本差异可能会导致菜单位置不同 |
 | 任务计划程序的两套配置 | **未在本机创建过**；`schtasks` 那条命令行未执行，引号容易翻车 |
 | `healthcheck.ps1` | 只做了**语法解析检查**（未执行），首次使用请带 `-DryRun` |

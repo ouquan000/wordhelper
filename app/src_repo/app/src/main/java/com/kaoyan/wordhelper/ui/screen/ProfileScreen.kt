@@ -51,6 +51,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kaoyan.wordhelper.data.model.MethodCount
 import com.kaoyan.wordhelper.ui.component.AppPageHeader
@@ -111,11 +112,20 @@ fun ProfileScreen(
     val syncMessage by viewModel.syncMessage.collectAsStateWithLifecycle()
     val wordbookState by viewModel.wordbookUpdate.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    // 自动备份在 Application 启动后异步跑；这里过几秒再读一次状态，避免页面先于备份完成渲染。
+    // 自动备份在 Application 启动后 4 秒才跑（见 KaoyanWordApp.onCreate），之前只读一次
+    // 永远读到「启动后会自动备份一次」的旧状态 —— 1.5.0 的 bug：首次备份完成后页面不刷新。
+    // 改成进页面后按 2 秒一格轮询：拿到新时间戳就停，最多 20 格（约 40 秒）后也停，不留常驻轮询。
     var autoBackupState by remember { mutableStateOf(AutoBackupManager.readState(context)) }
     LaunchedEffect(Unit) {
-        delay(2500)
-        autoBackupState = AutoBackupManager.readState(context)
+        val initial = autoBackupState
+        repeat(20) {
+            delay(2_000)
+            val latest = AutoBackupManager.readState(context)
+            if (latest != initial) {
+                autoBackupState = latest
+                return@LaunchedEffect
+            }
+        }
     }
     // 1.4.7.4：全局全屏沉浸开关直接写 SettingsRepository，settingsFlow 会让整棵 UI 立即跟着变。
     val uiScope = rememberCoroutineScope()
@@ -634,10 +644,9 @@ private fun DataManageCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // 1.5.1：状态/错误提示从按钮右边挪到按钮正下方整行 —— 长文案（「局域网连不上，且未配置
+            // 公网地址；请检查电脑 IP、网络或到「我的」页填写公网地址」）在窄栏里会被挤成一列竖字。
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedButton(
                     onClick = onSyncWordbook,
                     enabled = !wordbookState.syncing,
@@ -648,7 +657,12 @@ private fun DataManageCard(
                 Text(
                     text = wordbookStatusText(wordbookState),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("profile_wordbook_status")
                 )
             }
             Text(

@@ -2,6 +2,40 @@
 
 本文件记录「不爱背单词」（wordhelper）的版本变更。日期为北京时间。
 
+## v1.5.1（2026-11-22）— 重写按钮不再装死，换网络也能自己找路
+
+这一版主要修「点重写思路没反应」：不是按钮坏了，是后台同步把本地排队写库的锁占住了。模拟器复现时局域网秒回，所以看起来正常；真机上校园网 IP 一变、公网超时，后台同步要拖几十秒，点击就一直停在「重写思路」，既不落库也不提示。
+
+### 一、重写思路：先落库，再联网
+
+- `RewriteRepository.enqueueAndSync()` 不再先抢 `syncMutex`：本地 `tb_rewrite_queue` 写入只拿 `queueWriteMutex`，写完才去同步。后台同步再慢，也不会挡住点击落库。
+- 点击后立刻显示「已标记，正在发送…」，发出去显示「已发给电脑，等它重写」，没发出去显示「已记下，等电脑上线后自动重写」——不再出现「点了完全没动静」。
+- 落库失败、同步异常都有中文兜底提示，不会静默吞掉。
+
+### 二、默认公网地址：本地注入，不进仓库
+
+- `build.gradle.kts` 支持从本地未入库的 `keystore.properties` 读 `defaultRemoteUrl`，生成 `BuildConfig.DEFAULT_REMOTE_URL`；仓库默认值永远是空串，私人域名不写进任何 Git 跟踪文件。
+- `SettingsRepository` 在本地没存过公网地址时自动用这个默认值预填；用户手动清空过就尊重用户，不再硬塞回去。
+- 已经写进历史文档/注释里的私人域名统一脱敏成 `example.com` / `your-tunnel.trycloudflare.com`。
+
+### 三、三条链路都走「局域网优先，公网兜底」
+
+- 词卡热更（`WordbookUpdateRepository`）、学习记录同步（`SyncRepository`）、重写思路（`RewriteRepository`）都复用同一套候选地址：先试局域网，约 2 秒连不上自动切公网地址（带 `X-Cardback-Token`）。
+- 局域网请求「快失败」、公网请求给足超时；离线时仍然本地排队，不丢数据。
+
+### 四、1.5.0 遗留的三个小毛病
+
+- **冷启动状态失忆**：`WordbookUpdateRepository` 初始化时从设置回读上次同步的 `sha256` / 时间 / 词数，杀后台重开不再显示「还没同步过」。
+- **热更报错排版**：个人页词卡状态挪到按钮下方整行展示，英文超时异常翻译成「局域网连不上，且未配置公网地址……」这类人话，长错误压成一行。
+- **自动备份状态不刷新**：个人页在启动后最多轮询 40 秒，首次备份一完成就刷新出时间，不再卡在 2.5 秒的旧值。
+
+### 五、验证
+
+- 后端：`tools/rewrite-service` 197 项 unittest 全过；`test_unverified.py` 30 项全过；`tools/cardback-editor` 六个脚本全过（health 31 / hardening 20 / sync_store 67 / sync_epoch 20 / cards_publish 36 / TLS 9，TLS 1 项按环境跳过）。
+- Android：`testProdDebugUnitTest`、`testDevDebugUnitTest` 各 293 项，0 失败。
+- 模拟器 `mf`（API 34，1080×2340）跑通五项冒烟：冷启动进学习页、翻卡点重写有即时反馈、背词评分切词、自动备份落盘、词卡热更 + 强杀重开状态保留；脚本沉淀在 `scripts/emulator_smoke.ps1`。
+- 版本 `versionCode 27` / `versionName 1.5.1`；Room 仍为 **24**，无 schema 变更、无破坏性迁移；`tb_progress` / `tb_word_memory` 未做物理删除。
+
 ## v1.5.0（2026-11-22）— 不用手动备份，词卡也能热更
 
 这一版解决两个日常痛点：重装/卸载后数据容易丢，以及每次改词卡都要重新装 APK。
@@ -38,7 +72,7 @@
 ### 五、兼容与验证
 
 - Room 数据库版本保持 **24**，无 schema 变更、无破坏性迁移；`tb_progress` / `tb_word_memory` 不做物理删除。
-- 后端测试：`rewrite-service` **197 项**、`cardback-editor` 6 个测试脚本全部通过（health 31 / hardening 31 / sync_store 67 / sync_epoch 20 / cards_publish 36 / TLS 9，TLS 有 1 项按环境跳过）。
+- 后端测试：`rewrite-service` **197 项**、`cardback-editor` 6 个测试脚本全部通过（health 31 / hardening 20 / sync_store 67 / sync_epoch 20 / cards_publish 36 / TLS 9，TLS 有 1 项按环境跳过）。
 - Android 单元测试：`prod` 39 个测试套件 / **251 项**，`dev` 39 个测试套件 / **251 项**，均 0 失败。
 - `versionCode = 26`、`versionName = "1.5.0"`；`prod` / `dev` release APK 证书 SHA-256 均为 `963533138ed73e92e9a2859f80fdf18becb4ee5a83132c55634b965d7164ba1c`。
 

@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.kaoyan.wordhelper.BuildConfig
 import com.kaoyan.wordhelper.data.model.CardMotionMode
 import com.kaoyan.wordhelper.data.model.PronunciationSource
 import com.kaoyan.wordhelper.data.network.CardBackAddress
@@ -53,6 +54,8 @@ private const val DEFAULT_CARD_BACK_TLS_PORT = 8443
 private const val DEFAULT_CARD_BACK_LAN_AUTO = true
 // 1.5.0：词卡热更的可选「公网/远程」地址（Cloudflare Tunnel 的 https 域名）。
 // 空 = 只走局域网；填了就和局域网地址共存，局域网 2 秒连不上时自动切换过去。
+// 1.5.1：仓库默认值恒为空串；真正的产品默认值来自本地 keystore.properties 注入的
+// BuildConfig.DEFAULT_REMOTE_URL，经 RemoteUrlPolicy.resolve 生效 —— 私人域名不入库。
 private const val DEFAULT_WORDBOOK_REMOTE_URL = ""
 private const val DEFAULT_WORDBOOK_APPLIED_SHA = ""
 private const val DEFAULT_WORDBOOK_LAST_SYNC_AT = 0L
@@ -220,7 +223,12 @@ class SettingsRepository(private val context: Context) {
             cardBackTlsPin = prefs[KEY_CARD_BACK_TLS_PIN] ?: DEFAULT_CARD_BACK_TLS_PIN,
             cardBackTlsPort = (prefs[KEY_CARD_BACK_TLS_PORT] ?: DEFAULT_CARD_BACK_TLS_PORT)
                 .takeIf { it in 1..65535 } ?: DEFAULT_CARD_BACK_TLS_PORT,
-            wordbookRemoteUrl = prefs[KEY_WORDBOOK_REMOTE_URL] ?: DEFAULT_WORDBOOK_REMOTE_URL,
+            // 1.5.1：默认公网地址来自本地 keystore.properties 注入的 BuildConfig.DEFAULT_REMOTE_URL。
+            // 只有「从没存过」才回落默认；存过空串 = 用户主动清空，不能再被填回来。
+            wordbookRemoteUrl = RemoteUrlPolicy.resolve(
+                prefs[KEY_WORDBOOK_REMOTE_URL],
+                BuildConfig.DEFAULT_REMOTE_URL
+            ),
             wordbookAppliedSha = prefs[KEY_WORDBOOK_APPLIED_SHA] ?: DEFAULT_WORDBOOK_APPLIED_SHA,
             wordbookLastSyncAt = prefs[KEY_WORDBOOK_LAST_SYNC_AT] ?: DEFAULT_WORDBOOK_LAST_SYNC_AT,
             wordbookLastWordCount = prefs[KEY_WORDBOOK_LAST_WORD_COUNT] ?: DEFAULT_WORDBOOK_LAST_WORD_COUNT,
@@ -433,18 +441,16 @@ class SettingsRepository(private val context: Context) {
     /**
      * 1.5.0：词卡热更的公网/远程地址。
      *
-     * 只做「能用的 URL」归一：补 https://、去掉末尾斜杠和误贴的 cards 目录下 json 路径。
-     * 空串 = 只用局域网地址（cardBackUrl），不会把用户填的远程地址悄悄清掉别的设置。
+     * 只做「能用的 URL」归一：补 https://、去掉末尾斜杠和误贴的 cards 目录下 json 路径
+     * （规则统一收在 [RemoteUrlPolicy.normalizeBase]，纯 Kotlin 可单测）。
+     *
+     * 1.5.1：**空串也要写入**，不再 remove key。以前 remove 后读回来是 null，
+     * 会被「默认公网地址」重新填回，用户清空等于没清空；现在空串本身就是
+     * 「用户主动关掉公网地址」的显式标记（见 [RemoteUrlPolicy.resolve]）。
      */
     suspend fun updateWordbookRemoteUrl(url: String) {
         val normalized = normalizeWordbookRemoteUrl(url)
-        dataStore.edit { prefs ->
-            if (normalized.isBlank()) {
-                prefs.remove(KEY_WORDBOOK_REMOTE_URL)
-            } else {
-                prefs[KEY_WORDBOOK_REMOTE_URL] = normalized
-            }
-        }
+        dataStore.edit { prefs -> prefs[KEY_WORDBOOK_REMOTE_URL] = normalized }
         endpointRevision++
     }
 
@@ -457,23 +463,13 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    /** 远程地址归一：裸域名补 https://；误贴 /cards/manifest.json 时砍回站点根。 */
-    private fun normalizeWordbookRemoteUrl(raw: String): String {
-        var text = raw.trim()
-        if (text.isBlank()) return ""
-        if (!text.startsWith("http://", ignoreCase = true) &&
-            !text.startsWith("https://", ignoreCase = true)
-        ) {
-            text = "https://$text"
-        }
-        val lower = text.lowercase()
-        val cut = listOf("/cards/manifest.json", "/cards/cet6_cards.json")
-            .map { lower.indexOf(it) }
-            .filter { it >= 0 }
-            .minOrNull()
-        if (cut != null) text = text.substring(0, cut)
-        return text.trimEnd('/')
-    }
+    /**
+     * 远程地址归一：裸域名补 https://；误贴 /cards/manifest.json 时砍回站点根。
+     * 1.5.1 起规则统一收到 [RemoteUrlPolicy.normalizeBase]（纯 Kotlin、JVM 可直接单测），
+     * 这里只保留原方法名给本类调用方用。
+     */
+    private fun normalizeWordbookRemoteUrl(raw: String): String =
+        RemoteUrlPolicy.normalizeBase(raw)
 
     /**
      * 记住「上次真正连通的地址」（1.4.6.1）。只在请求成功后调用。

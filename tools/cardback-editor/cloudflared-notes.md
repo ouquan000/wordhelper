@@ -56,18 +56,18 @@ winget install --id Cloudflare.cloudflared -e
 `D:\cloudflared\config.yml`：
 
 ```yaml
-# anki.ouquansdiary.cn → 本机 8765
+# anki.example.com → 本机 8765
 tunnel: anki
 credentials-file: D:\cloudflared\anki-<TUNNEL-UUID>.json
 
 ingress:
   # 只有这个域名会转到本机；其它 host 一律 404，避免变成开放代理
-  - hostname: anki.ouquansdiary.cn
+  - hostname: anki.example.com
     service: http://127.0.0.1:8765
     originRequest:
       connectTimeout: 10s
       # 重写接口偶尔慢（调模型），超时别设太短，否则手机看到的是 502 而不是「正在重写」
-      # httpHostHeader: anki.ouquansdiary.cn   # 只有后端挑 Host 时才需要，现在不用
+      # httpHostHeader: anki.example.com   # 只有后端挑 Host 时才需要，现在不用
   # 兜底规则必须是最后一条，且必须有个 catch-all
   - service: http_status:404
 ```
@@ -83,7 +83,7 @@ ingress:
 
 ```powershell
 D:\cloudflared\cloudflared.exe tunnel ingress validate --config D:\cloudflared\config.yml
-D:\cloudflared\cloudflared.exe tunnel ingress rule https://anki.ouquansdiary.cn/health --config D:\cloudflared\config.yml
+D:\cloudflared\cloudflared.exe tunnel ingress rule https://anki.example.com/health --config D:\cloudflared\config.yml
 ```
 
 第一条没报错 = 语法对；第二条会打印命中了哪条规则（应该是 `http://127.0.0.1:8765`）。
@@ -105,7 +105,7 @@ D:\cloudflared\cloudflared.exe tunnel ingress rule https://anki.ouquansdiary.cn/
 | 登录（写 cert.pem） | `D:\cloudflared\cloudflared.exe tunnel login` |
 | 看已有 tunnel 列表 | `D:\cloudflared\cloudflared.exe tunnel list` |
 | 建 tunnel | `D:\cloudflared\cloudflared.exe tunnel create anki` |
-| 把域名绑到 tunnel | `D:\cloudflared\cloudflared.exe tunnel route dns anki anki.ouquansdiary.cn` |
+| 把域名绑到 tunnel | `D:\cloudflared\cloudflared.exe tunnel route dns anki anki.example.com` |
 | 跑 named tunnel（前台） | `D:\cloudflared\cloudflared.exe tunnel --config D:\cloudflared\config.yml run anki` |
 | 看某个 tunnel 的连接 | `D:\cloudflared\cloudflared.exe tunnel info anki` |
 | 校验配置 | `D:\cloudflared\cloudflared.exe tunnel ingress validate --config D:\cloudflared\config.yml` |
