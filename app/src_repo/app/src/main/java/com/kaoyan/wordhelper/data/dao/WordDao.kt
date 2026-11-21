@@ -215,6 +215,22 @@ interface WordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertBookWordContents(contents: List<BookWordContent>)
 
+    /** 1.5.0 词卡热更：先看哪些词在这本书里已有内容行，已有就只改词义/例句，不冲掉搭配等附加字段。 */
+    @Query("SELECT word_id FROM tb_book_word_content WHERE book_id = :bookId")
+    suspend fun getContentWordIds(bookId: Long): List<Long>
+
+    /** 1.5.0 词卡热更：只更新种子一定会带的两个字段，phrases/synonyms/relWords 原样保留。 */
+    @Query(
+        """UPDATE tb_book_word_content SET meaning = :meaning, example = :example
+           WHERE word_id = :wordId AND book_id = :bookId"""
+    )
+    suspend fun updateMeaningExample(
+        wordId: Long,
+        bookId: Long,
+        meaning: String,
+        example: String
+    ): Int
+
     @Query("DELETE FROM tb_book_word_content WHERE book_id = :bookId")
     suspend fun deleteByBook(bookId: Long)
 

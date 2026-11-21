@@ -3,6 +3,7 @@ package com.kaoyan.wordhelper.util
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
+import androidx.room.RoomDatabase
 import com.kaoyan.wordhelper.data.database.AppDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -134,7 +135,7 @@ object DatabaseBackupManager {
         return backup
     }
 
-    private fun checkpoint(database: AppDatabase): Boolean {
+    internal fun checkpoint(database: RoomDatabase): Boolean {
         // 必须 moveToFirst() 让 Cursor 真正 step；只 query+close 不会执行 PRAGMA，
         // 这是 W5 独立测试抓到的 checkpoint no-op。
         // 返回值第一列是 busy：0 表示全部帧已 checkpoint，非 0 时不能删 WAL。

@@ -189,7 +189,11 @@ class SyncRepository(
             reviewCount = snapshot.reviewCount,
             lastReviewTime = lrt,
             wordId = wordId,
-            bookId = bookId
+            bookId = bookId,
+            fsrsStability = snapshot.fsrsStability,
+            fsrsDifficulty = snapshot.fsrsDifficulty,
+            fsrsLapses = snapshot.fsrsLapses,
+            fsrsState = snapshot.fsrsState
         )
         syncDao.enqueue(
             SyncOp(
@@ -231,7 +235,11 @@ class SyncRepository(
                         reviewCount = row.reviewCount,
                         lastReviewTime = lrt,
                         wordId = row.wordId,
-                        bookId = row.bookId
+                        bookId = row.bookId,
+                        fsrsStability = row.fsrsStability,
+                        fsrsDifficulty = row.fsrsDifficulty,
+                        fsrsLapses = row.fsrsLapses,
+                        fsrsState = row.fsrsState
                     )
                 ),
                 createdAt = now
@@ -289,7 +297,11 @@ class SyncRepository(
                 nextReviewTime = local.nextReviewTime,
                 easeFactor = local.easeFactor,
                 reviewCount = local.reviewCount,
-                lastReviewTime = lrt
+                lastReviewTime = lrt,
+                fsrsStability = local.fsrsStability,
+                fsrsDifficulty = local.fsrsDifficulty,
+                fsrsLapses = local.fsrsLapses,
+                fsrsState = local.fsrsState
             )
         }
         if (deadOpIds.isNotEmpty()) syncDao.deleteByOpIds(deadOpIds)
@@ -504,7 +516,13 @@ class SyncRepository(
                 nextReviewTime = row.nextReviewTime ?: existing?.nextReviewTime ?: 0L,
                 easeFactor = row.easeFactor ?: existing?.easeFactor ?: 2.5f,
                 reviewCount = row.reviewCount ?: existing?.reviewCount ?: 0,
-                lastReviewTime = lrt
+                lastReviewTime = lrt,
+                // 1.4.9-P1：FSRS 4 字段是可选的「增量契约」。对面没带（老数据/老服务端）时
+                // 必须原样保留本地值，绝不能拿 0 冲掉本机已经算出来的 S/D/lapses/state。
+                fsrsStability = row.fsrsStability ?: existing?.fsrsStability ?: 0f,
+                fsrsDifficulty = row.fsrsDifficulty ?: existing?.fsrsDifficulty ?: 0f,
+                fsrsLapses = row.fsrsLapses ?: existing?.fsrsLapses ?: 0,
+                fsrsState = row.fsrsState ?: existing?.fsrsState ?: 0
             )
             if (existing == null) {
                 progressDao.insert(target)
@@ -1183,11 +1201,16 @@ class SyncRepository(
         @SerializedName("rc") val reviewCount: Int? = null,
         @SerializedName("lrt") val lastReviewTime: Long? = null,
         @SerializedName("wid") val wordId: Long? = null,
-        @SerializedName("bid") val bookId: Long? = null
+        @SerializedName("bid") val bookId: Long? = null,
+        // 1.4.9-P1：FSRS-5 的 4 个状态量（可选；老数据没有这几个键时按「对面不知道」处理）。
+        @SerializedName("fsrs_stability") val fsrsStability: Float? = null,
+        @SerializedName("fsrs_difficulty") val fsrsDifficulty: Float? = null,
+        @SerializedName("fsrs_lapses") val fsrsLapses: Int? = null,
+        @SerializedName("fsrs_state") val fsrsState: Int? = null
     )
 
     /** POST /sync/push 的 ops 元素，也是 GET /sync/pull 的 rows 元素。所有字段可空：pull 的行可能缺字段。 */
-    private data class WireOp(
+    internal data class WireOp(
         @SerializedName("op_id") val opId: String? = null,
         @SerializedName("t") val type: String? = null,
         @SerializedName("w") val wordKey: String? = null,
@@ -1198,7 +1221,13 @@ class SyncRepository(
         @SerializedName("nrt") val nextReviewTime: Long? = null,
         @SerializedName("ef") val easeFactor: Float? = null,
         @SerializedName("rc") val reviewCount: Int? = null,
-        @SerializedName("lrt") val lastReviewTime: Long? = null
+        @SerializedName("lrt") val lastReviewTime: Long? = null,
+        // 1.4.9-P1：FSRS-5 状态量。全部可空 = 老服务端/老数据不会因为缺字段整行被拒。
+        // 键名与 tools/cardback-editor/sync_store.py 的 OPTIONAL_TYPED 保持一致。
+        @SerializedName("fsrs_stability") val fsrsStability: Float? = null,
+        @SerializedName("fsrs_difficulty") val fsrsDifficulty: Float? = null,
+        @SerializedName("fsrs_lapses") val fsrsLapses: Int? = null,
+        @SerializedName("fsrs_state") val fsrsState: Int? = null
     )
 
     private data class PushRequest(

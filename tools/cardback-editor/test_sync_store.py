@@ -221,6 +221,59 @@ def test_key_contract(tmp):
           repr(store._data["rows"][legacy_key].get("lrt")))
 
 
+def test_fsrs_optional(tmp):
+    print("\n[6] FSRS 4 字段：可选、向后兼容、脏类型拒收")
+    path = os.path.join(tmp, "fsrs.json")
+    store = sync_store.SyncStore(path)
+
+    new_op = mkop("abandon", 1000, "op-fsrs", fsrs_stability=12.5, fsrs_difficulty=4.75,
+                  fsrs_lapses=2, fsrs_state=3)
+    old_op = mkop("cathedral", 1001, "op-old")
+    result, _ = quiet_push(store, "d1", [new_op, old_op])
+    check("新老 op 都被 ack", sorted(result.get("acked") or []) == ["op-fsrs", "op-old"], repr(result))
+    check("没有 rejected", result.get("rejected") == [], repr(result.get("rejected")))
+
+    rows = {row["w"]: row for row in store.pull(0)["rows"]}
+    new_row = rows["abandon"]
+    check("fsrs_stability 落盘", new_row.get("fsrs_stability") == 12.5, repr(new_row.get("fsrs_stability")))
+    check("fsrs_difficulty 落盘", new_row.get("fsrs_difficulty") == 4.75, repr(new_row.get("fsrs_difficulty")))
+    check("fsrs_lapses 落盘", new_row.get("fsrs_lapses") == 2, repr(new_row.get("fsrs_lapses")))
+    check("fsrs_state 落盘", new_row.get("fsrs_state") == 3, repr(new_row.get("fsrs_state")))
+    old_row = rows["cathedral"]
+    check("老 op 不带 fsrs 键（不会被补 0）",
+          not any(k in old_row for k in sync_store.OPTIONAL_FSRS), repr(old_row))
+
+    again = sync_store.SyncStore(path)
+    again_rows = {row["w"]: row for row in again.pull(0)["rows"]}
+    check("重新载入后 fsrs 字段仍在", again_rows["abandon"].get("fsrs_state") == 3,
+          repr(again_rows["abandon"].get("fsrs_state")))
+
+    bad = [
+        mkop("bad-1", 1002, "op-bad-1", fsrs_stability="high"),
+        mkop("bad-2", 1003, "op-bad-2", fsrs_lapses=1.5),
+        mkop("bad-3", 1004, "op-bad-3", fsrs_state=True),
+        mkop("bad-4", 1005, "op-bad-4", fsrs_difficulty="2.5"),
+    ]
+    good = mkop("good", 1006, "op-good")
+    result, _ = quiet_push(store, "d1", bad + [good])
+    rejected_ids = {item.get("op_id") for item in result.get("rejected") or []}
+    check("4 条脏类型全部 rejected", rejected_ids == {"op-bad-1", "op-bad-2", "op-bad-3", "op-bad-4"},
+          repr(result.get("rejected")))
+    check("脏类型不影响同批正常 op", result.get("acked") == ["op-good"], repr(result.get("acked")))
+    reasons = " ".join(str(item.get("reason")) for item in result.get("rejected") or [])
+    check("拒收原因写明字段类型不对", "字段类型不对" in reasons, reasons)
+    check("脏数据没落库", "bad-1" not in {row["w"] for row in store.pull(0)["rows"]},
+          repr([row["w"] for row in store.pull(0)["rows"]]))
+
+    # 老数据里本来就没有这 4 列：pull 出来的 row 不能因此多出 null 键。
+    legacy_key = sync_store._key("六级", "legacy")
+    store._data["rows"][legacy_key] = dict(mkop("legacy", 900, "op-legacy"), rev=99)
+    store._save()
+    legacy_row = {row["w"]: row for row in sync_store.SyncStore(path).pull(0)["rows"]}["legacy"]
+    check("纯老行读回后仍无 fsrs 键",
+          not any(k in legacy_row for k in sync_store.OPTIONAL_FSRS), repr(legacy_row))
+
+
 def main():
     print("== sync_store 加固自测 ==")
     with tempfile.TemporaryDirectory(prefix="sync-store-test-") as tmp:
@@ -229,6 +282,7 @@ def main():
         test_conflicts(tmp)
         test_corrupt_recovery(tmp)
         test_row_limit(tmp)
+        test_fsrs_optional(tmp)
 
     print("\n%d PASSED / %d FAILED" % (len(PASSED), len(FAILED)))
     return 0 if not FAILED else 1

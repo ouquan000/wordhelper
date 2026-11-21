@@ -51,6 +51,12 @@ private const val DEFAULT_CARD_BACK_TLS_PORT = 8443
 // 1.4.8：同 WiFi 自动直连默认开启。resolveLan 仍要求 instanceId + token + pin，
 // 未配对（缺 instanceId/pin）不会自动发现，也不会退回明文 HTTP。
 private const val DEFAULT_CARD_BACK_LAN_AUTO = true
+// 1.5.0：词卡热更的可选「公网/远程」地址（Cloudflare Tunnel 的 https 域名）。
+// 空 = 只走局域网；填了就和局域网地址共存，局域网 2 秒连不上时自动切换过去。
+private const val DEFAULT_WORDBOOK_REMOTE_URL = ""
+private const val DEFAULT_WORDBOOK_APPLIED_SHA = ""
+private const val DEFAULT_WORDBOOK_LAST_SYNC_AT = 0L
+private const val DEFAULT_WORDBOOK_LAST_WORD_COUNT = 0
 private val Context.dataStore by preferencesDataStore(name = "user_settings")
 
 data class UserSettings(
@@ -109,6 +115,14 @@ data class UserSettings(
     val cardBackTlsPin: String = DEFAULT_CARD_BACK_TLS_PIN,
     /** 局域网 HTTPS 端口；默认 8443，实际值由 HTTPS /identity 的 tls_port 更新。 */
     val cardBackTlsPort: Int = DEFAULT_CARD_BACK_TLS_PORT,
+    /** 1.5.0：词卡热更的公网/远程地址；空 = 只用局域网地址（cardBackUrl）。 */
+    val wordbookRemoteUrl: String = DEFAULT_WORDBOOK_REMOTE_URL,
+    /** 1.5.0：本地已应用的词卡包 sha256；与 manifest 一致时提示「已是最新」。 */
+    val wordbookAppliedSha: String = DEFAULT_WORDBOOK_APPLIED_SHA,
+    /** 1.5.0：上次成功热更的时间（毫秒）。 */
+    val wordbookLastSyncAt: Long = DEFAULT_WORDBOOK_LAST_SYNC_AT,
+    /** 1.5.0：上次热更覆盖的词条数，用于「我的」页状态行。 */
+    val wordbookLastWordCount: Int = DEFAULT_WORDBOOK_LAST_WORD_COUNT,
     /** 1.4.7.4：学习页背景氛围 id：auto / aurora / abyss / ember / velvet。 */
     val ambientBackdropId: String = DEFAULT_AMBIENT_BACKDROP_ID
 )
@@ -206,6 +220,10 @@ class SettingsRepository(private val context: Context) {
             cardBackTlsPin = prefs[KEY_CARD_BACK_TLS_PIN] ?: DEFAULT_CARD_BACK_TLS_PIN,
             cardBackTlsPort = (prefs[KEY_CARD_BACK_TLS_PORT] ?: DEFAULT_CARD_BACK_TLS_PORT)
                 .takeIf { it in 1..65535 } ?: DEFAULT_CARD_BACK_TLS_PORT,
+            wordbookRemoteUrl = prefs[KEY_WORDBOOK_REMOTE_URL] ?: DEFAULT_WORDBOOK_REMOTE_URL,
+            wordbookAppliedSha = prefs[KEY_WORDBOOK_APPLIED_SHA] ?: DEFAULT_WORDBOOK_APPLIED_SHA,
+            wordbookLastSyncAt = prefs[KEY_WORDBOOK_LAST_SYNC_AT] ?: DEFAULT_WORDBOOK_LAST_SYNC_AT,
+            wordbookLastWordCount = prefs[KEY_WORDBOOK_LAST_WORD_COUNT] ?: DEFAULT_WORDBOOK_LAST_WORD_COUNT,
             ambientBackdropId = (prefs[KEY_AMBIENT_BACKDROP_ID] ?: DEFAULT_AMBIENT_BACKDROP_ID)
                 .takeIf { it in AMBIENT_BACKDROP_IDS } ?: DEFAULT_AMBIENT_BACKDROP_ID
         )
@@ -413,6 +431,51 @@ class SettingsRepository(private val context: Context) {
     }
 
     /**
+     * 1.5.0：词卡热更的公网/远程地址。
+     *
+     * 只做「能用的 URL」归一：补 https://、去掉末尾斜杠和误贴的 cards 目录下 json 路径。
+     * 空串 = 只用局域网地址（cardBackUrl），不会把用户填的远程地址悄悄清掉别的设置。
+     */
+    suspend fun updateWordbookRemoteUrl(url: String) {
+        val normalized = normalizeWordbookRemoteUrl(url)
+        dataStore.edit { prefs ->
+            if (normalized.isBlank()) {
+                prefs.remove(KEY_WORDBOOK_REMOTE_URL)
+            } else {
+                prefs[KEY_WORDBOOK_REMOTE_URL] = normalized
+            }
+        }
+        endpointRevision++
+    }
+
+    /** 1.5.0：词卡包应用成功后落盘，供「已是最新」判断和状态行展示。 */
+    suspend fun updateWordbookApplied(sha256: String, syncedAt: Long, wordCount: Int) {
+        dataStore.edit { prefs ->
+            prefs[KEY_WORDBOOK_APPLIED_SHA] = sha256.trim().lowercase()
+            prefs[KEY_WORDBOOK_LAST_SYNC_AT] = syncedAt
+            prefs[KEY_WORDBOOK_LAST_WORD_COUNT] = wordCount.coerceAtLeast(0)
+        }
+    }
+
+    /** 远程地址归一：裸域名补 https://；误贴 /cards/manifest.json 时砍回站点根。 */
+    private fun normalizeWordbookRemoteUrl(raw: String): String {
+        var text = raw.trim()
+        if (text.isBlank()) return ""
+        if (!text.startsWith("http://", ignoreCase = true) &&
+            !text.startsWith("https://", ignoreCase = true)
+        ) {
+            text = "https://$text"
+        }
+        val lower = text.lowercase()
+        val cut = listOf("/cards/manifest.json", "/cards/cet6_cards.json")
+            .map { lower.indexOf(it) }
+            .filter { it >= 0 }
+            .minOrNull()
+        if (cut != null) text = text.substring(0, cut)
+        return text.trimEnd('/')
+    }
+
+    /**
      * 记住「上次真正连通的地址」（1.4.6.1）。只在请求成功后调用。
      * 先归一成 scheme://host:port 再存；解析不出 host 就忽略 ——
      * 不能因为一次脏输入把原来能用的兜底地址覆盖掉。
@@ -555,6 +618,10 @@ class SettingsRepository(private val context: Context) {
         private val KEY_CARD_BACK_LAN_AUTO = booleanPreferencesKey("card_back_lan_auto")
         private val KEY_CARD_BACK_TLS_PIN = stringPreferencesKey("card_back_tls_pin")
         private val KEY_CARD_BACK_TLS_PORT = intPreferencesKey("card_back_tls_port")
+        private val KEY_WORDBOOK_REMOTE_URL = stringPreferencesKey("wordbook_remote_url")
+        private val KEY_WORDBOOK_APPLIED_SHA = stringPreferencesKey("wordbook_applied_sha")
+        private val KEY_WORDBOOK_LAST_SYNC_AT = longPreferencesKey("wordbook_last_sync_at")
+        private val KEY_WORDBOOK_LAST_WORD_COUNT = intPreferencesKey("wordbook_last_word_count")
         private val KEY_CARD_SEED_VERSION = intPreferencesKey("card_seed_version")
         private val KEY_REWRITE_LAST_SEQ = longPreferencesKey("rewrite_last_seq")
         private val KEY_REWRITE_STREAM_ID = stringPreferencesKey("rewrite_stream_id")

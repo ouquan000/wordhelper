@@ -63,6 +63,26 @@ interface WordMemoryDao {
     suspend fun upsertAll(items: List<WordMemory>)
 
     /**
+     * 1.5.0 词卡热更：整包更新正文 + 方法标签，但仍只动这三样，
+     * rev/prev_approach/prev_method/unverified 全部保留（不做整行 REPLACE）。
+     * 调用方必须先确认这一行不是用户手改的（source != user、rev == 0、无撤销记录）。
+     */
+    @Query(
+        """UPDATE tb_word_memory
+           SET approach = :approach, collocations = :collocations, method = :method,
+               source = :source, updated_at = :updatedAt
+           WHERE word_id = :wordId"""
+    )
+    suspend fun updateContentAndMethod(
+        wordId: Long,
+        approach: String,
+        collocations: String,
+        method: String,
+        source: String,
+        updatedAt: Long
+    ): Int
+
+    /**
      * 1.4.6（P0）：种子重导不会带 method（WordDraft 没有这个字段），老行就永远停在默认的 "root"。
      * 这里把「种子来源、且还是 fromMethod」的行改成真正的方法标签；source=user 一律不碰。
      * 改完后 method 不再等于 fromMethod，重复调用天然幂等。

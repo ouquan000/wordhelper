@@ -38,7 +38,9 @@ interface SyncDao {
         SELECT p.word_id AS wordId, p.book_id AS bookId, p.status AS status,
                p.repetitions AS repetitions, p.interval_days AS intervalDays,
                p.next_review_time AS nextReviewTime, p.ease_factor AS easeFactor,
-               p.review_count AS reviewCount, p.last_review_time AS lastReviewTime
+               p.review_count AS reviewCount, p.last_review_time AS lastReviewTime,
+               p.fsrsStability AS fsrsStability, p.fsrsDifficulty AS fsrsDifficulty,
+               p.fsrsLapses AS fsrsLapses, p.fsrsState AS fsrsState
         FROM tb_progress p
         WHERE p.status >= 1
         """
@@ -59,5 +61,9 @@ data class ProgressForSync(
     val nextReviewTime: Long,
     val easeFactor: Float,
     val reviewCount: Int,
-    val lastReviewTime: Long
+    val lastReviewTime: Long,
+    val fsrsStability: Float = 0f,
+    val fsrsDifficulty: Float = 0f,
+    val fsrsLapses: Int = 0,
+    val fsrsState: Int = 0
 )

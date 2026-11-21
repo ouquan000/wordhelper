@@ -13,6 +13,7 @@ import com.kaoyan.wordhelper.data.model.MethodCount
 import com.kaoyan.wordhelper.data.repository.DarkMode
 import com.kaoyan.wordhelper.data.repository.SyncStatusStore
 import com.kaoyan.wordhelper.data.repository.UserSettings
+import com.kaoyan.wordhelper.data.repository.WordbookUpdateState
 import com.kaoyan.wordhelper.sync.BackgroundSync
 import com.kaoyan.wordhelper.util.DatabaseBackupManager
 import com.kaoyan.wordhelper.util.DateUtils
@@ -107,6 +108,24 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     private val _syncMessage = MutableStateFlow<String?>(null)
     val syncMessage: StateFlow<String?> = _syncMessage.asStateFlow()
+
+    // ---- 词卡热更（1.5.0）：局域网优先，连不上自动切公网；只改词义/例句/非手改助记。
+    private val wordbookUpdateRepository = (application as KaoyanWordApp).wordbookUpdateRepository
+
+    val wordbookUpdate: StateFlow<WordbookUpdateState> = wordbookUpdateRepository.state
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WordbookUpdateState())
+
+    fun syncWordbook() {
+        viewModelScope.launch {
+            wordbookUpdateRepository.sync()
+        }
+    }
+
+    fun updateWordbookRemoteUrl(url: String) {
+        viewModelScope.launch {
+            settingsRepository.updateWordbookRemoteUrl(url)
+        }
+    }
 
     fun refreshSyncPending() {
         viewModelScope.launch {
