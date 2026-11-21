@@ -11,23 +11,35 @@ import com.kaoyan.wordhelper.data.entity.WordMemory
 import com.kaoyan.wordhelper.data.model.CardSeedLoader
 import com.kaoyan.wordhelper.data.model.CardSeedPayload
 import com.kaoyan.wordhelper.data.model.CardSeedWord
+import com.kaoyan.wordhelper.data.network.RetryPolicy
 import com.kaoyan.wordhelper.data.network.TlsPinned
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.InterruptedIOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLException
 
 /** 词卡热更的结果。失败时 message 直接给用户看，不要吞掉原因。 */
 sealed interface WordbookSyncResult {
@@ -39,6 +51,100 @@ sealed interface WordbookSyncResult {
     ) : WordbookSyncResult
 
     data class Failure(val message: String) : WordbookSyncResult
+}
+
+/**
+ * 词卡热更失败时给用户看的人话（1.5.1）。
+ *
+ * 为什么单拎出来：1.5.0 把 `SocketTimeoutException` / `ConnectException` 的英文 message
+ * 原样塞进 `Failure.message`，用户在「我的」页看到的就是一句
+ * `failed to connect to /192.168.1.5:8765 (port 8765) after 2000ms`。
+ * 这里只做「异常 → 短句中文」的纯映射：不碰网络、不碰状态、不读时钟，可直接 JVM 单测。
+ */
+object WordbookStatusPolicy {
+
+    /** 连不上 / 超时：最常见的失败，文案必须直接给出下一步动作。 */
+    const val MSG_UNREACHABLE =
+        "连不上电脑：请检查电脑地址和网络，或在「我的」页填写公网地址"
+
+    const val MSG_HOST_UNRESOLVED = "公网地址解析失败，请检查地址"
+
+    const val MSG_TLS = "HTTPS 证书校验失败"
+
+    const val MSG_UNAUTHORIZED = "口令不对，请重新粘贴配对行"
+
+    /** 兜底原因的最大长度：异常 message 可能是一整段 HTML，别把一行提示撑爆。 */
+    private const val MAX_REASON_CHARS = 40
+
+    /** 顺着 cause 链最多看这么多层：包两三层 IOException 是常态，再深就是噪音了。 */
+    private const val MAX_CAUSE_DEPTH = 5
+
+    /**
+     * 异常自带 HTTP 状态码时实现它。
+     *
+     * 401 本身是「响应」不是「异常」，正常请求走不到这里；实现这个接口只是为了让
+     * 调用点能把状态码和异常一起交出来（单测也用它造「假 401 异常」）。
+     */
+    interface HttpStatusFailure {
+        val httpCode: Int
+    }
+
+    /**
+     * 把一次失败翻成一句中文。
+     *
+     * [httpCode] 显式给出时优先于异常类型（401 与网络无关）；不给则从异常链里的
+     * [HttpStatusFailure] 取。
+     */
+    fun describeFailure(error: Throwable?, httpCode: Int? = null): String {
+        val code = httpCode?.takeIf { it > 0 } ?: httpCodeOf(error)
+        if (code == 401) return MSG_UNAUTHORIZED
+
+        // 只看最外层不够：OkHttp/协程常把真正的 IOException 包一层。
+        var node = error
+        var depth = 0
+        while (node != null && depth < MAX_CAUSE_DEPTH) {
+            when (node) {
+                is SSLException -> return MSG_TLS
+                is UnknownHostException -> return MSG_HOST_UNRESOLVED
+                // SocketTimeoutException 是 InterruptedIOException 的子类，二者都算「超时」。
+                is SocketTimeoutException -> return MSG_UNREACHABLE
+                is InterruptedIOException -> return MSG_UNREACHABLE
+                is ConnectException -> return MSG_UNREACHABLE
+                is NoRouteToHostException -> return MSG_UNREACHABLE
+            }
+            node = node.cause
+            depth++
+        }
+        return "同步失败：${reasonOf(error)}"
+    }
+
+    private fun httpCodeOf(error: Throwable?): Int? {
+        var node = error
+        var depth = 0
+        while (node != null && depth < MAX_CAUSE_DEPTH) {
+            if (node is HttpStatusFailure) {
+                return node.httpCode.takeIf { it > 0 }
+            }
+            node = node.cause
+            depth++
+        }
+        return null
+    }
+
+    /**
+     * 兜底原因：优先复用 [RetryPolicy.describe] 的中文描述，
+     * 压成一行、截到 [MAX_REASON_CHARS]，宁可短也别糊一屏英文堆栈。
+     */
+    private fun reasonOf(error: Throwable?): String {
+        // 带类型但没 message 的裸异常（如 RuntimeException()）不该把类名糊到用户脸上。
+        if (error != null && error.message.isNullOrBlank() && error.cause == null) return "未知错误"
+        val raw = if (error == null) "" else RetryPolicy.describe(error)
+        val text = raw.replace(WHITESPACE, " ").trim()
+        if (text.isEmpty()) return "未知错误"
+        return if (text.length <= MAX_REASON_CHARS) text else text.take(MAX_REASON_CHARS) + "…"
+    }
+
+    private val WHITESPACE = Regex("\\s+")
 }
 
 /** 给设置页看的轻量状态；持久化的字段仍以 SettingsRepository 为准。 */
@@ -73,6 +179,37 @@ class WordbookUpdateRepository(
     private val _state = MutableStateFlow(WordbookUpdateState())
     val state: StateFlow<WordbookUpdateState> = _state.asStateFlow()
 
+    /**
+     * 只给「冷启动回读」用的作用域。
+     *
+     * 仓库本身是 Application 级单例，没有调用方会给它协程作用域，
+     * 所以自带一个：SupervisorJob 保证一次回读失败不会连坐后面的任务，IO 线程读写 DataStore。
+     */
+    private val stateScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    init {
+        // 1.5.1 冷启动回读：杀后台重开后 `_state` 是全新默认值（appliedSha="" / lastSyncAt=0），
+        // 「我的」页就会一直显示「还没同步过」，尽管 settings 里明明记着上次同步。
+        // 这里把三个持久化字段灌回去；失败静默（读不到就是「还没同步过」，不影响主流程）。
+        stateScope.launch {
+            runCatching {
+                val settings = settingsRepository.settingsFlow.first()
+                _state.update { current ->
+                    // 不能覆盖正在进行的同步；也不覆盖刚拿到的本次同步结果（lastMessage 非空）。
+                    if (current.syncing || current.lastMessage != null) {
+                        current
+                    } else {
+                        current.copy(
+                            appliedSha = settings.wordbookAppliedSha,
+                            lastSyncAt = settings.wordbookLastSyncAt,
+                            lastWordCount = settings.wordbookLastWordCount
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     /** 点按钮 / 打开页面时调用。同一时刻只允许一个同步任务。 */
     suspend fun sync(): WordbookSyncResult {
         if (!syncMutex.tryLock()) {
@@ -90,6 +227,14 @@ class WordbookUpdateRepository(
                 lastWordCount = latest.wordbookLastWordCount
             )
             return result
+        } catch (cancellation: CancellationException) {
+            // 取消不是失败：原样抛出去，别把「页面关了」说成「同步失败」。
+            throw cancellation
+        } catch (t: Throwable) {
+            // 1.5.1：任何漏出来的底层异常（连接/超时/DNS/证书）都在这里翻成人话再交给 UI。
+            val message = WordbookStatusPolicy.describeFailure(t)
+            _state.value = _state.value.copy(lastMessage = message)
+            return WordbookSyncResult.Failure(message)
         } finally {
             _state.value = _state.value.copy(syncing = false)
             syncMutex.unlock()
@@ -110,7 +255,7 @@ class WordbookUpdateRepository(
             val manifestFetch = fetch("${endpoint.origin}/cards/manifest.json", endpoint, MAX_MANIFEST_BYTES)
             when (manifestFetch) {
                 is Fetch.Failed -> {
-                    lastError = "${endpoint.label}连不上：${manifestFetch.message}"
+                    lastError = endpointFailureText(endpoint, "连不上：", manifestFetch)
                     continue
                 }
                 is Fetch.Http -> {
@@ -165,7 +310,7 @@ class WordbookUpdateRepository(
                     continue
                 }
                 is Fetch.Failed -> {
-                    lastError = "${endpoint.label}下载词卡失败：${cardsFetch.message}"
+                    lastError = endpointFailureText(endpoint, "下载词卡失败：", cardsFetch)
                     continue
                 }
             }
@@ -277,10 +422,25 @@ class WordbookUpdateRepository(
 
     // ---- 网络 ----
 
+    /**
+     * 一个通道上的传输失败，给用户看的那一句。
+     *
+     * 有底层异常时 [Fetch.Failed.message] 已经是完整人话（「局域网连不上，且未配置公网地址；…」），
+     * 再拼「局域网连不上：」就重复了；没有原始异常（服务端返回空内容 / 包太大）时
+     * 才需要「通道 + 原因」的前缀。
+     */
+    private fun endpointFailureText(endpoint: Endpoint, prefix: String, failure: Fetch.Failed): String =
+        if (failure.error != null) failure.message else "${endpoint.label}$prefix${failure.message}"
+
     private sealed interface Fetch {
         data class Ok(val bytes: ByteArray) : Fetch
         data class Http(val code: Int) : Fetch
-        data class Failed(val message: String) : Fetch
+
+        /**
+         * 传输层失败。[error] 是原始异常（连不上/超时/DNS/证书），
+         * [message] 已经是 [WordbookStatusPolicy] 翻好的人话；没有原始异常时才是自己写的短句。
+         */
+        data class Failed(val message: String, val error: Throwable? = null) : Fetch
     }
 
     private fun fetch(url: String, endpoint: Endpoint, maxBytes: Int): Fetch {
@@ -317,7 +477,8 @@ class WordbookUpdateRepository(
                 }
             }
         } catch (e: Exception) {
-            Fetch.Failed(e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName)
+            // 1.5.1：别把 `failed to connect to /192.168.x.x:8765 ...` 这种原文交出去。
+            Fetch.Failed(WordbookStatusPolicy.describeFailure(e), e)
         }
     }
 

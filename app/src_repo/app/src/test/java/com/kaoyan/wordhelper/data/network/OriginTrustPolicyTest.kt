@@ -14,7 +14,7 @@ class OriginTrustPolicyTest {
     @Test
     fun `unpaired or https does not need proof`() {
         assertFalse(OriginTrustPolicy.needsProof("http://192.168.1.8:8765", ""))
-        assertFalse(OriginTrustPolicy.needsProof("https://sync.ouquansdiary.cn", "cb-abc"))
+        assertFalse(OriginTrustPolicy.needsProof("https://sync.example.com", "cb-abc"))
     }
 
     @Test

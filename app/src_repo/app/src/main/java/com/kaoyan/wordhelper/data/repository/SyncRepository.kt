@@ -31,6 +31,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URI
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -146,6 +147,9 @@ class SyncRepository(
      * OkHttpClient 自带连接池与线程池，构造一次就该复用；但只在真的要联网时才建
      * （WordRepository 里那个只入队的实例永远用不到它）。
      * 超时与池参数与 RewriteRepository 保持一致，同一个电脑端不能两套脾气。
+     *
+     * 1.5.1 起按候选性质分流：[lanClient] 走局域网、[publicClient] 走公网域名，
+     * 这个对象只剩 [call] 的兜底默认值（谁忘了传 client 也不会拿到比这更短的超时）。
      */
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -155,6 +159,40 @@ class SyncRepository(
             .retryOnConnectionFailure(true)
             // 电脑端是 python 的 HTTPServer（HTTP/1.0，回完就断连），
             // 复用空闲连接只会拿到对端已经关掉的 socket，所以不留连接。
+            .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
+            .build()
+    }
+
+    /**
+     * 1.5.1：局域网候选的「短痛」客户端。
+     *
+     * 同一个 WiFi 下电脑端要么毫秒级回话，要么压根不在线；用上面 4/12/15 秒那套
+     * 去等一个已经离线的 IP，一轮同步会先白等十几秒，公网兜底永远轮不到。
+     * 所以 LAN 只给 2 秒建连、8 秒整体：打不通就立刻换下一个候选。
+     */
+    private val lanClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(LAN_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(LAN_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .callTimeout(LAN_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
+            .build()
+    }
+
+    /**
+     * 1.5.1：公网（`settings.wordbookRemoteUrl`）候选的客户端。
+     *
+     * 域名走 Cloudflare Tunnel 这类中继，握手/首字节本来就更慢，用 LAN 的短超时
+     * 会把「其实能通但慢一点」的出口误判成失败。这里放宽到 8/20/30 秒。
+     */
+    private val publicClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(PUBLIC_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(PUBLIC_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .callTimeout(PUBLIC_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            // 中继同样是「一次一连接」更稳：复用空闲连接只会拿到已关闭的 socket。
             .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
             .build()
     }
@@ -677,6 +715,11 @@ class SyncRepository(
                 if (st.serverRev != 0L) syncDao.putState(st.copy(serverRev = 0L))
             }
         }
+        // 1.5.1：公网兜底地址只来自设置里的 wordbookRemoteUrl（默认值由构建注入到
+        // BuildConfig，仓库里是空串），**不硬编码任何域名**。没 token 时不加：
+        // 没口令去敲域名只会换回一个无意义的 401，和 RewriteRepository 的约定一致。
+        val publicOrigin = SyncFallbackPolicy.normalizePublicUrl(settings.wordbookRemoteUrl)
+        val cloudFallback = publicOrigin.takeIf { token.isNotBlank() && it.isNotBlank() }
         // 本轮 /health 已确认身份：只认这个地址，不给伪服务/陌生候选任何拿 token 的机会。
         val pinned = pinnedOrigin
         if (!pinned.isNullOrBlank()) {
@@ -684,7 +727,12 @@ class SyncRepository(
                 origins = listOf(pinned),
                 token = token,
                 tlsPin = settingsPin,
-                tlsPort = settings.cardBackTlsPort
+                tlsPort = settings.cardBackTlsPort,
+                publicOrigins = if (SyncFallbackPolicy.isPublicOrigin(pinned, publicOrigin)) {
+                    setOf(pinned)
+                } else {
+                    emptySet()
+                }
             )
         }
         // 1.4.7.2 W4：同 WiFi 只走 HTTPS + SPKI pin。pin 要么本地已有，要么先从
@@ -707,11 +755,14 @@ class SyncRepository(
             }
         }
         // 1.4.6.1 P1：和改写链路同一套候选/上次成功，手填地址写坏时学习记录也能自愈。
+        // 1.5.1：公网域名垫在 lastGood 之前 —— 局域网全灭时它是唯一还能走通的出口，
+        // 而 lastGood 很可能就是那个刚刚失效的局域网地址。
         val rawOrigins = if (rotate) {
             CardBackAddress.candidates(
                 active = activeOrigin,
                 current = settings.cardBackUrl,
-                lastGood = settings.cardBackLastGoodUrl
+                lastGood = settings.cardBackLastGoodUrl,
+                cloudFallback = cloudFallback
             )
         } else {
             listOfNotNull(
@@ -719,22 +770,31 @@ class SyncRepository(
                     active = activeOrigin,
                     current = settings.cardBackUrl,
                     lastGood = settings.cardBackLastGoodUrl
-                )
+                ),
+                // 只打一发的路径也要能落到公网：局域网首选不通时，域名是最后一次机会。
+                cloudFallback
             )
         }
         // 有 pin 时，同一台电脑的明文 HTTP 地址一律不进候选：token 只能发给
         // 「pin 证明过的 https://ip:tlsPort」或已受信的 HTTPS 域名。
-        val origins = if (lanPin.isNotBlank()) {
+        val kept = if (lanPin.isNotBlank()) {
             rawOrigins.filterNot { isPlainHttpIpOrigin(it) }
         } else {
             rawOrigins
-        }
-        if (origins.isEmpty()) return null
+        }.distinct()
+        if (kept.isEmpty()) return null
+        // 用户手填的地址、active、lastGood 可能就是同一个公网域名：按 host 判定，
+        // 命中公网的候选要拿长超时，剩下的都按局域网短超时处理。
+        val publicOrigins = kept.filter { SyncFallbackPolicy.isPublicOrigin(it, publicOrigin) }.toSet()
+        // 稳定排序：局域网候选永远排在公网之前。activeOrigin 可能就是上次成功的公网域名，
+        // 若照原顺序它会被顶到最前面，在家时反而先白等一次公网超时 —— 与「局域网优先」相反。
+        val origins = kept.sortedBy { if (it in publicOrigins) 1 else 0 }
         return SyncConfig(
             origins = origins,
             token = token,
             tlsPin = lanPin,
-            tlsPort = lanPort
+            tlsPort = lanPort,
+            publicOrigins = publicOrigins
         )
     }
 
@@ -813,8 +873,19 @@ class SyncRepository(
         val origins: List<String>,
         val token: String,
         val tlsPin: String = "",
-        val tlsPort: Int = 8443
-    )
+        val tlsPort: Int = 8443,
+        /**
+         * 走公网（[UserSettings.wordbookRemoteUrl] 那个域名）的候选。
+         *
+         * 1.5.1：局域网优先，但出了家门局域网必然不通，所以要能落到公网。
+         * 两类候选的超时预算完全不同 —— 局域网要「快失败」（2 秒内切走），
+         * 公网要「耐心等」（4G/隧道首包常常 3 秒以上）—— 因此这里必须能区分。
+         */
+        val publicOrigins: Set<String> = emptySet()
+    ) {
+        /** 该 origin 是否走公网域名（决定用哪个超时档的 client）。 */
+        fun isPublic(origin: String): Boolean = publicOrigins.contains(origin)
+    }
 
     private data class LanEndpoint(val origin: String, val pin: String, val port: Int)
 
@@ -992,14 +1063,22 @@ class SyncRepository(
      */
     private suspend fun sendToOrigins(config: SyncConfig, build: (String) -> Request): HttpOutcome {
         var last: HttpOutcome? = null
+        // 有公网域名可落时，局域网候选只打一发：地址不通（换网/路由器改 IP/电脑关机）
+        // 时必须尽快把机会让给域名，而不是在死地址上重试 + 退避等上十几秒。
+        val failFastLan = config.publicOrigins.isNotEmpty()
         for (origin in config.origins) {
+            val isPublic = config.isPublic(origin)
             // https LAN origin 必须走 pin；没有合法 pin 就跳过，绝不回退系统信任的明文/普通 TLS。
-            val originClient = httpClientFor(origin, config.tlsPin)
+            val originClient = httpClientFor(origin, config.tlsPin, isPublic)
             if (originClient == null) {
                 Log.w(TAG, "跳过无 pin 的 LAN HTTPS 候选：${CardBackAddress.originOf(origin) ?: origin}")
                 continue
             }
-            val outcome = call(build = { build(origin) }, client = originClient)
+            val outcome = call(
+                build = { build(origin) },
+                maxAttempts = if (failFastLan && !isPublic) 1 else RetryPolicy.DEFAULT_MAX_ATTEMPTS,
+                client = originClient
+            )
             last = outcome
             // 只有 2xx 才算「这个地址能用」。但 2xx 也可能来自伪装服务：
             // 不在这里记 last-good，等 /health 解析出 instance_id 并通过身份校验后再记。
@@ -1014,12 +1093,32 @@ class SyncRepository(
     }
 
     /**
-     * 按 origin 选择客户端：域名/普通地址用系统信任；https + IP 的 LAN 必须用 pin。
+     * 按 origin 选择客户端：https + IP 的 LAN 必须用 pin；其余按「局域网 / 公网」分两档超时。
      * 返回 null 表示「这是 LAN HTTPS，但没有可用的 pin」，调用方必须跳过而不是降级。
      */
-    private fun httpClientFor(origin: String, pin: String): OkHttpClient? {
-        if (!TlsPinned.isLanHttps(origin)) return client
-        return TlsPinned.clientFor(pin)
+    private fun httpClientFor(origin: String, pin: String, isPublic: Boolean = false): OkHttpClient? {
+        // pin 优先且不可让位：https://ip 只能信 pin 证明过的那台电脑，
+        // 无论它被归到哪一档，都不能换成系统信任或明文。
+        if (TlsPinned.isLanHttps(origin)) return TlsPinned.clientFor(pin)
+        // 公网走隧道/4G，首包慢，给足预算；局域网要「快失败」好切公网。
+        // 既不是设置里的公网域名、又不是内网 IP 的普通域名（例如用户自建 HTTPS）
+        // 保持原来的 4/12/15，不因为「没归类」就被误伤成 2 秒超时。
+        if (isPublic) return publicClient
+        return if (isLanOrigin(origin)) lanClient else client
+    }
+
+    /** 1.5.1：内网地址判定（只用于挑超时档，不参与任何信任判断）。 */
+    private fun isLanOrigin(origin: String): Boolean {
+        val host = runCatching { URI(origin).host }.getOrNull()?.lowercase(Locale.ROOT) ?: return false
+        if (host == "localhost" || host.endsWith(".local")) return true
+        val parts = host.split('.')
+        if (parts.size != 4 || parts.any { it.toIntOrNull() == null }) return false
+        val a = parts[0].toIntOrNull() ?: return false
+        val b = parts[1].toIntOrNull() ?: return false
+        return a == 10 || a == 127 ||
+            (a == 172 && b in 16..31) ||
+            (a == 192 && b == 168) ||
+            (a == 169 && b == 254)
     }
 
     /**
@@ -1089,7 +1188,7 @@ class SyncRepository(
                 }
                 verifiedInstance = probed
             }
-            val originClient = httpClientFor(origin, config.tlsPin)
+            val originClient = httpClientFor(origin, config.tlsPin, config.isPublic(origin))
             if (originClient == null) {
                 Log.w(TAG, "跳过无 pin 的 LAN HTTPS 候选：${CardBackAddress.originOf(origin) ?: origin}")
                 continue
@@ -1294,6 +1393,27 @@ class SyncRepository(
         /** 断网/重连回调常连着抖几次，30 秒内只补一轮。 */
         private const val AUTO_SYNC_MIN_INTERVAL_MS = 30_000L
 
+        /**
+         * 局域网候选的超时：建连 2 秒、整体 8 秒。
+         *
+         * 同一个 WiFi 下电脑端要么毫秒级回话，要么根本不在线（换网/路由器改 IP/电脑关机）。
+         * 2 秒足够覆盖 ARP + TCP 三次握手，再久就是「不在线」了 —— 这时候的价值
+         * 全在「赶紧让位给公网域名」，而不是继续在死地址上耗。
+         */
+        private const val LAN_CONNECT_TIMEOUT_SECONDS = 2L
+        private const val LAN_READ_TIMEOUT_SECONDS = 5L
+        private const val LAN_CALL_TIMEOUT_SECONDS = 8L
+
+        /**
+         * 公网候选的超时：建连 8 秒、读 20 秒、整体 30 秒。
+         *
+         * 域名后面通常是 Cloudflare Tunnel/中转，握手与外网 RTT 都比局域网慢一个量级，
+         * 用 LAN 那套短超时会把它误判成失败 —— 而它恰恰是出了门唯一能用的出口。
+         */
+        private const val PUBLIC_CONNECT_TIMEOUT_SECONDS = 8L
+        private const val PUBLIC_READ_TIMEOUT_SECONDS = 20L
+        private const val PUBLIC_CALL_TIMEOUT_SECONDS = 30L
+
         private const val TYPE_PROGRESS = "progress"
 
         // 与 RewriteRepository 里那两句提示同措辞：同一个毛病不该有两种说法。
@@ -1328,5 +1448,47 @@ internal object SyncEndpoint {
         val host = uri.host ?: return null
         val portPart = if (uri.port > 0) ":" + uri.port else ""
         return "${uri.scheme}://$host$portPart"
+    }
+}
+
+/**
+ * 公网兜底的判定规则（1.5.1「学习记录同步也支持局域网优先」）。
+ *
+ * 学习记录同步现在跟改写链路同一套候选顺序：局域网优先，出不去再落公网域名
+ * （`UserSettings.wordbookRemoteUrl`）。这里抽出两件纯判断，好在 JVM 单测里锁死：
+ *  - [normalizePublicUrl]：把设置里那个地址收敛成 `https://host[:port]`，空/非法一律 ""；
+ *  - [isPublicOrigin]：判断某个候选是不是那个公网域名 —— 它决定该候选走
+ *    「2 秒快失败」的局域网超时，还是「8/20/30 秒」的公网超时。
+ *
+ * 口径复用 [RemoteUrlPolicy.normalizeBase]（改写链路同一个规则，别另造一套），
+ * 域名只接受 https：token 要跟着请求发出去，明文 HTTP 域名不可接受。
+ */
+internal object SyncFallbackPolicy {
+
+    /**
+     * 把设置里的公网地址收敛成 `https://host[:port]`。
+     *
+     * 空、解析不出 host、或者不是 https（包括用户手填的明文 http 域名）都返回 ""：
+     * 返回空串就等于「没有公网兜底」，调用方据此不加这个候选。
+     */
+    fun normalizePublicUrl(raw: String?): String {
+        val base = RemoteUrlPolicy.normalizeBase(raw.orEmpty())
+        if (base.isEmpty()) return ""
+        if (!base.startsWith("https://", ignoreCase = true)) return ""
+        return CardBackAddress.originOf(base).orEmpty()
+    }
+
+    /**
+     * [origin] 是否就是公网域名 [publicUrl]（都已经过 [normalizePublicUrl] 更好）。
+     *
+     * 按 `scheme://host[:port]` 比，路径与大小写不参与：用户可能把带
+     * `/cards/cet6_cards.json` 的完整地址填进去，也可能填大写域名。
+     * publicUrl 为空时一律 false —— 没有配置公网就不存在「公网候选」。
+     */
+    fun isPublicOrigin(origin: String?, publicUrl: String): Boolean {
+        if (publicUrl.isBlank()) return false
+        val candidate = CardBackAddress.originOf(origin) ?: return false
+        val public = CardBackAddress.originOf(publicUrl) ?: return false
+        return candidate.equals(public, ignoreCase = true)
     }
 }

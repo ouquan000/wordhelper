@@ -22,7 +22,7 @@
 
 .PARAMETER Url
     要探测的地址。默认本机 /health。
-    验收隧道时可传：-Url https://anki.ouquansdiary.cn/health（需配合 -Token 或 -TokenFile）。
+    验收隧道时可传：-Url https://anki.example.com/health（需配合 -Token 或 -TokenFile）。
 
 .PARAMETER LogPath
     日志文件。默认：本脚本同目录 healthcheck.log。
@@ -88,7 +88,7 @@
 
 .EXAMPLE
     # 4) 验收公网入口（token 从文件读，不上命令行）
-    .\healthcheck.ps1 -Url https://anki.ouquansdiary.cn/health `
+    .\healthcheck.ps1 -Url https://anki.example.com/health `
                       -TokenFile .\.cardback_token -ExpectVersion 1.4.7
 
 .NOTES

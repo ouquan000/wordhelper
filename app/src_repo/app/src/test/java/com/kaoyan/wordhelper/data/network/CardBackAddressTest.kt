@@ -77,13 +77,13 @@ class CardBackAddressTest {
             active = "192.168.1.9:8765",
             current = "192.168.1.5:8765",
             lastGood = "192.168.1.7:8765",
-            cloudFallback = "https://sync.ouquansdiary.cn"
+            cloudFallback = "https://sync.example.com"
         )
         assertEquals(
             listOf(
                 "http://192.168.1.9:8765",
                 "http://192.168.1.5:8765",
-                "https://sync.ouquansdiary.cn",
+                "https://sync.example.com",
                 "http://192.168.1.7:8765"
             ),
             result
@@ -94,11 +94,11 @@ class CardBackAddressTest {
     fun `candidates dedupe cloud fallback against the same manual address`() {
         val result = CardBackAddress.candidates(
             active = null,
-            current = "https://sync.ouquansdiary.cn/cardback.json",
+            current = "https://sync.example.com/cardback.json",
             lastGood = null,
-            cloudFallback = "https://sync.ouquansdiary.cn/"
+            cloudFallback = "https://sync.example.com/"
         )
-        assertEquals(listOf("https://sync.ouquansdiary.cn"), result)
+        assertEquals(listOf("https://sync.example.com"), result)
     }
 
     @Test

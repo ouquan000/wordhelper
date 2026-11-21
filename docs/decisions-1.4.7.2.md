@@ -7,7 +7,7 @@
 - 项目位于 `D:/deepseek harness/work_anki_enligish`，Android 源码位于 `app/src_repo/`。
 - 本次读取时 HEAD 为 `4e1455c`，发布标签为 `v1.4.7.1`，标签后有三次文档提交。工作区已有未跟踪 `_probe/`，归属和用途保持原状。
 - 1.4.7.1 为 versionCode 14、DB 21。141 项 Android 单测通过、验收 89 分是既有交付证据，本轮尚未复测。
-- 当前 named tunnel 配置为 `C:/Users/ouquan/.cloudflared/english-app.yml`，hostname 为 `sync.ouquansdiary.cn`，回源为 `http://127.0.0.1:8765`。README 和旧交接中的临时隧道状态已有漂移。
+- 当前 named tunnel 配置为 `C:/Users/ouquan/.cloudflared/english-app.yml`，hostname 为 `sync.example.com`，回源为 `http://127.0.0.1:8765`。README 和旧交接中的临时隧道状态已有漂移。
 - 本轮本机探测发现 8765 有 Python 进程监听，但 `/health` 连续返回空响应。根因尚未确认，后续需要重现和取证。
 - 原始反馈文件有 85 条记录，其中 34 条 up、51 条 down。存在测试或字段不完整记录，也存在同词多次评价，原始条数只能用于盘点。
 - 已确认反馈上传缺陷。`RewriteRepository.pushFeedback()` 构造 `FeedbackDto` 时省略实际 `approachRev`，其默认值为 0。部分反馈 ID 保留了真实版本号，正文也已保存，历史修复需组合核验。

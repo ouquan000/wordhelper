@@ -44,7 +44,7 @@ object CardBackAddress {
      * 同一个 origin 只留一次（用户手填的、云端域名和上次成功的经常是同一个）；
      * 空值直接跳过，全空时返回空列表 = 没配地址。
      *
-     * [cloudFallback] 是 1.4.8 的域名兜底（例如 `https://sync.ouquansdiary.cn`）：
+     * [cloudFallback] 是 1.4.8 的域名兜底（例如 `https://sync.example.com`）：
      * 只有调用方确认「已配对、带 token」时才传，否则保持 null。它排在 lastGood 之前，
      * 因为 lastGood 很可能是已经失效的局域网地址，而域名是最后一个还能走通的出口。
      */

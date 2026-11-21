@@ -78,10 +78,21 @@ android {
         applicationId = "com.kaoyan.wordhelper"
         minSdk = 26
         targetSdk = 34
-        versionCode = 26
-        versionName = "1.5.0"
+        versionCode = 27
+        versionName = "1.5.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appName"] = "不爱背单词"
+
+        // 1.5.1：默认「公网同步地址」只从本地 keystore.properties（已 gitignore）注入，
+        // 仓库里的默认值是空串 —— 私人域名绝不写进任何 Git 追踪文件。
+        // 空 = 不启用公网地址，只走局域网 cardBackUrl。
+        // 值要当 Java 字符串字面量的内容用，所以反斜杠和双引号都必须转义（空串生成 ""）。
+        val defaultRemoteUrl = keystoreProps.getProperty("defaultRemoteUrl", "").trim()
+        buildConfigField(
+            "String",
+            "DEFAULT_REMOTE_URL",
+            "\"${defaultRemoteUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+        )
     }
 
     // 固定签名：后续版本都用这一把 key 签，
