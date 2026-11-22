@@ -29,6 +29,7 @@ import profile  # noqa: E402
 import providers  # noqa: E402
 import store as store_mod  # noqa: E402
 import wb_gate  # noqa: E402
+import worker as worker_mod  # noqa: E402
 
 DATA_DIR = os.environ.get("REWRITE_DATA_DIR") or os.path.join(HERE, "data")
 LOG_PATH = os.path.join(DATA_DIR, "logs", "service.log")
@@ -59,6 +60,8 @@ BATCH_ENABLED = os.environ.get("BATCH_MODE", "0").strip().lower() not in (
     "0", "false", "no", "off",
 )
 MAX_LOG_BYTES = 2 * 1024 * 1024
+#: 服务版本。1.5.3 起了点踩结构化 / 手改锁定 / 闲时洗词三件事，面板按它判断功能有没有。
+SERVICE_VERSION = "1.5.3"
 CAPABILITIES = ("rewrite_scoped",)
 
 _state = {"store": None, "threads": [], "startedAt": "", "ready": False}
@@ -414,11 +417,24 @@ def startup():
             thread = threading.Thread(target=_worker, args=(index,), name="rewrite-%d" % index, daemon=True)
             thread.start()
             _state["threads"].append(thread)
+        # 1.5.3 闲时洗词 worker：默认关。config/worker.json 里 enabled=true 才起线程，
+        # 起来也只是个空闲哨兵，真跑不跑还要看手动队列是否空着。
+        try:
+            worker_mod.attach(store, DATA_DIR)
+            if worker_mod.enabled_now():
+                worker_mod.start(DATA_DIR, store=store)
+                log("闲时洗词 worker 已启用")
+        except Exception as exc:  # noqa: BLE001 - worker 起不来不能拖垮主服务
+            log("启动闲时洗词 worker 失败：%r" % (exc,))
         return store
 
 
 def shutdown():
     with _lock:
+        try:
+            worker_mod.stop()
+        except Exception as exc:  # noqa: BLE001
+            log("停止闲时洗词 worker 失败：%r" % (exc,))
         if _state["store"] is not None:
             _state["store"].close()
             log("重写服务停止")
@@ -562,10 +578,15 @@ def _page(name):
 def _status():
     store = _state["store"]
     out = store.status()
+    out["version"] = SERVICE_VERSION
     out["concurrency"] = CONCURRENCY
     out["startedAt"] = _state["startedAt"]
     out["judge"] = providers.label(providers.judge_target("ds-v41-flash"))
     out["wbGate"] = wb_gate.status()
+    try:
+        out["worker"] = worker_mod.status()
+    except Exception as exc:  # noqa: BLE001 - 状态接口不能因为 worker 出问题就整包挂掉
+        out["worker"] = {"enabled": False, "error": "%r" % (exc,)}
     return out
 
 
@@ -596,10 +617,106 @@ def _gate(body):
     return {"phase": phase, "gate": wb_gate.status()}
 
 
+# --------------------------------------------------- 手改锁定 / 闲时洗词（1.5.3）
+#
+# 锁定是「用户手改过的词不许被自动流程覆盖」的唯一权威来源：
+#   * 洗词 worker 取候选时就问 is_locked，锁了直接跳过；
+#   * 结果流 results_page 也会把「锁定之后才回来的 worker 结果」挡住（竞态兜底）；
+#   * 手工结果永远不过滤 —— 用户自己改的东西不能被他自己的锁吞掉。
+
+
+def _lock_fields(raw):
+    """单条锁定指令 → (wordId, bookId, locked, note, word, book)，字段不合规就报错。"""
+    if not isinstance(raw, dict):
+        raise ApiError("锁定指令不是对象")
+    word_id = raw.get("wordId")
+    if word_id is None or (isinstance(word_id, str) and not word_id.strip()):
+        raise ApiError("缺 wordId")
+    book_id = raw.get("bookId")
+    if book_id is None or (isinstance(book_id, str) and not book_id.strip()):
+        raise ApiError("缺 bookId")
+    locked = raw.get("locked")
+    locked = True if locked is None else bool(locked)
+    note = str(raw.get("note") or "").strip()
+    word = str(raw.get("word") or "").strip()
+    book = str(raw.get("book") or "").strip()
+    return word_id, book_id, locked, note, word, book
+
+
+def _set_lock(body):
+    """锁定/解锁：body 可以是单条 {wordId, bookId, locked?, note?, word?}，也可以 {items: [...]}。"""
+    data = _read_body(body)
+    if isinstance(data, list):
+        payload = {"items": data}
+    elif isinstance(data, dict):
+        payload = data
+    else:
+        raise ApiError("请求体要是对象或数组")
+    items = payload.get("items")
+    rows = items if isinstance(items, list) else [payload]
+    if not rows:
+        raise ApiError("没有要锁定的词")
+    if len(rows) > 200:
+        raise ApiError("一次最多锁定 200 条")
+    store = _state["store"]
+    out = []
+    for raw in rows:
+        word_id, book_id, locked, note, word, book = _lock_fields(raw)
+        out.append(store.set_lock(word_id, book_id, locked=locked, note=note, word=word, book=book))
+    locked_count = sum(1 for row in out if row.get("locked"))
+    log("锁定更新 %d 条（锁定 %d 条）" % (len(out), locked_count))
+    return {
+        "ok": True,
+        "locks": out,
+        "locked": bool(out) and all(row.get("locked") for row in out),
+        "lockedCount": locked_count,
+        "updatedAt": store.locks_updated_at(),
+    }
+
+
+def _locks(query):
+    """读锁定表；book 可选，按书筛。"""
+    book = (query.get("book") or [""])[0].strip()[:60]
+    store = _state["store"]
+    rows = store.lock_records(book)
+    return {
+        "ok": True,
+        "locks": rows,
+        "count": len(rows),
+        "lockedCount": sum(1 for row in rows if row.get("locked")),
+        "book": book,
+        "updatedAt": store.locks_updated_at(),
+    }
+
+
+def _worker_status():
+    store = _state["store"]
+    try:
+        worker_mod.attach(store, DATA_DIR)
+    except Exception as exc:  # noqa: BLE001 - 只读接口，attach 失败也要能回包
+        log("worker attach 失败：%r" % (exc,))
+    out = {"ok": True, "version": SERVICE_VERSION}
+    out.update(worker_mod.status())
+    return out
+
+
+def _worker_toggle(body):
+    """运行时开关闲时洗词：默认关，只有显式 enabled=true 才会开始跑。"""
+    data = _read_body(body)
+    payload = data if isinstance(data, dict) else {}
+    if "enabled" not in payload:
+        raise ApiError("缺 enabled")
+    enabled = bool(payload.get("enabled"))
+    store = _state["store"]
+    status = worker_mod.toggle(enabled, DATA_DIR, store=store)
+    log("闲时洗词 worker：%s" % ("启用" if enabled else "关闭"))
+    return {"ok": True, "enabled": bool(status.get("enabled")), "status": status}
+
+
 def _dispatch(method, raw_path, body):
     path, query = _parse(raw_path)
     if method == "GET" and path in ("/models",):
-        return _json({"models": providers.describe()})
+        return _json({"models": providers.describe(), "version": SERVICE_VERSION})
     if not path.startswith("/rewrite"):
         return None
     if method == "GET" and path in ("/rewrite", "/rewrite/", "/rewrite/index.html"):
@@ -622,8 +739,16 @@ def _dispatch(method, raw_path, body):
         if not word:
             raise ApiError("缺 word")
         return _json({"word": word, "entries": _state["store"].word_history(word)})
+    if method == "GET" and path == "/rewrite/locks":
+        return _json(_locks(query))
+    if method == "GET" and path == "/rewrite/worker/status":
+        return _json(_worker_status())
     if method == "POST" and path == "/rewrite/marks":
         return _json(_marks(body))
+    if method == "POST" and path == "/rewrite/lock":
+        return _json(_set_lock(body))
+    if method == "POST" and path == "/rewrite/worker/toggle":
+        return _json(_worker_toggle(body))
     if method == "POST" and path == "/rewrite/feedback":
         return _json(_feedback(body))
     if method == "POST" and path == "/rewrite/memory-signal":

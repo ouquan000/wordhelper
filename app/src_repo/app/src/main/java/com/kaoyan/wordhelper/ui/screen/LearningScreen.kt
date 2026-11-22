@@ -32,6 +32,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Lightbulb
@@ -41,11 +43,13 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -88,6 +92,8 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -104,6 +110,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kaoyan.wordhelper.data.entity.RewriteFeedbackRating
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kaoyan.wordhelper.KaoyanWordApp
 import com.kaoyan.wordhelper.data.entity.RewriteStatus
@@ -218,6 +225,12 @@ fun LearningScreen(
     val rewriteLikeCount by viewModel.currentRewriteLikeCount.collectAsStateWithLifecycle()
     val pendingLikeBurst by viewModel.pendingLikeBurst.collectAsStateWithLifecycle()
     val pendingLikeDelta = if (pendingLikeBurst.wordId == currentWord?.id) pendingLikeBurst.delta else 0
+    val memoryLocked by viewModel.currentMemoryLocked.collectAsStateWithLifecycle()
+    var showDownFeedbackDialog by rememberSaveable { mutableStateOf(false) }
+    var downFeedbackReasons by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var downFeedbackComment by rememberSaveable { mutableStateOf("") }
+    var showMemoryEditDialog by rememberSaveable { mutableStateOf(false) }
+    var memoryDraft by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(currentWord?.id) { viewModel.flushPendingLikes() }
     DisposableEffect(Unit) {
         onDispose { viewModel.flushPendingLikes() }
@@ -404,6 +417,114 @@ fun LearningScreen(
                 TextButton(onClick = { showAiGuideDialog = false }) {
                     Text(text = "知道了", modifier = Modifier.testTag("learning_ai_guide_confirm"))
                 }
+            }
+        )
+    }
+
+    val downReasonOptions = listOf(
+        "谐音不准", "词根太生僻", "绕弯注水",
+        "不像人话", "没扣住词义", "标签贴歪"
+    )
+    if (showDownFeedbackDialog) {
+        AlertDialog(
+            onDismissRequest = { showDownFeedbackDialog = false },
+            title = { Text("哪里没帮上？") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "可多选，也可以补一句；不选也能提交。",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    downReasonOptions.chunked(3).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { reason ->
+                                FilterChip(
+                                    selected = reason in downFeedbackReasons,
+                                    onClick = {
+                                        downFeedbackReasons = if (reason in downFeedbackReasons) {
+                                            downFeedbackReasons - reason
+                                        } else {
+                                            downFeedbackReasons + reason
+                                        }
+                                    },
+                                    label = {
+                                        Text(reason, style = MaterialTheme.typography.labelSmall)
+                                    },
+                                    modifier = Modifier.testTag("down_reason_$reason")
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = downFeedbackComment,
+                        onValueChange = { downFeedbackComment = it.take(200) },
+                        label = { Text("补一句吐槽（可选）") },
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("down_comment")
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.tapRewriteFeedback(
+                            rating = RewriteFeedbackRating.DOWN,
+                            reasons = downFeedbackReasons,
+                            comment = downFeedbackComment
+                        )
+                        showDownFeedbackDialog = false
+                    },
+                    modifier = Modifier.testTag("down_submit")
+                ) { Text("提交") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.tapRewriteFeedback(RewriteFeedbackRating.DOWN)
+                        showDownFeedbackDialog = false
+                    },
+                    modifier = Modifier.testTag("down_submit_without_reason")
+                ) { Text("不选原因") }
+            }
+        )
+    }
+
+    if (showMemoryEditDialog) {
+        AlertDialog(
+            onDismissRequest = { showMemoryEditDialog = false },
+            title = { Text("手改记忆思路") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = memoryDraft,
+                        onValueChange = { memoryDraft = it },
+                        label = { Text("这只属于这本书") },
+                        minLines = 8,
+                        maxLines = 16,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("memory_edit_field")
+                    )
+                    Text(
+                        text = "保存后立即生效；打开「锁定 · 免洗」后，自动洗词和词卡热更都不会覆盖它。",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.saveMemoryEdit(memoryDraft)
+                        showMemoryEditDialog = false
+                    },
+                    modifier = Modifier.testTag("memory_edit_save")
+                ) { Text("保存") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMemoryEditDialog = false }) { Text("取消") }
             }
         )
     }
@@ -637,9 +758,44 @@ fun LearningScreen(
                                                         feedback = rewriteFeedback,
                                                         likeCount = rewriteLikeCount,
                                                         pendingLikeDelta = pendingLikeDelta,
-                                                        onFeedback = viewModel::tapRewriteFeedback,
+                                                        onFeedback = { rating, instruction ->
+                                                            if (rating == RewriteFeedbackRating.DOWN) {
+                                                                downFeedbackReasons = emptyList()
+                                                                downFeedbackComment = ""
+                                                                showDownFeedbackDialog = true
+                                                            } else {
+                                                                viewModel.tapRewriteFeedback(rating, instruction)
+                                                            }
+                                                        },
                                                         enabled = live && !isAnswering
                                                     )
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        TextButton(
+                                                            onClick = {
+                                                                memoryDraft = liveApproach
+                                                                    ?: cardState.word.approach
+                                                                showMemoryEditDialog = true
+                                                            },
+                                                            enabled = live && !isAnswering,
+                                                            modifier = Modifier.testTag("memory_edit")
+                                                        ) {
+                                                            Text("编辑思路", style = MaterialTheme.typography.labelSmall)
+                                                        }
+                                                        TextButton(
+                                                            onClick = viewModel::toggleMemoryLock,
+                                                            enabled = live && !isAnswering,
+                                                            modifier = Modifier.testTag("memory_lock")
+                                                        ) {
+                                                            Text(
+                                                                if (memoryLocked) "已锁定 · 免洗" else "锁定 · 免洗",
+                                                                style = MaterialTheme.typography.labelSmall
+                                                            )
+                                                        }
+                                                    }
                                                 }
                                             },
                                             cardStyle = cardStyle,
@@ -1907,13 +2063,22 @@ private fun WordMemorySection(
     }
 }
 
+/** 行内小标占位符的高度（宽度按词性文字长度估算，见 [posInlineContent]）。 */
+private val PosInlineBadgeHeight = 16.sp
+
 /**
- * 记忆思路正文的一行（1.5.2：行首词性小标）。
+ * 记忆思路正文的一行（1.5.3：词性小标**行内嵌入**）。
  *
- * pos 来自 [MemoryPosTagger]：它只认「正文里写明的信号 + meaning 里确实有的词性」，
- * 判不出就返回 null，此时按纯文字渲染、不贴标（宁缺毋滥）。
- * 正文里本来就写着的 `v.` / `adj.` 之类显式 token 仍用 SpanStyle 染色，
- * 这里不用 InlineTextContent（当前 Compose 版本没有该 API），改用行首徽章。
+ * 三条硬规矩，都是为了修掉 1.5.2v2 的两个毛病：
+ * 1. 一行就是一行：整行正文只交给一个 `Text` 渲染。**不在行首插 Row**，否则 `adj.`
+ *    小标会骑到「③」编号的脑门上、左边还多出一段假缩进；也**不把一行拆成几段**去拼 Column，
+ *    否则 `→` 后面的义项串会被拦腰劈成两行。
+ * 2. [TaggedLine.badges] 里的每个词性做成一枚 `InlineTextContent` 占位符，用
+ *    `appendInlineContent` 原地嵌回文本流；小标跟着字走，换行交给系统排版决定。
+ * 3. 判不出词性的行（badges 为空）就是纯 `Text`，不加任何额外排版——宁缺毋滥。
+ *
+ * 翻卡/滑动/选中的手势挂在外层，这里只是文本节点，行间距由外层 Column 的
+ * `Arrangement.spacedBy` 决定，未做任何改动。
  */
 @Composable
 private fun MemoryPosLine(
@@ -1922,53 +2087,107 @@ private fun MemoryPosLine(
     color: Color,
     dark: Boolean
 ) {
-    val annotated = remember(line, dark) { buildTaggedText(line, dark) }
-    val pos = line.pos
-    if (pos == null) {
-        Text(text = annotated, style = style, color = color)
-        return
-    }
-    // 徽章贴行首：Top 对齐 + 略微下移，行高由正文决定，不会被徽章撑大。
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        PosBadge(pos = pos, dark = dark, modifier = Modifier.padding(top = 3.dp))
+    val marks = remember(line) { posMarks(line) }
+    if (marks.isEmpty()) {
         Text(
-            text = annotated,
+            text = line.text,
             style = style,
             color = color,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.fillMaxWidth()
         )
+        return
     }
+    val inlineContent = remember(marks, dark) { posInlineContent(marks, dark) }
+    val annotated = remember(line, marks) { buildPosText(line.text, marks) }
+    Text(
+        text = annotated,
+        inlineContent = inlineContent,
+        style = style,
+        color = color,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
-/** 把显式 token（v. / n. / adj. 等）染成与 PosBadge 一致的颜色，其余部分保持正文色。 */
-private fun buildTaggedText(line: TaggedLine, dark: Boolean): AnnotatedString {
-    val text = line.text
-    if (line.inlineSpans.isEmpty()) return AnnotatedString(text)
-    return buildAnnotatedString {
+/** 一个小标在正文上的落点，`id` 同时用于 AnnotatedString 与 inlineContent 映射。 */
+private data class PosMarkPlace(
+    val id: String,
+    val pos: String,
+    val start: Int,
+    val end: Int
+)
+
+/** 把 [TaggedLine.badges] 过滤成可渲染的落点：越界或与前一个重叠的直接丢掉，绝不吞正文。 */
+private fun posMarks(line: TaggedLine): List<PosMarkPlace> {
+    val marks = ArrayList<PosMarkPlace>(line.badges.size)
+    var cursor = 0
+    for ((index, badge) in line.badges.withIndex()) {
+        if (badge.start < cursor || badge.start > line.text.length) continue
+        val end = badge.end.coerceIn(badge.start, line.text.length)
+        marks.add(PosMarkPlace("pos-$index-${badge.pos}", badge.pos, badge.start, end))
+        cursor = end
+    }
+    return marks
+}
+
+/** 把正文按落点拼成 AnnotatedString：被小标顶替的片段换成占位符，其余原样保留。 */
+private fun buildPosText(text: String, marks: List<PosMarkPlace>): AnnotatedString =
+    buildAnnotatedString {
         var cursor = 0
-        for (span in line.inlineSpans) {
-            if (span.start < cursor || span.start >= span.end || span.end > text.length) continue
-            append(text.substring(cursor, span.start))
-            val token = text.substring(span.start, span.end)
-            val tokenColor = posBadgeColor(token.lowercase(), dark)
-            withStyle(
-                SpanStyle(
-                    color = tokenColor,
-                    background = tokenColor.copy(alpha = if (dark) 0.18f else 0.11f),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.sp
-                )
-            ) {
-                append(token)
-            }
-            cursor = span.end
+        for (mark in marks) {
+            if (mark.start > cursor) append(text.substring(cursor, mark.start))
+            // start == end 的小标就是插在这一点前面，正文一个字都不删。
+            appendInlineContent(mark.id, mark.pos)
+            cursor = mark.end
         }
         if (cursor < text.length) append(text.substring(cursor))
+    }
+
+/**
+ * 小标占位符表。`Placeholder` 必须给死宽高（InlineTextContent 不会 hug 内容），
+ * 所以宽度按词性文字长度估：10sp SemiBold 下每字符约 6sp，再加 9sp 内边距。
+ */
+private fun posInlineContent(
+    marks: List<PosMarkPlace>,
+    dark: Boolean
+): Map<String, InlineTextContent> {
+    val map = LinkedHashMap<String, InlineTextContent>(marks.size)
+    for (mark in marks) {
+        map[mark.id] = InlineTextContent(
+            Placeholder(
+                width = (mark.pos.length * 6 + 9).sp,
+                height = PosInlineBadgeHeight,
+                placeholderVerticalAlign = PlaceholderVerticalAlign.Center
+            )
+        ) { _ ->
+            PosInlineBadge(pos = mark.pos, dark = dark, modifier = Modifier.fillMaxSize())
+        }
+    }
+    return map
+}
+
+/** 行内小标本体：与 [PosBadge] 同款配色、圆角、描边，尺寸由占位符给定。 */
+@Composable
+private fun PosInlineBadge(pos: String, dark: Boolean, modifier: Modifier = Modifier) {
+    val color = posBadgeColor(pos.lowercase(), dark)
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(color.copy(alpha = if (dark) 0.18f else 0.11f))
+            .border(0.5.dp, color.copy(alpha = 0.45f), RoundedCornerShape(4.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = pos,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                lineHeight = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.sp
+            ),
+            color = color,
+            maxLines = 1,
+            textAlign = TextAlign.Center
+        )
     }
 }
 

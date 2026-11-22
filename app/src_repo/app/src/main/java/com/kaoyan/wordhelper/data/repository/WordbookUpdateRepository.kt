@@ -575,6 +575,11 @@ class WordbookUpdateRepository(
             val approach = word.approach.joinToString("\n") { it.trim() }.trim()
             val collocations = word.collocations.joinToString("\n") { it.trim() }.trim()
             if (approach.isEmpty() && collocations.isEmpty()) return@forEach
+            // 1.5.3：用户锁定的「免洗金牌」绝不参与云端词卡热更。
+            if (database.memoryLockDao().isLocked(wordId, book.id)) {
+                userProtected++
+                return@forEach
+            }
             val incomingMethod = word.method.trim()
 
             val existing = memories[wordId]

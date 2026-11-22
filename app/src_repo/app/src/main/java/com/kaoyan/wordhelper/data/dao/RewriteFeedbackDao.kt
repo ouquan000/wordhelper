@@ -50,6 +50,14 @@ interface RewriteFeedbackDao {
     )
     suspend fun addCount(id: Long, delta: Int, now: Long): Int
 
+    /** 1.5.3：同一条差评补/改原因时，更新结构化原因与吐槽，并重新排队补发。 */
+    @Query(
+        """UPDATE tb_feedback
+           SET reasons = :reasons, comment = :comment, synced = 0, created_at = :now
+           WHERE id = :id"""
+    )
+    suspend fun updateReasons(id: Long, reasons: String, comment: String, now: Long): Int
+
     /** 当前这一版思路的累计赞数（给「👍 5」显示用）。 */
     @Query(
         """SELECT COALESCE(SUM(count), 0) FROM tb_feedback

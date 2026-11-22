@@ -60,9 +60,6 @@ import com.kaoyan.wordhelper.data.model.RewriteModels
 import com.kaoyan.wordhelper.ui.theme.LocalAppDarkTheme
 import com.kaoyan.wordhelper.ui.viewmodel.RewriteProgressUi
 import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -195,16 +192,18 @@ internal fun RewriteBar(
             }
         }
 
-        // 1.5.2：PENDING 还没送到电脑，不再画「生成中…」进度条；
-        // 只有 QUEUED（电脑已收）或已有真实进度时才画。
-        if (keepProgress && mark != null &&
-            (progress != null || mark.status == RewriteStatus.QUEUED)
-        ) {
-            ProgressRow(progress, queued = mark.status == RewriteStatus.QUEUED && progress == null)
+        // 1.5.3：状态与进度只从同一个 presentation 来，PENDING/QUEUED 不再各画一行。
+        val presentation = rewriteBarPresentation(
+            mark = mark,
+            hasProgress = progress != null,
+            justUpdated = justUpdated
+        )
+        if (keepProgress && presentation.showProgress && progress != null) {
+            ProgressRow(progress, queued = mark?.status == RewriteStatus.QUEUED)
         }
 
-        // ③ 元数据行：上次重写时间 / 失败原因 + 撤销，压到一行 22.dp
-        mark?.let { item ->
+        // ③ 唯一状态行 + 撤销
+        if (mark != null && presentation.statusLine.isNotBlank()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -212,7 +211,7 @@ internal fun RewriteBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (justUpdated) "已更新" else statusText(item),
+                    text = presentation.statusLine,
                     style = MaterialTheme.typography.labelSmall,
                     color = if (justUpdated) {
                         MaterialTheme.colorScheme.primary
@@ -223,7 +222,7 @@ internal fun RewriteBar(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                if (item.status == RewriteStatus.DONE) {
+                if (presentation.showUndo) {
                     UndoCapsule(enabled = enabled, onUndo = onUndo)
                 }
             }
@@ -644,24 +643,11 @@ private fun RewriteActionPill(
 }
 
 private fun buttonLabel(mark: RewriteQueueItem?): String = when (mark?.status) {
-    RewriteStatus.PENDING -> "已标记·再点取消"
-    RewriteStatus.QUEUED -> "已送电脑·再点重发"
+    RewriteStatus.PENDING -> "再点取消"
+    RewriteStatus.QUEUED -> "再点重发"
     RewriteStatus.DONE -> "再重写一次"
     RewriteStatus.FAILED -> "重试重写"
     else -> "重写思路"
-}
-
-private fun statusText(mark: RewriteQueueItem): String = when (mark.status) {
-    RewriteStatus.PENDING -> "已标记 · 待上传（等电脑接收）"
-    RewriteStatus.QUEUED -> "电脑已收到 · 排队中"
-    RewriteStatus.DONE -> "上次重写 ${formatTime(mark.updatedAt)}"
-    RewriteStatus.FAILED -> "上次没成功：${mark.error ?: "未知原因"}"
-    else -> ""
-}
-
-private fun formatTime(millis: Long): String {
-    if (millis <= 0L) return "—"
-    return SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(millis))
 }
 
 private const val MAX_INSTRUCTION = 200

@@ -1,0 +1,152 @@
+{
+  "version": "1.5.3",
+  "updated": "2026-11-23",
+  "source": "queue.json 446 条真实吐槽聚类（95 条带 instruction）+ 用户口述红黑榜；结果文件 rev 迭代轨迹反证",
+  "note": "改本文件即改生成/润色/评委三侧的手感与门槛；pipeline.prompt_hash 会一起吃进指纹，旧成品不会误复用。",
+  "method_weights": {
+    "sound": 73.9,
+    "root": 8.2,
+    "shape": 6.5,
+    "contrast": 2.0,
+    "meaning": 9.4,
+    "polysemy": 0.0
+  },
+  "route_order": ["sound", "root", "shape", "contrast", "meaning", "polysemy"],
+  "method_penalty": {
+    "meaning": 1,
+    "polysemy": 2
+  },
+  "weight_note": "sound 73.9% 是实测吃得最开的招；meaning 9.4%、polysemy 0% 属于保底，当选主线时评委在「方法选对」上按 method_penalty 硬扣分。",
+  "red_samples": [
+    {
+      "word": "maintain",
+      "method": "sound",
+      "tag": "面瘫",
+      "why": "第一行就给谐音锚点 + 音标；第二行把谐音实体化成具体病症画面；第三行把画面推到「状态不变」；末行一次带走 4 个义项。",
+      "derivation": [
+        "maintain 读 /meɪnˈteɪn/，main 和 tain 两截里的 -ain 都收鼻音，一口气念出来很像「面瘫」。",
+        "面瘫就是半边脸僵住，笑不了也皱不了，表情只能固定在原样。",
+        "表情一直停在原样，我抓住「一直不掉」，让这个状态继续下去。",
+        "把事情或机器固定在还能用的状态里，别让它坏下去 ——> 维持；保持；维护；维修。"
+      ]
+    },
+    {
+      "word": "radical",
+      "method": "sound",
+      "tag": "拉底抠",
+      "why": "段段落词义：第②段落「根的/根本的」，第③段落「激进的/激进分子」，第④段落「根号/词根」，谐音三个字各对应一个动作。",
+      "derivation": [
+        "radical /ˈrædɪkl/ 念快一点像「拉底抠」：手拉到底，抠住最下面的根。",
+        "手抠住根，不是在叶子上剪一刀，而是抓住整棵东西的最底层，所以 radical 先落到「根的、根本的、彻底的」。",
+        "把这只手移到旧制度上，从最底下抠住再往外拔，就是连根推翻；主张这么干的人叫激进分子，这种改法叫激进的。",
+        "数学开方写根号、语言拆词找词根，都归到这截根上 ——> 根本的；基本的；彻底的；激进的；激进分子；根；词根；基础；根式。"
+      ]
+    },
+    {
+      "word": "tenant",
+      "method": "shape",
+      "tag": "十只蚂蚁 + 防念歪",
+      "why": "只用 ten + ant 两截人人认识的词；第②行单独一行提醒真读音 /ˈtenənt/，防把 ant 念成 /ænt/。",
+      "derivation": [
+        "tenant 拆成 ten + ant：ten 是十，ant 是蚂蚁，这两截闭着眼都认识。",
+        "它实际读 /ˈtenənt/，后半截 ant 读 /ənt/，不要按「蚂蚁」的 /ænt/ 去念。",
+        "让十只蚂蚁挤进一间不属于自己的房子，按月把租金交给房东，只是借住。",
+        "住别人的房、按月交租的人，就是 tenant ——> 房客；租户。"
+      ]
+    },
+    {
+      "word": "endeavor",
+      "method": "root",
+      "tag": "认账",
+      "why": "词根必须给同族词做证（debt / debit），一条链从词源走到画面再走到词义；三版迭代越改越干净。",
+      "derivation": [
+        "拆开看：endeavor 是前缀 en- 加上后面的 deavor，en- 表示「进去、待在里面」，deavor 追到拉丁语 debere，就是「欠」。",
+        "debt、debit 都跟它是一家的，欠账这层意思在这几个词里一直没走。",
+        "把 en- 再叠上去，画面就是一个人自己走进这笔账里：没人找他讨，他先把账认下。",
+        "认了账就得还，还的办法是咬着牙把这件难事做完 ——> v. 努力；尽力；n. 努力；尝试。"
+      ]
+    },
+    {
+      "word": "incorporate",
+      "method": "sound",
+      "tag": "印扣泼雷特",
+      "why": "谐音切 3 块，每块立刻解释成一个动作；动作合成场景，场景再分叉出义项。",
+      "derivation": [
+        "incorporate 念快了像「印扣泼雷特」：先往里一印，再扣紧，最后泼成一团。",
+        "「印」是把外面的东西按进去，「扣」是把它们扣成一个整体，谁也别想单独拎出来。",
+        "一个公司或一群人被这么一印一扣，就凑成了一个有名字的单位。",
+        "往里塞叫并入、包含，扣成整体叫合并，凑成单位叫组成公司 ——> 合并；并入；包含；吸收；使组成公司。"
+      ]
+    },
+    {
+      "word": "exotic",
+      "method": "sound",
+      "tag": "一个骚体克",
+      "why": "魔性谐音不许阉割：四块照切，但每块都交代落点，再用「站进人堆」给出一眼可画的画面。",
+      "derivation": [
+        "exotic 读 /ɪɡˈzɒtɪk/，我耳朵里把它切成「一个骚体克」：一个、骚、体、克四块，尾巴的克落在 /k/ 上。",
+        "我把「一个」当成一个活人，把「骚、体」落到穿得骚体态怪上，把「克」挂上克苏鲁味儿，他站进人堆一眼就跟周围不一样。",
+        "这种从别处来、本地见不着的家伙，人叫外来人，东西叫外来物、舶来品 ——> 外来的；异国的；异国情调的；奇异的；外来人；外来物；舶来品。"
+      ]
+    }
+  ],
+  "black_rules": [
+    {
+      "id": "slow_start",
+      "name": "前两段必须早破题",
+      "severity": "block",
+      "detail": "①②两段里必须已经出现这个词本身、谐音锚点或拆块；禁「我们先来看」「先得从……说起」这类慢动作铺垫，禁纯场景注水（先摆画面、后补词）。",
+      "penalty": {"逻辑连贯": 2, "像人说话": 1},
+      "witness": ["monopoly", "referee", "obscure"],
+      "fix": "把第一行改成「词 + 读音/拆块 + 落点」三件套，把原来的铺垫删掉或压进第二行。"
+    },
+    {
+      "id": "advanced_teaches_basic",
+      "name": "禁高阶词倒教基础词",
+      "severity": "block",
+      "detail": "拆出来的零件必须是初高中核心熟词；不许拿四级以上或更难的词反过来教一个本来就认识的基础词。熟词只抓易漏僻义和高频考点。",
+      "penalty": {"拆分成立": 3, "方法选对": 2},
+      "witness": ["create", "recognize", "suit"],
+      "fix": "换成人人闭眼认识的熟词块；找不到就整块删掉换招。"
+    },
+    {
+      "id": "root_overreach",
+      "name": "禁生僻词根硬拆",
+      "severity": "block",
+      "detail": "非大众词根不得硬扯拉丁/希腊语源；只有常见前缀、常见词根才允许走词源，且必须给同族词做证。",
+      "penalty": {"拆分成立": 3, "逻辑连贯": 2},
+      "witness": ["monopoly", "chronic", "premium"],
+      "fix": "把词源那段整段删掉，换一跳谐音或字形；不再往拉丁/希腊上靠。"
+    },
+    {
+      "id": "label_mismatch",
+      "name": "方法标签必须与内容一致",
+      "severity": "block",
+      "detail": "method 写 sound 就得有音标/读音锚点，写 root 就得真出现词根词缀，写 shape 就得有字母块，写 contrast 就得真有两个词在对比，写 polysemy 就得点明熟词生义的桥。贴歪标签一律打回。",
+      "penalty": {"方法选对": 4},
+      "witness": ["monopoly", "referee"],
+      "fix": "要么把内容补成这个方法该有的样子，要么把 method 改成真正用的那招。"
+    },
+    {
+      "id": "weak_method",
+      "name": "meaning / polysemy 是保底不是首选",
+      "severity": "warn",
+      "detail": "meaning 只占实测 9.4%、polysemy 0%；只有当 sound / root / shape / contrast 都做不出画面时才允许，且画面必须和读音或拼写焊死。",
+      "penalty": {"方法选对": 1},
+      "witness": [],
+      "fix": "先试一跳谐音或熟词块；保底画面也要求遮住英文能反推出这个词。"
+    }
+  ],
+  "judge_rules": {
+    "reject_on": ["slow_start", "advanced_teaches_basic", "root_overreach", "label_mismatch"],
+    "deduct_on": ["slow_start", "advanced_teaches_basic", "root_overreach", "label_mismatch", "weak_method"],
+    "floor": 0,
+    "note": "reject_on 命中即当轮打回（pass=false，不给通过）；deduct_on 按 black_rules[].penalty 从对应维度硬扣，扣到 0 为止。"
+  },
+  "few_shot": {
+    "red_header": "【红榜手感·照这个手感写，不许抄词】",
+    "black_header": "【黑榜铁律·命中即打回】",
+    "keep_magic": "魔性谐音不许阉割：「一个骚体克」「面瘫」「拉底抠」这种才是记忆钩子；要求的是每一块都交代落点，不是把谐音改乖。",
+    "persona": "活人感第一：像刚背完这个词的聪明室友递小抄，有画面、有动作、有人味儿，不像老师也不像词典。"
+  }
+}

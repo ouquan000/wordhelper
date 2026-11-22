@@ -1,0 +1,10 @@
+{
+  "enabled": false,
+  "interval_sec": 300,
+  "max_per_hour": 6,
+  "only_when_manual_idle": true,
+  "min_downvotes": 2,
+  "target_methods": ["meaning", "polysemy"],
+  "per_run": 1,
+  "done_cooldown_sec": 604800
+}

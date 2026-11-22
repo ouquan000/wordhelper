@@ -28,6 +28,191 @@ import rules_hard
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROMPT_DIR = os.path.join(HERE, "prompts")
 
+# --------------------------------------------------------------- 风格规则（v1.5.3）
+# 红黑榜从 data/queue.json 的 95 条真实吐槽 + 用户口述里沉淀出来，落在
+# config/style_rules.json：生成/润色侧照红榜手感写，评委侧按黑榜硬扣分/打回。
+# 文件缺失或坏了就退回下面这套兜底常量，流水线照跑 —— 风格配置不该变成单点故障。
+STYLE_RULES_PATH = os.environ.get("REWRITE_STYLE_RULES") or os.path.join(
+    HERE, "config", "style_rules.json"
+)
+DEFAULT_METHOD_WEIGHTS = {
+    "sound": 73.9,  # 实测吃得最开的招：一跳谐音
+    "root": 8.2,
+    "shape": 6.5,
+    "contrast": 2.0,
+    "meaning": 9.4,  # 保底，不许当首选
+    "polysemy": 0.0,  # 实测 0%：只在熟词生义的高频考点上才用
+}
+DEFAULT_METHOD_PENALTY = {"meaning": 1, "polysemy": 2}
+DEFAULT_REJECT_ON = ("slow_start", "advanced_teaches_basic", "root_overreach", "label_mismatch")
+_STYLE_CACHE = {"path": None, "data": None}
+
+
+def load_style_rules(path=None):
+    """读风格规则；缺失/坏 JSON/结构不对一律返回 {}，由调用方回落到兜底常量。"""
+    path = path or STYLE_RULES_PATH
+    try:
+        with open(path, "r", encoding="utf-8-sig") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def style_rules():
+    """带缓存的风格规则；同进程内只读一次盘（测试可用 reload_style_rules 强刷）。"""
+    path = STYLE_RULES_PATH
+    if _STYLE_CACHE["path"] != path or _STYLE_CACHE["data"] is None:
+        _STYLE_CACHE["data"] = load_style_rules(path)
+        _STYLE_CACHE["path"] = path
+    return _STYLE_CACHE["data"]
+
+
+def reload_style_rules(path=None):
+    """换路径/改文件后重读；返回是否读到可用配置。"""
+    global STYLE_RULES_PATH
+    if path:
+        STYLE_RULES_PATH = path
+    _STYLE_CACHE["path"] = None
+    _STYLE_CACHE["data"] = None
+    return bool(style_rules())
+
+
+def style_active():
+    """config/style_rules.json 是否真的被吃进来了（手机端/面板要能看出来）。"""
+    return bool(style_rules())
+
+
+def method_weights():
+    """方法路由权重：sound 73.9% 实测优势，meaning/polysemy 只做保底。"""
+    raw = style_rules().get("method_weights")
+    if not isinstance(raw, dict):
+        return dict(DEFAULT_METHOD_WEIGHTS)
+    out = dict(DEFAULT_METHOD_WEIGHTS)
+    for key, value in raw.items():
+        try:
+            out[str(key)] = float(value)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def method_weight(method):
+    return method_weights().get(_method_key(method) or str(method or ""), 0.0)
+
+
+def method_penalty():
+    """meaning / polysemy 当主线时，「方法选对」要扣多少分。"""
+    raw = style_rules().get("method_penalty")
+    if not isinstance(raw, dict):
+        return dict(DEFAULT_METHOD_PENALTY)
+    out = dict(DEFAULT_METHOD_PENALTY)
+    for key, value in raw.items():
+        try:
+            out[str(key)] = int(value)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def black_rules():
+    rows = style_rules().get("black_rules")
+    return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def black_rule(rule_id):
+    for row in black_rules():
+        if row.get("id") == rule_id:
+            return row
+    return {}
+
+
+def reject_on():
+    rows = (style_rules().get("judge_rules") or {}).get("reject_on")
+    return tuple(rows) if isinstance(rows, list) else DEFAULT_REJECT_ON
+
+
+def _black_rule_block(limit=6):
+    """黑榜铁律文本：给生成/润色侧的硬约束清单。"""
+    rows = black_rules()
+    if not rows:
+        return ""
+    header = (style_rules().get("few_shot") or {}).get("black_header") or "【黑榜铁律·命中即打回】"
+    lines = [header]
+    for row in rows[:limit]:
+        lines.append("- %s：%s" % (row.get("name") or row.get("id"), row.get("detail") or ""))
+        if row.get("fix"):
+            lines.append("  改法：%s" % row.get("fix"))
+    return "\n".join(lines)
+
+
+def _red_sample_block(method="", limit=2):
+    """红榜 few-shot：优先给同招的样板，不够再补其它招；只学手感，不许抄词。"""
+    rows = style_rules().get("red_samples")
+    if not isinstance(rows, list) or not rows:
+        return ""
+    key = _method_key(method) or ""
+    same = [row for row in rows if isinstance(row, dict) and key and row.get("method") == key]
+    rest = [row for row in rows if isinstance(row, dict) and row not in same]
+    picked = (same + rest)[:limit]
+    if not picked:
+        return ""
+    header = (style_rules().get("few_shot") or {}).get("red_header") or "【红榜手感·照这个手感写，不许抄词】"
+    out = [header]
+    for row in picked:
+        out.append("- %s（%s·%s）：%s" % (
+            row.get("word") or "?",
+            row.get("method") or "?",
+            row.get("tag") or "",
+            " ".join(row.get("derivation") or []),
+        ))
+        if row.get("why"):
+            out.append("  为什么算红榜：%s" % row.get("why"))
+    return "\n".join(out)
+
+
+def style_block(method="", judge=False):
+    """生成/润色/评委三侧共用的风格注入块；配置缺失时返回空串，行为与旧版一致。"""
+    if not style_active():
+        return ""
+    few = style_rules().get("few_shot") or {}
+    lines = []
+    weights = method_weights()
+    if judge:
+        lines.append("【风格规则·黑榜（v1.5.3）】")
+        for row in black_rules():
+            lines.append("- %s（%s）：%s" % (
+                row.get("name") or row.get("id"),
+                "打回" if row.get("severity") == "block" else "扣分",
+                row.get("detail") or "",
+            ))
+        if weights:
+            lines.append(
+                "方法权重实测："
+                + "、".join("%s %.1f%%" % (k, v) for k, v in sorted(weights.items(), key=lambda kv: -kv[1]))
+                + "；meaning / polysemy 只有一种情况算对：别的招确实做不出画面。"
+            )
+        return "\n".join(lines)
+    red = _red_sample_block(method or "", 2)
+    if red:
+        lines.append(red)
+    if few.get("keep_magic"):
+        lines.append("【手感底线】" + str(few.get("keep_magic")))
+    if few.get("persona"):
+        lines.append(str(few.get("persona")))
+    black = _black_rule_block()
+    if black:
+        lines.append(black)
+    if weights:
+        lines.append(
+            "【方法权重实测·按这个比例选招】"
+            + "、".join("%s %.1f%%" % (k, v) for k, v in sorted(weights.items(), key=lambda kv: -kv[1]))
+            + "\nmeaning（含义联想）和 polysemy（熟词生义）是保底：只有 sound / root / shape / contrast "
+            "都做不出画面时才允许，且画面必须和读音或拼写焊死。"
+        )
+    return "\n".join(lines)
+
+
 PASS_LINE = 8  # judge.txt 的及格线：六维每一维都要 ≥8
 COMPLIANCE_DIM = "诉求落实"  # 第 7 维：用户这一版指出的问题，这版到底处理了没有
 COMPLIANCE_FLOOR = 6  # 两段式的第二段：诉求到位时，六维允许的最低分（真换了招的稿子常有一维 6–7）
@@ -206,6 +391,13 @@ def prompt_hash():
     try:
         with open(os.path.join(HERE, "rules_hard.py"), "r", encoding="utf-8-sig") as fh:
             digest.update(b"rules_hard\0")
+            digest.update(fh.read().encode("utf-8"))
+    except OSError:
+        pass
+    # 风格规则（红黑榜/方法权重/扣分表）改了，成品手感就变了，同样不能复用旧稿。
+    try:
+        with open(STYLE_RULES_PATH, "r", encoding="utf-8-sig") as fh:
+            digest.update(b"style_rules\0")
             digest.update(fh.read().encode("utf-8"))
     except OSError:
         pass
@@ -490,12 +682,19 @@ def _draft_hits(bans, draft):
 
 
 def _recommended_methods(item):
-    """画像 Top-2：只作倾向提示，权重低于用户原话、高于默认模板。"""
+    """画像 Top-2：只作倾向提示，权重低于用户原话、高于默认模板。
+
+    v1.5.3 起再过一道风格权重：实测吃不开的招（polysemy 0%）不给提示，
+    其余按 sound 73.9% > meaning 9.4% > root 8.2% … 的顺序排，放大谐音优势。
+    """
     try:
         rows = profile.recommend_top(2, item.get("history") or "")
     except Exception:  # noqa: BLE001 - 画像坏了不能拖垮生成
         return []
-    return [row for row in rows if row in METHOD_KEYS.values()][:2]
+    rows = [row for row in rows if row in METHOD_KEYS.values()][:2]
+    weights = method_weights()
+    rows = [row for row in rows if weights.get(row, 1.0) > 0]
+    return sorted(rows, key=lambda row: -weights.get(row, 0.0))
 
 
 def _exemplar_block(method):
@@ -561,6 +760,11 @@ def _generate_once(item, feedback="", hard=False):
     samples = _exemplar_block(ranked[0] if ranked else "")
     if samples:
         user += "\n\n" + samples
+    # 红黑榜（config/style_rules.json）：红榜给手感锚点，黑榜给硬约束。
+    # 放在用户原话与重试反馈之前，越靠近末尾的指令优先级越高。
+    style = style_block(ranked[0] if ranked else "")
+    if style:
+        user += "\n\n" + style
     if feedback:
         if instruction:
             user += (
@@ -646,6 +850,10 @@ def polish(item, draft):
     samples = _exemplar_block(draft.get("method") or "")
     if samples:
         user += "\n\n【手感参考·只学说话方式，不许换联想】\n" + samples
+    # 润色同样要吃红黑榜：黑榜里的「早破题 / 不硬拆 / 标签不贴歪」在润色阶段最容易被磨掉。
+    style = style_block(draft.get("method") or "")
+    if style:
+        user += "\n\n" + style
     bans = banned_terms(item.get("instruction"))
     if bans:
         user += (
@@ -864,6 +1072,10 @@ def judge(item, draft, approach):
     if not _has_instruction(item):
         rows.append("【本轮没有用户意见：第 7 维「诉求落实」不判，也不要输出这个键】")
     rows.append("【新版成品 3–5 步】\n" + "\n".join(approach))
+    # 黑榜扣分表：让评委按同一份规则扣分/打回，而不是各凭手感。
+    _style = style_block("", judge=True)
+    if _style:
+        rows.append(_style)
     user = "\n\n".join(rows)
     user_short = user + chr(10) * 2 + "（输出从简：issues 最多 2 条，每条不超过 40 字。）"
     text = providers.complete(
@@ -957,6 +1169,119 @@ def judge(item, draft, approach):
         bool(_bool_field(data, "history_repeat")),
         binary=binary if binary_present else None,
     )
+
+
+# --------------------------------------------------------------- 黑榜判定（评委侧）
+# 评委给完分之后再过一遍机械可判的黑榜条目：命中就按 black_rules[].penalty 硬扣分，
+# block 级（reject_on 里那几个）直接打回，当轮不进交付。语义判断（高阶词倒教基础词）
+# 交给评委二值题 has_unknown_part 与 rules_hard 的生僻零件表，这里不硬猜。
+_SOUND_EVIDENCE = re.compile(r"[ˈˌəɪʊæɑɒɔɜ]|谐音|读音|读作|念|听起来|耳朵里|音标")
+_NUM_PREFIX_LINE = re.compile(r"^\s*[①②③④⑤⑥1-9][\s\.、,，)）]?")
+
+
+def _first_lines(approach, count=2):
+    """取前 count 行正文；顺手剥掉 ①②③ 这层序号，方便和慢动作开场词对齐。"""
+    out = []
+    for line in approach or []:
+        text = _NUM_PREFIX_LINE.sub("", str(line or "")).strip()
+        if text:
+            out.append(text)
+        if len(out) >= count:
+            break
+    return out
+
+
+def style_hits(item, draft, approach):
+    """机械扫黑榜，返回 [{id, name, message}]。空列表＝没命中或没有风格配置。"""
+    if not style_active():
+        return []
+    draft = draft or {}
+    lines = [str(x) for x in (approach or []) if str(x).strip()]
+    body = "\n".join(lines)
+    method = _method_key(draft.get("method"))
+    hits = []
+
+    def _add(rule_id, message, **extra):
+        rule = black_rule(rule_id)
+        row = {
+            "id": rule_id,
+            "name": rule.get("name") or rule_id,
+            "message": message,
+            "severity": rule.get("severity") or "warn",
+        }
+        row.update(extra)
+        hits.append(row)
+
+    # ①「前两段必须早破题」：①②两行还在摆架势就是慢动作铺垫/场景注水
+    openers = tuple(getattr(rules_hard, "SLOW_OPENERS", ()) or ())
+    for text in _first_lines(lines, 2):
+        opener = next((word for word in openers if word and text.startswith(word)), None)
+        if opener:
+            _add("slow_start", "黑榜①：开头「%s」是慢动作铺垫，前两段必须已经破题。" % opener)
+            break
+
+    # ②「禁生僻词根硬拆」：拆出来的零件用户根本不认识（hemi / skept / sui 这类）
+    pool = " ".join([body] + [str(el) for el in (draft.get("elements") or [])])
+    obscure = getattr(rules_hard, "_OBSCURE_RES", None) or ()
+    found = set()
+    for entry in obscure:
+        # rules_hard 里登记的是 (part, 编译好的正则) 二元组，也兼容只给正则的写法。
+        part, rx = (entry[0], entry[-1]) if isinstance(entry, tuple) else (None, entry)
+        if not hasattr(rx, "finditer"):
+            continue
+        for match in rx.finditer(pool):
+            found.add(str(part or match.group(0)).lower())
+    found = sorted(found)
+    if found:
+        _add("root_overreach", "黑榜②：生僻零件「%s」没交代来历，用户不可能认识。" % "、".join(found))
+
+    # ③「方法标签必须与内容一致」：写 sound 却没有读音/谐音锚点，是最响的一种贴歪
+    if method == "sound" and not _SOUND_EVIDENCE.search(body):
+        _add("label_mismatch", "黑榜③：method 写 sound，但正文没有读音或谐音锚点，标签贴歪了。")
+
+    # ④ meaning / polysemy 是保底不是首选：当主线就按 method_penalty 扣「方法选对」
+    penalty = method_penalty()
+    if method in penalty and penalty[method] > 0:
+        _add("weak_method", "黑榜④：%s 是保底招（实测路由权重 %.1f%%），不该当主线。"
+             % (method, method_weight(method)), method=method)
+    return hits
+
+
+def style_penalty_scores(hits, scores):
+    """按 black_rules[].penalty 从对应维度硬扣，扣到 0 为止。"""
+    out = dict(scores or {})
+    for hit in hits or []:
+        rule = black_rule(hit.get("id") or "")
+        penalty = rule.get("penalty") or {}
+        if not isinstance(penalty, dict):
+            continue
+        for dim, value in penalty.items():
+            dim = _canonical_dim(dim)
+            if dim not in out:
+                continue
+            try:
+                value = int(value)
+            except (TypeError, ValueError):
+                continue
+            out[dim] = max(0, int(out[dim]) - value)
+        if hit.get("id") == "weak_method":
+            # 保底招的扣分按「方法权重」里登记的力度走，config 改权重就能改力度。
+            method = (hit.get("method") or "").strip()
+            extra = method_penalty().get(method, 0) if method else 0
+            if extra:
+                out["方法选对"] = max(0, int(out.get("方法选对", 0)) - int(extra))
+    return out
+
+
+def style_gate(item, draft, approach, scores):
+    """评委之后的黑榜闸门：(扣过分, 命中列表, 是否打回)。没配置就原样放行。"""
+    hits = style_hits(item, draft, approach)
+    if not hits:
+        return scores, [], False
+    gated = style_penalty_scores(hits, scores)
+    reject_ids = set(reject_on())
+    rejected = any(hit.get("id") in reject_ids for hit in hits)
+    return gated, hits, rejected
 
 
 def _min_six(scores):
@@ -1124,12 +1449,20 @@ def run(item, log=None, on_stage=None):
                 scores, issues, intent, same_method, history_repeat = judged
                 binary = getattr(judged, "binary", None)
                 timings["judge_%d" % attempt] = round(time.time() - stamp, 1)
+                # 评委之后再过一遍黑榜（config/style_rules.json）：命中按规则硬扣分，
+                # block 级（慢动作铺垫 / 生僻硬拆 / 标签贴歪）当轮直接打回。
+                scores, style_misses, style_rejected = style_gate(item, draft, approach, scores)
+                if style_misses:
+                    issues = [hit["message"] for hit in style_misses] + list(issues)
+                    _safe_log(log, "[%s] 第%d轮 黑榜命中：%s" % (
+                        item["word"], attempt, "、".join(hit["id"] for hit in style_misses)))
             else:
                 # 没进评委：给一套全 0 的兼容分数，兜底排序时排在有成品分数的稿后面。
                 scores = _zero_scores(item)
                 issues = [hard.feedback]
                 intent, same_method, history_repeat, binary = "other", False, False, None
                 timings["judge_%d" % attempt] = 0.0
+                style_misses, style_rejected = [], False
         except (PipelineError, providers.ProviderError) as exc:
             # 一轮坏了不该让整条词蒸发：记下来换下一轮，历史里还有稿子就继续兜底
             errors.append("第%d轮：%s" % (attempt, str(exc)[:200]))
@@ -1148,7 +1481,8 @@ def run(item, log=None, on_stage=None):
 
         low = _min_six(scores)
         violations = list(draft.get("violations") or [])
-        hard_ok = hard.ok and not violations
+        # 黑榜 block 级命中 = 这版不能当「已复核」交付，和硬拦截同等处理。
+        hard_ok = hard.ok and not violations and not style_rejected
         history.append(
             {
                 "attempt": attempt,
@@ -1159,6 +1493,7 @@ def run(item, log=None, on_stage=None):
                 "hard_ok": hard_ok,
                 "hard_feedback": hard.feedback,
                 "binary": binary,
+                "style_hits": [hit["id"] for hit in style_misses],
             }
         )
         if hard.ok:

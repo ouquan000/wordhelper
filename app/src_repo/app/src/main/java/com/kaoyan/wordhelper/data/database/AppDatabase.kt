@@ -18,6 +18,7 @@ import com.kaoyan.wordhelper.data.dao.ProgressDao
 import com.kaoyan.wordhelper.data.dao.RewriteFeedbackDao
 import com.kaoyan.wordhelper.data.dao.RewriteQueueDao
 import com.kaoyan.wordhelper.data.dao.RewriteSkippedDao
+import com.kaoyan.wordhelper.data.dao.MemoryLockDao
 import com.kaoyan.wordhelper.data.dao.StudyLogDao
 import com.kaoyan.wordhelper.data.dao.SyncDao
 import com.kaoyan.wordhelper.data.dao.WordDao
@@ -43,6 +44,7 @@ import com.kaoyan.wordhelper.data.entity.Progress
 import com.kaoyan.wordhelper.data.entity.RewriteFeedback
 import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
 import com.kaoyan.wordhelper.data.entity.RewriteSkippedResult
+import com.kaoyan.wordhelper.data.entity.MemoryLock
 import com.kaoyan.wordhelper.data.entity.StudyLog
 import com.kaoyan.wordhelper.data.entity.SyncOp
 import com.kaoyan.wordhelper.data.entity.SyncState
@@ -75,9 +77,10 @@ import kotlinx.coroutines.launch
         BookMemory::class,
         BookDailyStats::class,
         RewriteFeedback::class,
-        RewriteSkippedResult::class
+        RewriteSkippedResult::class,
+        MemoryLock::class
     ],
-    version = 25,
+    version = 26,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -101,6 +104,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDailyStatsDao(): BookDailyStatsDao
     abstract fun rewriteFeedbackDao(): RewriteFeedbackDao
     abstract fun rewriteSkippedDao(): RewriteSkippedDao
+    abstract fun memoryLockDao(): MemoryLockDao
 
     companion object {
         @Volatile
@@ -142,7 +146,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_21_22,
                     MIGRATION_22_23,
                     MIGRATION_23_24,
-                    MIGRATION_24_25
+                    MIGRATION_24_25,
+                    MIGRATION_25_26
                 )
                 .build()
         }
@@ -998,6 +1003,33 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_24_25 = object : Migration(24, 25) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 ensureColumnExists(db, "tb_feedback", "count", "INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
+        /**
+         * 1.5.3（DB 26）：点踩原因/吐槽 + 手动锁定表。
+         *
+         * 全部是新增列/新表，旧行不重建、不删除；tb_progress / tb_word_memory 结构不动。
+         */
+        @VisibleForTesting
+        val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureColumnExists(db, "tb_feedback", "reasons", "TEXT NOT NULL DEFAULT ''")
+                ensureColumnExists(db, "tb_feedback", "comment", "TEXT NOT NULL DEFAULT ''")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS tb_memory_lock (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "word_id INTEGER NOT NULL, " +
+                        "book_id INTEGER NOT NULL, " +
+                        "locked INTEGER NOT NULL DEFAULT 1, " +
+                        "note TEXT NOT NULL DEFAULT '', " +
+                        "updated_at INTEGER NOT NULL" +
+                        ")"
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_tb_memory_lock_word_id_book_id " +
+                        "ON tb_memory_lock(word_id, book_id)"
+                )
             }
         }
 

@@ -1,0 +1,76 @@
+{
+  "version": "1.5.3",
+  "updated": "2026-11-23",
+  "note": "手机端 /models 消费这里下发的清单；providers.py 优先读本文件，文件缺失或解析失败时回落到代码里的 MODELS / JUDGE_CANDIDATES / PROVIDER_BASE 常量。改这里不用发版。",
+  "provider_base": {
+    "wb": "http://127.0.0.1:8788/v1",
+    "portdan-gpt": "https://portdan.com/v1",
+    "portdan-grok": "https://portdan.com/v1"
+  },
+  "models": [
+    {
+      "id": "ds-v41-flash",
+      "display": "DeepSeek V4.1 Flash",
+      "provider": "wb",
+      "model": "cn:deepseek-v4.1-flash",
+      "reasoning": "max",
+      "tier": "fast",
+      "enabled": true,
+      "weight": 40
+    },
+    {
+      "id": "step5",
+      "display": "Step 5",
+      "provider": "wb",
+      "model": "cn:step-5-preview",
+      "reasoning": "high",
+      "tier": "deep",
+      "enabled": true,
+      "weight": 25
+    },
+    {
+      "id": "glm53",
+      "display": "GLM 5.3",
+      "provider": "wb",
+      "model": "cn:glm-5.3",
+      "reasoning": "high",
+      "tier": "deep",
+      "enabled": true,
+      "weight": 15
+    },
+    {
+      "id": "kimi-k31-pro",
+      "display": "Kimi K3.1 Pro",
+      "provider": "wb",
+      "model": "cn:kimi-k3.1-pro",
+      "reasoning": "high",
+      "tier": "deep",
+      "enabled": true,
+      "weight": 10
+    },
+    {
+      "id": "portdan-gpt",
+      "display": "GPT-6.1 Sol",
+      "provider": "portdan-gpt",
+      "model": "gpt-6.1-sol",
+      "reasoning": "high",
+      "tier": "cross",
+      "enabled": true,
+      "weight": 5
+    },
+    {
+      "id": "portdan-grok",
+      "display": "Grok 4.7",
+      "provider": "portdan-grok",
+      "model": "grok-4.7",
+      "reasoning": "high",
+      "tier": "cross",
+      "enabled": true,
+      "weight": 3
+    }
+  ],
+  "judge_candidates": [
+    {"provider": "wb", "model": "cn:deepseek-v4.1-flash", "reasoning": "high"},
+    {"provider": "wb", "model": "cn:glm-5.3", "reasoning": "high"}
+  ]
+}

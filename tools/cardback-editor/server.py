@@ -55,7 +55,7 @@ PORT = DEFAULT_PORT
 # 升版本只改 SERVICE_VERSION；加/删能力才动 HEALTH_PROTOCOL 和 CAPABILITIES。
 SERVICE_NAME = "cardback-editor"  # /health 的 service 字段
 SERVICE_PRODUCT = "CardbackEditor"  # HTTP Server 头里的产品名
-SERVICE_VERSION = "1.5.2"
+SERVICE_VERSION = "1.5.3"
 SERVER_VERSION = "%s/%s" % (SERVICE_PRODUCT, SERVICE_VERSION)
 HEALTH_PROTOCOL = 1  # App 握手用：协议变了就说清楚，别靠字段猜
 

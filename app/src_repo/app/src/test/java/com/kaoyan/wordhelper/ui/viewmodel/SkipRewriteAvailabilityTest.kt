@@ -64,10 +64,11 @@ class SkipRewriteAvailabilityTest {
     }
 
     @Test
-    fun historicalDoneWithoutActiveRoundIsStillAvailable() {
-        // 冷启动/进程重建后 activeRequestId 为空：库里的历史 DONE 不能把跳过锁死。
+    fun historicalDoneWithoutActiveRoundHidesEntry() {
+        // 1.5.3：没点过重写的词，库里可能还留着历史 DONE；这个入口必须彻底隐藏，
+        // 不能因为「历史 DONE」就常驻亮着跳过按钮。
         assertEquals(
-            SkipRewriteAvailability.AVAILABLE,
+            SkipRewriteAvailability.NO_MARK,
             skipRewriteAvailability(11L, 2L, mark(status = RewriteStatus.DONE, requestId = "old"))
         )
     }

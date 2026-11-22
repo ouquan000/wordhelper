@@ -4,7 +4,8 @@
 
 - 只用标准库，零依赖。
 - 密钥在运行期从 ~/.dsh/.credentials.yaml 现读现用，绝不落进任何仓库文件。
-- 换型号只改 MODELS 这张表；手机端从 /models 动态读，不用发版（spec §4.3）。
+- 型号清单优先读 config/models.json（v1.5.3）；手机端从 /models 动态读，不用发版（spec §4.3）。
+  配置文件缺失/损坏时回落到本文件里的 PROVIDER_BASE / MODELS / JUDGE_CANDIDATES 常量。
 """
 
 from __future__ import annotations
@@ -94,8 +95,140 @@ JUDGE_CANDIDATES = (
 )
 
 
+# --------------------------------------------------------------- 配置加载（v1.5.3）
+# 型号表搬进 config/models.json：手机端 /models 消费服务端下发的清单，改型号不用发版。
+# 上面的 PROVIDER_BASE / MODELS / JUDGE_CANDIDATES 退居兜底：配置文件缺失、JSON 坏掉、
+# 结构不对，一律当没配，行为与老版本完全一致（测试 test_models_config.py 盯这条）。
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+CONFIG_DIR = os.path.join(HERE, "config")
+MODELS_CONFIG_PATH = os.environ.get("REWRITE_MODELS_CONFIG") or os.path.join(
+    CONFIG_DIR, "models.json"
+)
+
+_DEFAULT_PROVIDER_BASE = dict(PROVIDER_BASE)
+_DEFAULT_MODELS = dict(MODELS)
+_DEFAULT_JUDGE_CANDIDATES = tuple(JUDGE_CANDIDATES)
+
+
+def load_models_config(path=None):
+    """读 config/models.json；任何异常都返回 {}（= 走代码常量兜底），绝不抛错。"""
+    target = path or MODELS_CONFIG_PATH
+    if not target or not os.path.exists(target):
+        return {}
+    try:
+        with open(target, "r", encoding="utf-8-sig") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _models_from_config(data):
+    """配置里的 models 数组 → {id: spec}；单条不合格只丢那一条。"""
+    out = {}
+    for row in data.get("models") or []:
+        if not isinstance(row, dict):
+            continue
+        key = str(row.get("id") or "").strip()
+        model = str(row.get("model") or "").strip()
+        provider = str(row.get("provider") or "").strip()
+        if not key or not model or not provider:
+            continue
+        enabled = row.get("enabled", True)
+        try:
+            weight = float(row.get("weight") or 0)
+        except (TypeError, ValueError):
+            weight = 0.0
+        out[key] = {
+            "name": str(row.get("display") or row.get("name") or key),
+            "provider": provider,
+            "model": model,
+            "reasoning": str(row.get("reasoning") or "high"),
+            "tier": str(row.get("tier") or ""),
+            "enabled": enabled if isinstance(enabled, bool) else True,
+            "weight": weight,
+        }
+    return out
+
+
+def _judge_from_config(data):
+    rows = []
+    for row in data.get("judge_candidates") or []:
+        if not isinstance(row, dict):
+            continue
+        provider = str(row.get("provider") or "").strip()
+        model = str(row.get("model") or "").strip()
+        if not provider or not model:
+            continue
+        rows.append(
+            {
+                "provider": provider,
+                "model": model,
+                "reasoning": str(row.get("reasoning") or "high"),
+            }
+        )
+    return tuple(rows)
+
+
+def _base_from_config(data):
+    out = {}
+    for key, value in (data.get("provider_base") or {}).items():
+        if isinstance(value, str) and value.strip():
+            out[str(key)] = value.strip()
+    return out
+
+
+def apply_config(data=None):
+    """把配置写进模块级常量；返回 True 表示真的用上了配置文件。
+
+    data=None 表示现读 MODELS_CONFIG_PATH。坏配置不抛错，直接回落常量。
+    """
+    global MODELS, JUDGE_CANDIDATES, PROVIDER_BASE
+    payload = load_models_config() if data is None else (data if isinstance(data, dict) else {})
+    models = _models_from_config(payload) if payload else {}
+    judges = _judge_from_config(payload) if payload else ()
+    bases = _base_from_config(payload) if payload else {}
+    MODELS = models or dict(_DEFAULT_MODELS)
+    JUDGE_CANDIDATES = judges or _DEFAULT_JUDGE_CANDIDATES
+    merged = dict(_DEFAULT_PROVIDER_BASE)
+    merged.update(bases)
+    PROVIDER_BASE = merged
+    return bool(models)
+
+
+def config_active():
+    """当前是否在用 config/models.json（False = 走代码常量兜底）。"""
+    return bool(_models_from_config(load_models_config()))
+
+
+def routing_order():
+    """服务端下发给手机的路由权重表：启用的型号按 weight 从高到低。"""
+    rows = [
+        {
+            "id": key,
+            "name": spec["name"],
+            "tier": spec.get("tier", ""),
+            "weight": spec.get("weight", 0),
+        }
+        for key, spec in MODELS.items()
+        if spec.get("enabled") is not False
+    ]
+    rows.sort(key=lambda row: (-float(row["weight"] or 0), row["id"]))
+    return rows
+
+
+def reload_config(path=None):
+    """测试/运维用：重新读一次配置（path 可为临时文件）。"""
+    return apply_config(load_models_config(path) if path else None)
+
+
+CONFIG_ACTIVE = apply_config()
+
+
 class ProviderError(Exception):
     """调用彻底失败（已重试过）。"""
+
 
 
 class _Retry(ProviderError):
@@ -103,16 +236,23 @@ class _Retry(ProviderError):
 
 
 def describe():
-    """给 GET /models 的清单，字段照 spec §3.3。"""
-    return [
-        {
+    """给 GET /models 的清单，字段照 spec §3.3（tier/weight 为 v1.5.3 追加，向后兼容）。"""
+    rows = []
+    for key, spec in MODELS.items():
+        if spec.get("enabled") is False:
+            continue
+        row = {
             "id": key,
             "name": spec["name"],
             "provider": spec["provider"],
             "reasoning": spec["reasoning"],
         }
-        for key, spec in MODELS.items()
-    ]
+        if spec.get("tier"):
+            row["tier"] = spec["tier"]
+        if spec.get("weight"):
+            row["weight"] = spec["weight"]
+        rows.append(row)
+    return rows
 
 
 def resolve(model_id):
