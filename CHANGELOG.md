@@ -2,6 +2,47 @@
 
 本文件记录「不爱背单词」（wordhelper）的版本变更。日期为北京时间。
 
+## v1.5.3（2026-11-23）— 四笔旧账清完，助记大脑换血
+
+1.5.3 先把 1.5.2v2 没修透的四笔账结清，再把重写服务的「脑子」换掉：跳过按钮不再在历史 DONE 词上常驻，RewriteBar 只保留一条状态文案，记忆思路的词性小标改成真正的行内徽章；点踩可以多选原因并补一句吐槽，手改助记可以一键锁定免洗；后端新增闲时洗词 Worker、红黑榜风格规则和可配置模型/Judge 规则。
+
+### 一、跳过按钮与状态文案
+
+- `skipRewriteAvailability` 对「历史已完成 DONE、本轮没有 activeRequestId」返回 `NO_MARK`，彻底隐藏跳过入口；只有当前词有活跃 pending/queued，或本轮 requestId 对应的 DONE 出现时才显示。
+- `RewriteRepository.markNeedsReinsert` 改为幂等，不再把 SQLite 的 0 行更新误判成「重写记录已变化」；同词可以连续无限轮「重写 → 跳过 → 回队」。
+- 新增 `RewriteBarStatus` 单一状态源：PENDING 只显示「已标记 · 待上传」，QUEUED 只显示「电脑已收到 · 排队中」，DONE 显示上次重写时间，FAILED 只显示失败原因；进度条不再和状态行重复。JVM 单测覆盖状态互斥。
+
+### 二、记忆思路词性小标返工
+
+- 改用 `androidx.compose.foundation.text.InlineTextContent` + `appendInlineContent`，彻底废弃行首 `Row` 和拆行切段；`①②③④` 始终贴左，`→` 后的中文义项只在对应义项前嵌入同色圆角小标。
+- 显式 `v.` / `n.` / `adj.` 与中文「动词 / 名词 / 形容词……」都识别，并用该词 meaning 的真实词性集合约束；`correlate`、`exotic`、`appropriate`、`extract` 均已实机验证。
+- `MemoryPosTagger` 16 项单测覆盖显式 token、中文词性、箭头义项分组、宁缺毋滥。
+
+### 三、反馈原因、手改助记与锁定
+
+- 点「👎 没帮助」弹出快捷多选：谐音不准 / 词根太生僻 / 绕弯注水 / 不像人话 / 没扣住词义 / 标签贴歪，另有自由吐槽输入；结构化写入 `tb_feedback.reasons/comment` 并同步后端 `feedback.jsonl`。
+- 卡背支持「编辑思路」直接保存，保留 `prevApproach/prevMethod`、`rev+1`、`source=USER`，不碰 `tb_progress`。
+- 新增「锁定 · 免洗」开关与 `tb_memory_lock`；锁定词在词卡热更、闲时洗词、批量重写时受保护，除非用户主动解锁。
+- Room 升到 26，新增无损 `MIGRATION_25_26`（`tb_feedback.reasons/comment` + `tb_memory_lock`），不删表、不碰 `tb_progress` 与 `tb_word_memory`。
+
+### 四、助记大脑换血
+
+- 新增 `tools/rewrite-service/config/style_rules.json`：红榜 6 个风格样本、黑榜 5 条硬规则、方法权重（sound 73.9 / root 8.2 / shape 6.5 / contrast 2.0 / meaning 9.4 / polysemy 0.0）与 Judge 扣分/打回规则；Prompt 与 Judge 已注入。
+- 新增 `config/models.json`，模型列表、Judge 候选、tier/weight 从配置读取；手机端模型切换直接消费服务端 `/models`。
+- 新增闲时洗词 Worker（默认关闭，独立开关 + 速率上限，只在手动队列空闲时跑，不抢 6 槽；自动筛高踩 meaning/polysemy、未锁定、未高赞的老卡，Judge 通过才进结果流）。
+- 新增锁 API `/rewrite/lock`、`/rewrite/locks`、Worker 状态/开关 API，反馈支持 `reasons`/`comment`。
+
+### 五、五组黑榜词重洗样本
+
+`referee`、`obscure`、`monopoly`、`create`、`cathedral` 已用新 brain 重洗，全部 `status=ok`；完整前后对照见交付包 `blacklist_before_after.json` 与发版报告。典型变化：`referee` 从「热法理」拆音改为「ref—e—ree + 哨声」动作链；`monopoly` 从抽象解释改为「摸拿不离」；`create` 从 cre/ate 词根课改为「可立—诶特」画面。
+
+### 六、验证
+
+- Android：`testProdDebugUnitTest`、`testDevDebugUnitTest` 各 **47 套件 / 334 项 / 0 失败**。
+- 后端：`tools/rewrite-service` **288 项 unittest 全过**、`test_unverified.py` 30 项全过；`tools/cardback-editor` health 31 / hardening 21 / sync_store 67 / sync_epoch 20 / cards_publish 36 / rate_limit_vip 48 全过，TLS 9 项（1 项按环境跳过）。
+- 模拟器 `mf`（API34，1080×2340）实机：历史 DONE 的 `appropriate` 翻卡无「跳过」；点「再重写一次」只显示一行「电脑已收到 · 排队中」，随后真实 `adb shell input tap` 跳过，卡片立即换到下一词；`correlate` / `exotic` / `appropriate` 行内词性小标、`create` 单 `v.` 徽章均已截图。
+- 版本 `versionCode 30` / `versionName 1.5.3`；prod APK 24,150,122 B（SHA-256 `0D3E4864AA84D86BE3DC3481BA9B6397A9EEBD5EAA6C966DE7B3FD22ADA877E9`），dev APK 24,150,130 B（SHA-256 `3A4C0D9470BDE313CF29035F92601F6477E902CD2E30E86174B39536CD7250D4`）；两包证书 SHA-256 均为 `963533138ed73e92e9a2859f80fdf18becb4ee5a83132c55634b965d7164ba1c`。
+
 ## v1.5.2v2（2026-11-22）— 跳过真正换卡，词性小标不再只认拉丁字母
 
 v1.5.2 的发版验收漏了两处：二次重写后「跳过」仍可能卡住，记忆思路里的词性小标只识别正文里显式写出的 `v.` / `n.`，`correlate` 这种「动词是……名词是……」的中文描述型完全没有标。v1.5.2v2 按真实点击逐轮修，不再用合成 requestId 或单张 `increase` 截图代替验收。

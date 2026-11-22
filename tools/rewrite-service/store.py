@@ -154,6 +154,9 @@ def _public(entry):
     out["unverified"] = bool(entry.get("unverified"))
     out["reason"] = str(entry.get("reason") or "")
     out["reused"] = bool(entry.get("reused"))
+    # 1.5.3：结果来源。手工重写是 ""（老结果也当作手工），闲时洗词是 "worker"。
+    # App 端可以据此决定要不要自动覆盖卡背。
+    out["source"] = str(entry.get("source") or "")
     if entry.get("reuseOf") is not None:
         out["reuseOf"] = entry.get("reuseOf")
     return out
@@ -192,6 +195,58 @@ def feedback_count(value):
     return value, ""
 
 
+# 1.5.3：点踩结构化。手机端可以带「为什么踩」（reasons）和一句自由补充（comment），
+# 两个都不发就是老客户端，行为与 1.5.2 完全一致。这些字段只做规范化，绝不因为
+# 它们不合法就丢掉这一条反馈 —— 评价本身（rating/count）比理由值钱。
+FEEDBACK_REASONS_MAX = 12
+FEEDBACK_REASON_LEN_MAX = 64
+FEEDBACK_COMMENT_LEN_MAX = 1000
+
+
+def feedback_reasons(value):
+    """把可选 `reasons` 规范成 list[str]：非列表按空处理，去空白、去空项、去重、截断。"""
+    if not isinstance(value, list):
+        return []
+    out = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        text = item.strip()[:FEEDBACK_REASON_LEN_MAX]
+        if not text or text in out:
+            continue
+        out.append(text)
+        if len(out) >= FEEDBACK_REASONS_MAX:
+            break
+    return out
+
+
+def feedback_comment(value):
+    """把可选 `comment` 规范成 str：非字符串按空处理，去首尾空白后限长。"""
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:FEEDBACK_COMMENT_LEN_MAX]
+
+
+# 1.5.3：手改助记锁定。锁定的键必须同时含「词」和「书」——同一个 wordId 在
+# 不同书里是不同的卡，按词单独锁会误锁到别的书上去。
+LOCK_KEY_SEP = "|"
+
+
+def _lock_part(value):
+    """锁键的一段：整数按十进制，字符串去空白；bool/None 一律空串（JSON 的 true 不是 ID）。"""
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()[:64]
+
+
+def lock_key(word_id, book_id):
+    return LOCK_KEY_SEP.join((_lock_part(word_id), _lock_part(book_id)))
+
+
 class Store:
     def __init__(self, data_dir):
         self.data_dir = data_dir
@@ -202,6 +257,9 @@ class Store:
         self.feedback_path = os.path.join(data_dir, "feedback.jsonl")
         # v8：单词复习的 retained/lapsed 信号，落盘做幂等与冷却。
         self.memory_signals_path = os.path.join(data_dir, "memory_signals.json")
+        # 1.5.3：手改助记锁定表。锁了的词不许被闲时洗词/批量重写覆盖。
+        self.locks_path = os.path.join(data_dir, "locks.json")
+        self._locks = None
         self._memory_signals = {}
         self._memory_cooldowns = {}
         self._feedback_ids = None
@@ -326,7 +384,11 @@ class Store:
 
         每条可选 `count`（1.5.2 起）：同一张卡一次按了几次 👍/👎。缺省 1，
         合法范围 1..50；非法（0、51、true、字符串……）整条拒掉，不影响同批其它条。
-        未知字段照旧原样透传（record = dict(raw)），落盘行里一定有 count 和 receivedAt。
+        1.5.3 起另有两个可选字段：`reasons`（list[str]，点踩原因标签）和
+        `comment`（str，一句话补充）。两者都不规范时只做规范化（空列表/空串），
+        绝不因为理由写歪了就把整条评价丢掉。
+        未知字段照旧原样透传（record = dict(raw)），落盘行里一定有 count、reasons、
+        comment 和 receivedAt。
         """
         accepted, rejected = [], []
         with self._lock:
@@ -356,6 +418,9 @@ class Store:
                     record = dict(raw)
                     record["rating"] = rating
                     record["count"] = count
+                    # 1.5.3：点踩结构化字段；老客户端没发就是 [] / ""，不影响其它字段
+                    record["reasons"] = feedback_reasons(raw.get("reasons"))
+                    record["comment"] = feedback_comment(raw.get("comment"))
                     record["receivedAt"] = _now()
                     # print 自带换行：不手写转义，避免不同编辑器把换行写歪
                     print(json.dumps(record, ensure_ascii=False), file=fh)
@@ -875,7 +940,13 @@ class Store:
 
     def results_page(self, since, limit):
         with self._lock:
-            entries = [e for rec in self.results.values() for e in rec["entries"] if e["seq"] > since]
+            self._load_locks()
+            entries = [
+                e
+                for rec in self.results.values()
+                for e in rec["entries"]
+                if e["seq"] > since and not self._masked_by_lock(e)
+            ]
             entries.sort(key=lambda e: e["seq"])
             page = entries[:limit]
             return {
@@ -993,6 +1064,153 @@ class Store:
                 "books": books,
                 "book": book,
             }
+
+    # ------------------------------------------------------ 手改助记锁定（1.5.3）
+
+    def _load_locks(self):
+        """懒读 data/locks.json。锁是旁路数据，文件读坏了就当没人锁过。"""
+        if self._locks is not None:
+            return
+        raw = _read_json(self.locks_path)
+        locks = {}
+        if isinstance(raw, dict) and isinstance(raw.get("locks"), dict):
+            for key, row in raw["locks"].items():
+                if isinstance(row, dict):
+                    locks[str(key)] = row
+        self._locks = locks
+
+    def locks(self, book=""):
+        """锁定表快照：{key: {word_id, book_id, word, book, locked, updatedAt, note}}。
+
+        book 既可以是书名也可以是 bookId：面板上两样都可能只拿到一个。
+        """
+        with self._lock:
+            self._load_locks()
+            wanted = str(book or "").strip()
+            if not wanted:
+                return {key: dict(row) for key, row in self._locks.items()}
+            return {
+                key: dict(row)
+                for key, row in self._locks.items()
+                if wanted in (str(row.get("book") or "").strip(), str(row.get("book_id") or "").strip())
+            }
+
+    def lock_records(self, book=""):
+        """按最近改动倒序的锁定列表（面板 / GET /rewrite/locks 用）。"""
+        rows = [dict(row) for row in self.locks(book).values()]
+        rows.sort(
+            key=lambda r: (str(r.get("updatedAt") or ""), str(r.get("word") or "")),
+            reverse=True,
+        )
+        return rows
+
+    def set_lock(self, word_id, book_id, locked=True, note="", word="", book=""):
+        """写一条锁定/解锁。locked=False 也留档，面板上还看得出「已解锁」。
+
+        note/word/book 不传就保留旧值：解锁时不该把用户写的备注顺手抹掉。
+        """
+        key = lock_key(word_id, book_id)
+        with self._lock:
+            self._load_locks()
+            row = dict(self._locks.get(key) or {})
+            row["word_id"] = _lock_part(word_id)
+            row["book_id"] = _lock_part(book_id)
+            row["word"] = str(word or row.get("word") or "").strip()[:120]
+            row["book"] = str(book or row.get("book") or "").strip()[:60]
+            row["locked"] = bool(locked)
+            row["note"] = str(note or row.get("note") or "")[:400]
+            row["updatedAt"] = _now()
+            self._locks[key] = row
+            self._save_locks()
+            return dict(row)
+
+    def is_locked(self, word_id, book_id):
+        """这个词在这本书里是否被用户手改锁定 —— 洗词 worker 与结果流都要先问它。"""
+        key = lock_key(word_id, book_id)
+        with self._lock:
+            self._load_locks()
+            row = self._locks.get(key)
+            return bool(row and row.get("locked"))
+
+    def locks_updated_at(self):
+        """锁定文件最后写入时间（面板 / GET /rewrite/locks 展示用），文件不在就空串。"""
+        raw = _read_json(self.locks_path)
+        if isinstance(raw, dict):
+            return str(raw.get("updatedAt") or "")
+        return ""
+
+    def _save_locks(self):
+        _write_json(self.locks_path, {
+            "version": 1,
+            "updatedAt": _now(),
+            "locks": self._locks,
+        })
+
+    def _masked_by_lock(self, entry):
+        """worker 结果撞上「之后才被锁上」的词：从结果流里挡掉，绝不覆盖手改稿。
+
+        只挡 source=worker 的：用户自己手动重写的稿子永远照发。
+        """
+        if str(entry.get("source") or "") != "worker":
+            return False
+        if self._locks is None:
+            return False
+        row = self._locks.get(lock_key(entry.get("wordId"), book_scope(entry)[0]))
+        return bool(row and row.get("locked"))
+
+    # ------------------------------------------- 闲时洗词结果入库（1.5.3）
+
+    def record_worker_result(self, word, approach, meta=None, word_id=None,
+                             book_id=None, book="", model=""):
+        """洗词 worker 的成品入库：只写 results/<word>.json，绝不碰队列。
+
+        和 finish_ok 的差别只有两点：① 不走 claim/队列，所以结构上就不可能占用
+        6 个手动高优槽；② 结果带 source="worker"，被用户手改锁定的词直接拒收。
+        返回 entry；锁定了 / 没词 / 没稿子都返回 None。
+        """
+        meta = dict(meta or {})
+        word = str(word or "").strip()
+        if not word:
+            return None
+        approach = [str(x) for x in (approach or []) if str(x).strip()]
+        if not approach:
+            return None
+        with self._cond:
+            if self.is_locked(word_id, book_id):
+                return None
+            book_id_value, book_name = book_scope({"bookId": book_id, "book": book})
+            record = self.results.setdefault(word, {"word": word, "entries": []})
+            prev = _current(record)
+            own_prev = _current_in_book(record, {"bookId": book_id_value, "book": book_name})
+            entry = {
+                "seq": self._next_seq(),
+                "word": word,
+                "wordId": _lock_part(word_id),
+                "bookId": book_id_value,
+                "book": book_name,
+                "rev": ((prev or {}).get("rev") or 0) + 1,
+                "approach": approach,
+                "method": str(meta.get("method") or ""),
+                "prev": list((own_prev or prev or {}).get("approach") or []),
+                "updatedAt": _now(),
+                "status": "ok",
+                "model": str(model or meta.get("model") or ""),
+                "clientId": str(meta.get("clientId") or "worker:%s" % uuid.uuid4().hex[:12]),
+                "scores": meta.get("scores") or {},
+                "attempts": meta.get("attempts", 1),
+                "unverified": bool(meta.get("unverified")),
+                "reason": str(meta.get("reason") or "")[:400],
+                "promptHash": str(meta.get("promptHash") or ""),
+                "instructionHash": str(meta.get("instructionHash") or ""),
+                "reused": False,
+                "reuseOf": None,
+                "source": "worker",
+            }
+            record["entries"] = _trim(record["entries"] + [entry])
+            self._save_word(word)
+            self._prune()
+            self._cond.notify_all()
+            return entry
 
     # ---------------------------------------------------------- 内部
 

@@ -53,6 +53,12 @@ data class RewriteFeedback(
      */
     @ColumnInfo(name = "count", defaultValue = "1")
     val count: Int = 1,
+    /** 1.5.3：点踩时勾选的结构化原因，`|` 分隔（谐音不准|词根太生僻…）。 */
+    @ColumnInfo(name = "reasons", defaultValue = "''")
+    val reasons: String = "",
+    /** 1.5.3：点踩时随手补的一句人话，可为空。 */
+    @ColumnInfo(name = "comment", defaultValue = "''")
+    val comment: String = "",
     /** 0 = 还没发到电脑端，sync 时补发；1 = 已确认收到。 */
     val synced: Boolean = false
 )

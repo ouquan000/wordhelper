@@ -916,6 +916,22 @@ class RewriteRepository(
     fun observeFeedback(wordId: Long, bookId: Long): Flow<List<RewriteFeedback>> =
         feedbackDao.observeForWord(wordId, bookId)
 
+    /**
+     * 1.5.3：把「免洗金牌」同步给电脑端，作为闲时洗词的绝对保护。
+     * 本地锁定表先落库；这里只是尽力同步，失败不阻塞用户。
+     */
+    suspend fun setMemoryLock(wordId: Long, bookId: Long, locked: Boolean): Boolean {
+        val payload = gson.toJson(
+            mapOf(
+                "wordId" to wordId,
+                "bookId" to bookId,
+                "locked" to locked
+            )
+        )
+        val outcome = send("/rewrite/lock", payload, attempts = 2, rotate = true)
+        return outcome.kind == RetryPolicy.Kind.OK
+    }
+
     /** 1.5.2：当前这一版思路的累计赞数，用来显示「👍 5」。 */
     fun observeLikeCount(wordId: Long, bookId: Long, approachRev: Int): Flow<Int> =
         feedbackDao.observeLikeCount(wordId, bookId, approachRev.coerceAtLeast(0))
@@ -940,15 +956,22 @@ class RewriteRepository(
         bookId: Long = 0L,
         approachRev: Int = 0,
         /** 1.5.2 点赞++：本次合并进来的连击次数（1..50）。 */
-        count: Int = 1
+        count: Int = 1,
+        /** 1.5.3：点踩原因（谐音不准/词根太生僻…），可空。 */
+        reasons: List<String> = emptyList(),
+        /** 1.5.3：点踩吐槽，可空。 */
+        comment: String = ""
     ): Boolean {
         if (!RewriteFeedbackRating.isValid(rating)) return false
         val safeRev = approachRev.coerceAtLeast(0)
         val safeCount = count.coerceIn(1, MAX_FEEDBACK_BURST)
         val now = System.currentTimeMillis()
+        val safeReasons = reasons.map { it.trim() }.filter { it.isNotEmpty() }.take(MAX_FEEDBACK_REASONS)
+        val reasonsText = safeReasons.joinToString(REASON_SEPARATOR).take(MAX_FEEDBACK_CHARS)
+        val commentText = comment.trim().take(MAX_FEEDBACK_CHARS)
 
         // 👍 是累加：同一版思路只保留一行，连击加进 count。
-        // 👎 仍然是一次表态，重复点不重复入库（唯一索引兜底）。
+        // 👎 仍然是一次表态，重复点不重复入库（唯一索引兜底），但允许补原因。
         if (rating == RewriteFeedbackRating.UP) {
             val existing = feedbackDao.find(wordId, bookId, rating, safeRev)
             if (existing != null) {
@@ -959,6 +982,13 @@ class RewriteRepository(
                     feedbackDao.addCount(existing.id, added, now)
                     runCatching { pushFeedback(feedbackDao.getUnsynced(FEEDBACK_BATCH)) }
                 }
+                return true
+            }
+        } else {
+            val existing = feedbackDao.find(wordId, bookId, rating, safeRev)
+            if (existing != null) {
+                feedbackDao.updateReasons(existing.id, reasonsText, commentText, now)
+                runCatching { pushFeedback(feedbackDao.getUnsynced(FEEDBACK_BATCH)) }
                 return true
             }
         }
@@ -975,7 +1005,9 @@ class RewriteRepository(
                 instruction = instruction.take(MAX_FEEDBACK_CHARS),
                 approachRev = safeRev,
                 createdAt = now,
-                count = if (rating == RewriteFeedbackRating.UP) safeCount else 1
+                count = if (rating == RewriteFeedbackRating.UP) safeCount else 1,
+                reasons = reasonsText,
+                comment = commentText
             )
         )
         // -1 = 唯一索引挡下了（之前已经表过态），不用再发一次。
@@ -1013,6 +1045,8 @@ class RewriteRepository(
                     instruction = item.instruction,
                     approachRev = item.approachRev,
                     count = item.count,
+                    reasons = item.reasons.split(REASON_SEPARATOR).filter { it.isNotBlank() },
+                    comment = item.comment,
                     createdAt = isoTime(item.createdAt)
                 )
             }
@@ -1937,6 +1971,10 @@ class RewriteRepository(
         val approachRev: Int = 0,
         /** 1.5.2：连击合并后的次数；旧服务端会忽略未知字段，不影响兼容。 */
         val count: Int = 1,
+        /** 1.5.3：结构化点踩原因；旧服务端会忽略。 */
+        val reasons: List<String> = emptyList(),
+        /** 1.5.3：点踩吐槽；旧服务端会忽略。 */
+        val comment: String = "",
         val createdAt: String?
     )
 
@@ -1990,8 +2028,12 @@ class RewriteRepository(
         /** 一次补发/补拉多少条，别把一页请求撑太大。 */
         private const val FEEDBACK_BATCH = 50
 
-        /** 1.5.2：单次连击合并的上限，和后端 1..50 的校验对齐。 */
+        /** 1.5.3：单次连击合并的上限，和后端 1..50 的校验对齐。 */
         private const val MAX_FEEDBACK_BURST = FeedbackBurstPolicy.MAX_COUNT
+
+        /** 1.5.3：点踩原因最多几条，避免脏输入撑爆反馈行。 */
+        private const val MAX_FEEDBACK_REASONS = 8
+        private const val REASON_SEPARATOR = "|"
         private const val SKIPPED_RETRY_LIMIT = 20
 
         /** 反馈正文最多带这么多字（思路可能很长，电脑端只需要够判断就行）。 */

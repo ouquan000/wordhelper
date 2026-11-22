@@ -3,8 +3,12 @@ package com.kaoyan.wordhelper.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import com.kaoyan.wordhelper.KaoyanWordApp
 import com.kaoyan.wordhelper.data.entity.Book
+import com.kaoyan.wordhelper.data.entity.BookMemory
+import com.kaoyan.wordhelper.data.entity.MemoryLock
+import com.kaoyan.wordhelper.data.entity.WordMemory
 import com.kaoyan.wordhelper.data.model.AIContentType
 import com.kaoyan.wordhelper.data.model.ApproachReview
 import com.kaoyan.wordhelper.data.model.CardBackConfig
@@ -184,14 +188,24 @@ internal fun skipRewriteAvailability(
     if (mark.wordId != wordId) return SkipRewriteAvailability.OTHER_WORD
     // book_id = 0 是 16_17 迁移留下的全局行，同 observeMark 的口径，算作当前书。
     if (mark.bookId != 0L && mark.bookId != bookId) return SkipRewriteAvailability.OTHER_BOOK
-    // 1.5.2：只有「本轮 requestId」真的出了结果才置灰。
-    // activeRequestId 为空串表示本轮刚点下、队列行还没落库；此时旧 DONE 行不能挡住按钮。
-    if (activeRequestId != null && mark.requestId != activeRequestId) {
-        return SkipRewriteAvailability.AVAILABLE
+    // 1.5.3：历史已结清的 DONE 行不能把「跳过」入口永久亮着。
+    // null = 当前词没有本轮活跃重写；空串 = 本轮刚点下、requestId 还没落库。
+    if (mark.status == RewriteStatus.DONE) {
+        if (activeRequestId == null) {
+            return SkipRewriteAvailability.NO_MARK
+        }
+        if (activeRequestId.isBlank()) {
+            return SkipRewriteAvailability.AVAILABLE
+        }
+        return if (mark.requestId == activeRequestId) {
+            SkipRewriteAvailability.RESULT_READY
+        } else {
+            SkipRewriteAvailability.AVAILABLE
+        }
     }
-    // 没有本轮 requestId（冷启动/进程重建）时不能把历史 DONE 当成本轮结果。
-    if (!activeRequestId.isNullOrBlank() && mark.status == RewriteStatus.DONE) {
-        return SkipRewriteAvailability.RESULT_READY
+    // 旧一轮的 DONE 在新一轮 requestId 已生成时不能挡住入口。
+    if (activeRequestId != null && activeRequestId.isNotBlank() && mark.requestId != activeRequestId) {
+        return SkipRewriteAvailability.AVAILABLE
     }
     return SkipRewriteAvailability.AVAILABLE
 }
@@ -199,6 +213,7 @@ internal fun skipRewriteAvailability(
 @OptIn(ExperimentalCoroutinesApi::class)
 class LearningViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = (application as KaoyanWordApp).repository
+    private val database = (application as KaoyanWordApp).database
     private val settingsRepository = (application as KaoyanWordApp).settingsRepository
     private val aiConfigRepository = (application as KaoyanWordApp).aiConfigRepository
     private val aiRepository = (application as KaoyanWordApp).aiRepository
@@ -467,6 +482,19 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
+    /**
+     * 1.5.3：当前这张卡的「免洗金牌」状态。
+     * 锁定后闲时洗词、批量重写和词卡热更都不会覆盖这份助记。
+     */
+    val currentMemoryLocked: StateFlow<Boolean> = combine(activeBook, _currentWord) { book, word ->
+        (book?.id ?: 0L) to word
+    }
+        .flatMapLatest { (bookId, word) ->
+            if (word == null) flowOf(false)
+            else database.memoryLockDao().observe(word.id, bookId).map { it?.locked == true }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     /** 连击还没写库的临时增量；只对同一张卡生效。 */
     data class PendingLikeUi(val wordId: Long = 0L, val delta: Int = 0)
 
@@ -719,9 +747,9 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             sessionSkippedWordIds.remove(word.id)
             // 1.5.2：先记「本轮开始」，旧 DONE 行在这几毫秒里不能把跳过置灰。
             _activeRewriteRequestIds.update { it + (word.id to "") }
-            // 1.5.1：本地落库后会立刻有一条 PENDING 行，但网络发送可能很慢。先给一句
-            // 「已标记」，别让用户等网络等到怀疑按钮坏了。
-            _message.value = RewriteMarkPolicy.MARKING
+            // 1.5.3：不在点击时再弹「已标记/已送电脑」Toast。队列行本身会立刻
+            // 变成 PENDING/QUEUED，RewriteBar 的单一状态行就是唯一反馈；只有
+            // 真的离线排队或鉴权失败时才提示一句。
             val sent = rewriteRepository.enqueueAndSync(
                 word.id,
                 word.word,
@@ -733,9 +761,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 rewriteRepository.requestIdOf(word.id, bookId)
             }.getOrNull().orEmpty()
             _activeRewriteRequestIds.update { it + (word.id to roundRequestId) }
-            if (sent) {
-                _message.value = RewriteMarkPolicy.SENT
-            } else {
+            if (!sent) {
                 // 没地址/电脑没开都只是「已记下」；只有确实带了口令、且这次请求
                 // 真被 401 拦下时，才提示重粘配对行，别把离线误报成口令错。
                 val authFailed = rewriteRepository.consumeAuthFailure()
@@ -780,7 +806,13 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
      * 只记「这条思路有没有帮上」，👎 不会自动重写；同一条评价重复点不会重复入库。
      * 写入永远成功（离线也存本地），联网补发交给 RewriteRepository.sync。
      */
-    fun submitRewriteFeedback(rating: String, instruction: String = "", count: Int = 1) {
+    fun submitRewriteFeedback(
+        rating: String,
+        instruction: String = "",
+        count: Int = 1,
+        reasons: List<String> = emptyList(),
+        comment: String = ""
+    ) {
         val word = _currentWord.value ?: return
         val bookId = activeBook.value?.id ?: 0L
         viewModelScope.launch {
@@ -797,7 +829,9 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     instruction = instruction.trim().take(200),
                     bookId = bookId,
                     approachRev = approachRev,
-                    count = count
+                    count = count,
+                    reasons = reasons,
+                    comment = comment
                 )
             }.getOrDefault(false)
             if (accepted) {
@@ -814,10 +848,15 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
      * 1.5.2 点赞++：连点先在本地累加，停手 1.8 秒或切走卡片时合并成一条反馈。
      * 这样既不会每点一下发一次请求，也不会把连击丢掉。
      */
-    fun tapRewriteFeedback(rating: String, instruction: String = "") {
+    fun tapRewriteFeedback(
+        rating: String,
+        instruction: String = "",
+        reasons: List<String> = emptyList(),
+        comment: String = ""
+    ) {
         if (rating == RewriteFeedbackRating.DOWN) {
             flushPendingLikes()
-            submitRewriteFeedback(rating, instruction)
+            submitRewriteFeedback(rating, instruction, reasons = reasons, comment = comment)
             return
         }
         val word = _currentWord.value ?: return
@@ -878,6 +917,100 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             )
         }.onSuccess {
             _message.value = "已记录：这条思路有帮助 +${burst.delta}"
+        }
+    }
+
+    /**
+     * 1.5.3：用户手改当前卡背上的记忆思路。
+     * 按书写入 tb_book_memory，并保留上一版供撤销；绝不碰 tb_progress。
+     */
+    fun saveMemoryEdit(text: String) {
+        val word = _currentWord.value ?: return
+        val bookId = activeBook.value?.id ?: 0L
+        val cleaned = text.trim()
+        if (cleaned.isBlank()) {
+            _message.value = "记忆思路不能为空"
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                database.withTransaction {
+                    val now = System.currentTimeMillis()
+                    val existing = database.bookMemoryDao().getForBook(word.id, bookId)
+                    val global = database.wordMemoryDao().getByWordId(word.id)
+                    if (existing != null) {
+                        database.bookMemoryDao().upsert(
+                            existing.copy(
+                                approach = cleaned,
+                                prevApproach = existing.approach,
+                                prevMethod = existing.method,
+                                method = existing.method,
+                                updatedAt = now,
+                                source = WordMemory.SOURCE_USER,
+                                rev = existing.rev + 1,
+                                unverified = false,
+                                unverifiedReason = null
+                            )
+                        )
+                    } else {
+                        database.bookMemoryDao().upsert(
+                            BookMemory(
+                                wordId = word.id,
+                                bookId = bookId,
+                                approach = cleaned,
+                                collocations = global?.collocations.orEmpty(),
+                                method = global?.method.orEmpty(),
+                                updatedAt = now,
+                                source = WordMemory.SOURCE_USER,
+                                rev = (global?.rev ?: 0) + 1,
+                                prevApproach = global?.approach,
+                                prevMethod = global?.method,
+                                unverified = false,
+                                unverifiedReason = null
+                            )
+                        )
+                    }
+                }
+            }.onSuccess {
+                _message.value = "已保存手改思路"
+            }.onFailure {
+                _message.value = "保存失败：${it.message ?: "数据库写入异常"}"
+            }
+        }
+    }
+
+    /** 1.5.3：免洗金牌开关。本地立即生效，电脑端后台尽力同步。 */
+    fun toggleMemoryLock() {
+        val word = _currentWord.value ?: return
+        val bookId = activeBook.value?.id ?: 0L
+        val locked = !currentMemoryLocked.value
+        viewModelScope.launch {
+            runCatching {
+                database.memoryLockDao().upsert(
+                    MemoryLock(
+                        wordId = word.id,
+                        bookId = bookId,
+                        locked = locked,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }.onSuccess {
+                _message.value = if (locked) "已锁定：闲时洗词不会覆盖这份助记" else "已解锁"
+                launch {
+                    val synced = runCatching {
+                        rewriteRepository.setMemoryLock(word.id, bookId, locked)
+                    }.getOrDefault(false)
+                    if (!synced) {
+                        _message.value = if (locked) {
+                            "已本地锁定，电脑端稍后自动同步"
+                        } else {
+                            "已本地解锁，电脑端稍后自动同步"
+                        }
+                    }
+                }
+            }.onFailure {
+                _message.value = "锁定失败：${it.message ?: "数据库写入异常"}"
+            }
         }
     }
 

@@ -148,7 +148,7 @@ def test_client_ip_unit():
     check("非 loopback 时 X-Forwarded-For 也不生效", got == "198.51.100.78", got)
 
     check("Handler 用的是同一套 client_ip()", hasattr(server.Handler, "_client_ip"))
-    check("SERVICE_VERSION 已升到 1.5.2", server.SERVICE_VERSION == "1.5.2", server.SERVICE_VERSION)
+    check("SERVICE_VERSION 已升到 1.5.3", server.SERVICE_VERSION == "1.5.3", server.SERVICE_VERSION)
 
 
 # ---------------------------------------------------- 2. 额度分档（不联网）
