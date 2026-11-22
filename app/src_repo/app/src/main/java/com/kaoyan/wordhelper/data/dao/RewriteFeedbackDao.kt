@@ -38,4 +38,23 @@ interface RewriteFeedbackDao {
            LIMIT 1"""
     )
     suspend fun find(wordId: Long, bookId: Long, rating: String, approachRev: Int): RewriteFeedback?
+
+    /**
+     * 1.5.2 点赞++：同一版思路只保留一行，连击累加到 count。
+     * 累加后把 synced 重新置 0，下一轮 push 会把最新累计数补发给电脑端。
+     */
+    @Query(
+        """UPDATE tb_feedback
+           SET count = count + :delta, synced = 0, created_at = :now
+           WHERE id = :id"""
+    )
+    suspend fun addCount(id: Long, delta: Int, now: Long): Int
+
+    /** 当前这一版思路的累计赞数（给「👍 5」显示用）。 */
+    @Query(
+        """SELECT COALESCE(SUM(count), 0) FROM tb_feedback
+           WHERE word_id = :wordId AND book_id = :bookId
+             AND rating = 'up' AND approach_rev = :approachRev"""
+    )
+    fun observeLikeCount(wordId: Long, bookId: Long, approachRev: Int): Flow<Int>
 }

@@ -18,6 +18,7 @@ import com.kaoyan.wordhelper.sync.BackgroundSync
 import com.kaoyan.wordhelper.util.DatabaseBackupManager
 import com.kaoyan.wordhelper.util.DateUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.kaoyan.wordhelper.data.dao.RewriteQueueBreakdown
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -86,14 +87,25 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     private val settingsRepository = (application as KaoyanWordApp).settingsRepository
     private val aiConfigRepository = (application as KaoyanWordApp).aiConfigRepository
     private val database = (application as KaoyanWordApp).database
+    private val rewriteRepository = (application as KaoyanWordApp).rewriteRepository
 
     val settings: StateFlow<UserSettings> = settingsRepository.settingsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UserSettings())
 
-    /** 还没被电脑处理完的重写标记数（1.4.3）。 */
-    val rewritePendingCount: StateFlow<Int> =
-        (application as KaoyanWordApp).rewriteRepository.observeOpenCount()
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+    /** 1.5.2：待上传 / 电脑处理中分开显示，不再给一个糊在一起的数字。 */
+    val rewriteQueueBreakdown: StateFlow<RewriteQueueBreakdown> =
+        rewriteRepository.observeQueueBreakdown()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RewriteQueueBreakdown())
+
+    init {
+        // 1.5.2：进「我的」页顺手回收一次电脑端已 done 的结果，让待办数字及时销账。
+        viewModelScope.launch { runCatching { rewriteRepository.sync() } }
+    }
+
+    /** 兼容旧 UI 的总数；新界面应优先用 [rewriteQueueBreakdown]。 */
+    val rewritePendingCount: StateFlow<Int> = rewriteQueueBreakdown
+        .map { it.pendingUpload + it.processing }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     // ---- 学习记录同步（1.4.4）：手机本地排队，用户点一下才和电脑对一次。
     private val syncRepository = (application as KaoyanWordApp).syncRepository

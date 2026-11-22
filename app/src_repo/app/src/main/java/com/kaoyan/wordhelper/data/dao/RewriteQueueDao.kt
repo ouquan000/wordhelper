@@ -7,6 +7,12 @@ import androidx.room.Query
 import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
 import kotlinx.coroutines.flow.Flow
 
+/** 1.5.2：把「待重写」拆成手机还没传上去的、和已经传给电脑正在跑的。 */
+data class RewriteQueueBreakdown(
+    val pendingUpload: Int = 0,
+    val processing: Int = 0
+)
+
 @Dao
 interface RewriteQueueDao {
 
@@ -40,6 +46,14 @@ interface RewriteQueueDao {
     /** 还没结束的标记数，用来在「我的」页提示还有几条在跑。 */
     @Query("SELECT COUNT(*) FROM tb_rewrite_queue WHERE status IN ('pending','queued')")
     fun observeOpenCount(): Flow<Int>
+
+    /** 1.5.2：待上传（pending/failed）与电脑处理中（queued）分开计数。 */
+    @Query(
+        """SELECT COALESCE(SUM(CASE WHEN status IN ('pending','failed') THEN 1 ELSE 0 END), 0) AS pendingUpload,
+                  COALESCE(SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END), 0) AS processing
+           FROM tb_rewrite_queue"""
+    )
+    fun observeQueueBreakdown(): Flow<RewriteQueueBreakdown>
 
     /**
      * 1.4.6.1：当前这本书还有几条重写「没结清」。

@@ -111,6 +111,11 @@ class SyncRepository(
     @Volatile
     private var rateLimitedUntil = 0L
 
+    /** 1.5.2：「立即重试」先清本地冷却，避免按钮在 429 冷却期里空转。 */
+    fun clearRateLimit() {
+        rateLimitedUntil = 0L
+    }
+
     /** 上次 GET /health 的时间：60 秒最多探一次，别让状态页每次刷新都多打一个请求。 */
     @Volatile
     private var lastHealthProbeAt = 0L

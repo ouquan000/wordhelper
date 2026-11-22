@@ -53,6 +53,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.kaoyan.wordhelper.data.dao.RewriteQueueBreakdown
 import com.kaoyan.wordhelper.data.model.MethodCount
 import com.kaoyan.wordhelper.ui.component.AppPageHeader
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -105,6 +106,7 @@ fun ProfileScreen(
     val aiLabSummary by viewModel.aiLabSummary.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val rewritePendingCount by viewModel.rewritePendingCount.collectAsStateWithLifecycle()
+    val rewriteQueueBreakdown by viewModel.rewriteQueueBreakdown.collectAsStateWithLifecycle()
     val syncPending by viewModel.syncPending.collectAsStateWithLifecycle()
     val syncing by viewModel.syncing.collectAsStateWithLifecycle()
     // 1.4.7：状态页与「我的」入口读的是同一份快照，入口那行不用再单独请求一次。
@@ -332,6 +334,7 @@ fun ProfileScreen(
                         wordbookRemoteUrl = settings.wordbookRemoteUrl,
                         immersiveFullscreenEnabled = settings.immersiveFullscreenEnabled,
                         rewritePendingCount = rewritePendingCount,
+                        rewriteQueueBreakdown = rewriteQueueBreakdown,
                         darkThemeEnabled = darkThemeEnabled,
                         onNewWordsLimitChange = viewModel::updateNewWordsLimit,
                         onFontScaleChange = viewModel::updateFontScale,
@@ -760,6 +763,7 @@ private fun SettingsCard(
     wordbookRemoteUrl: String,
     immersiveFullscreenEnabled: Boolean,
     rewritePendingCount: Int,
+    rewriteQueueBreakdown: RewriteQueueBreakdown = RewriteQueueBreakdown(),
     // 日夜双模式总开关（旧 darkMode 字段保留兼容）
     darkThemeEnabled: Boolean,
     onNewWordsLimitChange: (Int) -> Unit,
@@ -959,7 +963,7 @@ private fun SettingsCard(
                 }
                 if (rewritePendingCount > 0) {
                     Text(
-                        text = "还有 $rewritePendingCount 条重写思路在等电脑处理",
+                        text = "待上传 ${rewriteQueueBreakdown.pendingUpload} 条 · 电脑处理中 ${rewriteQueueBreakdown.processing} 条",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )

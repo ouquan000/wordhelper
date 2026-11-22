@@ -26,6 +26,7 @@ import com.kaoyan.wordhelper.data.model.feedbackRatingForRevision
 import com.kaoyan.wordhelper.data.repository.AddToNewWordsSource
 import com.kaoyan.wordhelper.data.repository.CheckInResult
 import com.kaoyan.wordhelper.data.repository.CardbackAuth
+import com.kaoyan.wordhelper.data.repository.FeedbackBurstPolicy
 import com.kaoyan.wordhelper.data.repository.RewriteMarkPolicy
 import com.kaoyan.wordhelper.data.repository.RewriteRepository
 import com.kaoyan.wordhelper.data.repository.TodayNewWordsPlan
@@ -56,6 +57,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -122,6 +124,8 @@ private const val SKIP_PERSIST_FAILED = "跳过没生效：重写记录没存上
 
 /** 点击到落库之间这条记录被撤销/换版：不换词，让用户刷新后重试。 */
 private const val SKIP_MARK_CHANGED = "重写记录已变化，先刷新一下再试"
+private const val SKIP_ALREADY_WAITING = "这张卡已经在等结果了"
+private const val SUBMIT_BUSY = "正在处理上一步，稍等一下"
 
 /** 结果已经合格：不做「跳过」，这张卡按既有插回规则留在队列里继续背。 */
 private const val SKIP_RESULT_READY = "思路已更新，继续背当前词"
@@ -172,14 +176,23 @@ internal enum class SkipRewriteAvailability {
 internal fun skipRewriteAvailability(
     wordId: Long?,
     bookId: Long?,
-    mark: RewriteQueueItem?
+    mark: RewriteQueueItem?,
+    activeRequestId: String? = null
 ): SkipRewriteAvailability {
     if (wordId == null || bookId == null) return SkipRewriteAvailability.OTHER_WORD
     if (mark == null) return SkipRewriteAvailability.NO_MARK
     if (mark.wordId != wordId) return SkipRewriteAvailability.OTHER_WORD
     // book_id = 0 是 16_17 迁移留下的全局行，同 observeMark 的口径，算作当前书。
     if (mark.bookId != 0L && mark.bookId != bookId) return SkipRewriteAvailability.OTHER_BOOK
-    if (mark.status == RewriteStatus.DONE) return SkipRewriteAvailability.RESULT_READY
+    // 1.5.2：只有「本轮 requestId」真的出了结果才置灰。
+    // activeRequestId 为空串表示本轮刚点下、队列行还没落库；此时旧 DONE 行不能挡住按钮。
+    if (activeRequestId != null && mark.requestId != activeRequestId) {
+        return SkipRewriteAvailability.AVAILABLE
+    }
+    // 没有本轮 requestId（冷启动/进程重建）时不能把历史 DONE 当成本轮结果。
+    if (!activeRequestId.isNullOrBlank() && mark.status == RewriteStatus.DONE) {
+        return SkipRewriteAvailability.RESULT_READY
+    }
     return SkipRewriteAvailability.AVAILABLE
 }
 
@@ -354,6 +367,9 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     private val _skipRewriteLatchedWordId = MutableStateFlow<Long?>(null)
     val skipRewriteLatchedWordId: StateFlow<Long?> = _skipRewriteLatchedWordId.asStateFlow()
 
+    /** 1.5.2：本轮重写的 requestId（wordId -> requestId；空串=刚点下还没落库）。 */
+    private val _activeRewriteRequestIds = MutableStateFlow<Map<Long, String>>(emptyMap())
+
     /**
      * 1.4.7v7-bugfix：右侧「跳过」到底该不该出现/能不能点。
      *
@@ -365,12 +381,13 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         _currentWord,
         activeBook,
         currentRewriteMark,
-        _skipRewriteLatchedWordId
-    ) { word, book, mark, latched ->
+        _skipRewriteLatchedWordId,
+        _activeRewriteRequestIds
+    ) { word, book, mark, latched, activeIds ->
         if (word == null || latched == null || latched != word.id) {
             SkipRewriteAvailability.NO_MARK
         } else {
-            skipRewriteAvailability(word.id, book?.id, mark)
+            skipRewriteAvailability(word.id, book?.id, mark, activeIds[word.id])
         }
     }.stateIn(
         viewModelScope,
@@ -434,6 +451,49 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * 1.5.2 点赞++：当前这一版思路累计收到的 👍 次数。
+     * 换词/换书/换版自动重订阅；连击未落库时由界面再叠加 [pendingLikeBurst]。
+     */
+    val currentRewriteLikeCount: StateFlow<Int> = combine(activeBook, _currentWord) { book, word ->
+        (book?.id ?: 0L) to word
+    }
+        .flatMapLatest { (bookId, word) ->
+            if (word == null) {
+                flowOf(0)
+            } else {
+                combine(
+                    rewriteRepository.observeFeedback(word.id, bookId),
+                    rewriteRepository.observeApproachRev(word.id, bookId)
+                ) { rows, rev ->
+                    rows.filter { it.approachRev == rev && it.rating == RewriteFeedbackRating.UP }
+                        .sumOf { it.count }
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /** 连击还没写库的临时增量；只对同一张卡生效。 */
+    data class PendingLikeUi(val wordId: Long = 0L, val delta: Int = 0)
+
+    private val _pendingLikeUi = MutableStateFlow(PendingLikeUi())
+    val pendingLikeBurst: StateFlow<PendingLikeUi> = _pendingLikeUi.asStateFlow()
+
+    private data class PendingLikeBurst(
+        val wordId: Long,
+        val bookId: Long,
+        val approachRev: Int,
+        val word: String,
+        val approach: String,
+        val method: String,
+        val model: String,
+        val instruction: String,
+        var delta: Int = 0
+    )
+
+    private var pendingLikeBurstData: PendingLikeBurst? = null
+    private var pendingLikeJob: Job? = null
 
     /** 卡背上的进度条数据；null = 还没问过电脑端。 */
     private val _rewriteProgress = MutableStateFlow<RewriteProgressUi?>(null)
@@ -663,6 +723,11 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             // 生成完成（DONE）也保持位置，换词由 updateQueue 清。
             if (_currentWord.value?.id != word.id || (activeBook.value?.id ?: 0L) != bookId) return@launch
             _skipRewriteLatchedWordId.value = word.id
+            // 1.5.2：新一轮重写开始，解除本 session 的「已跳过」过滤，允许同一词反复
+            // 「重写 → 跳过 → 回队 → 再重写」无限轮次。
+            sessionSkippedWordIds.remove(word.id)
+            // 1.5.2：先记「本轮开始」，旧 DONE 行在这几毫秒里不能把跳过置灰。
+            _activeRewriteRequestIds.update { it + (word.id to "") }
             // 1.5.1：本地落库后会立刻有一条 PENDING 行，但网络发送可能很慢。先给一句
             // 「已标记」，别让用户等网络等到怀疑按钮坏了。
             _message.value = RewriteMarkPolicy.MARKING
@@ -673,6 +738,10 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 instruction,
                 bookId = bookId
             )
+            val roundRequestId = runCatching {
+                rewriteRepository.requestIdOf(word.id, bookId)
+            }.getOrNull().orEmpty()
+            _activeRewriteRequestIds.update { it + (word.id to roundRequestId) }
             if (sent) {
                 _message.value = RewriteMarkPolicy.SENT
             } else {
@@ -724,7 +793,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
      * 只记「这条思路有没有帮上」，👎 不会自动重写；同一条评价重复点不会重复入库。
      * 写入永远成功（离线也存本地），联网补发交给 RewriteRepository.sync。
      */
-    fun submitRewriteFeedback(rating: String, instruction: String = "") {
+    fun submitRewriteFeedback(rating: String, instruction: String = "", count: Int = 1) {
         val word = _currentWord.value ?: return
         val bookId = activeBook.value?.id ?: 0L
         viewModelScope.launch {
@@ -740,7 +809,8 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     model = _rewriteModelId.value,
                     instruction = instruction.trim().take(200),
                     bookId = bookId,
-                    approachRev = approachRev
+                    approachRev = approachRev,
+                    count = count
                 )
             }.getOrDefault(false)
             if (accepted) {
@@ -750,6 +820,77 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     "已记录：这条思路没帮上（不会自动重写）"
                 }
             }
+        }
+    }
+
+    /**
+     * 1.5.2 点赞++：连点先在本地累加，停手 1.8 秒或切走卡片时合并成一条反馈。
+     * 这样既不会每点一下发一次请求，也不会把连击丢掉。
+     */
+    fun tapRewriteFeedback(rating: String, instruction: String = "") {
+        if (rating == RewriteFeedbackRating.DOWN) {
+            flushPendingLikes()
+            submitRewriteFeedback(rating, instruction)
+            return
+        }
+        val word = _currentWord.value ?: return
+        val bookId = activeBook.value?.id ?: 0L
+        viewModelScope.launch {
+            val rev = rewriteRepository.approachRevOf(word.id, bookId)
+            val current = pendingLikeBurstData
+            if (current == null ||
+                current.wordId != word.id ||
+                current.bookId != bookId ||
+                current.approachRev != rev
+            ) {
+                flushPendingLikesNow()
+                pendingLikeBurstData = PendingLikeBurst(
+                    wordId = word.id,
+                    bookId = bookId,
+                    approachRev = rev,
+                    word = word.word,
+                    approach = liveApproach.value ?: word.approach,
+                    method = liveMethod.value.orEmpty().ifBlank { word.method },
+                    model = _rewriteModelId.value,
+                    instruction = instruction.trim().take(200)
+                )
+            }
+            val burst = pendingLikeBurstData ?: return@launch
+            burst.delta = FeedbackBurstPolicy.nextCount(burst.delta)
+            _pendingLikeUi.value = PendingLikeUi(burst.wordId, burst.delta)
+            pendingLikeJob?.cancel()
+            pendingLikeJob = viewModelScope.launch {
+                delay(LIKE_BURST_DEBOUNCE_MS)
+                flushPendingLikesNow()
+            }
+        }
+    }
+
+    /** 切走当前卡/退出页面时把还没落库的连击补上。 */
+    fun flushPendingLikes() {
+        viewModelScope.launch { flushPendingLikesNow() }
+    }
+
+    private suspend fun flushPendingLikesNow() {
+        val burst = pendingLikeBurstData ?: return
+        pendingLikeBurstData = null
+        _pendingLikeUi.value = PendingLikeUi()
+        if (burst.delta <= 0) return
+        runCatching {
+            rewriteRepository.submitFeedback(
+                wordId = burst.wordId,
+                rating = RewriteFeedbackRating.UP,
+                word = burst.word,
+                approach = burst.approach,
+                method = burst.method,
+                model = burst.model,
+                instruction = burst.instruction,
+                bookId = burst.bookId,
+                approachRev = burst.approachRev,
+                count = burst.delta
+            )
+        }.onSuccess {
+            _message.value = "已记录：这条思路有帮助 +${burst.delta}"
         }
     }
 
@@ -797,7 +938,12 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     fun skipCurrentWordForRewrite() {
         val word = _currentWord.value ?: return
         val book = activeBook.value ?: return
-        when (skipRewriteAvailability(word.id, book.id, currentRewriteMark.value)) {
+        when (skipRewriteAvailability(
+            word.id,
+            book.id,
+            currentRewriteMark.value,
+            _activeRewriteRequestIds.value[word.id]
+        )) {
             SkipRewriteAvailability.AVAILABLE -> Unit
             SkipRewriteAvailability.RESULT_READY -> {
                 // 结果已经合格：这张卡按既有插回规则处理，跳过没有意义也不允许，
@@ -856,6 +1002,9 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             if (waitingRewriteWords.putIfAbsent(word.id, word) == null) {
                 sessionSkippedWordIds.add(word.id)
                 observeWaitingRewrite(word, book.id)
+            } else {
+                // 已经有同词的等待任务：刷新等待计数并明确告诉用户，不静默吞点击。
+                _message.value = SKIP_ALREADY_WAITING
             }
             refreshWaitingCount()
             loadQueueForBook(
@@ -1926,7 +2075,11 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun launchSubmit(block: suspend () -> Unit) {
-        if (_isSubmitting.value) return
+        if (_isSubmitting.value) {
+            // 1.5.2：重入不再静默丢弃，给一句轻提示。
+            _message.value = SUBMIT_BUSY
+            return
+        }
         _isSubmitting.value = true
         viewModelScope.launch {
             try {
@@ -1987,6 +2140,8 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         private const val RESPONSE_TIME_DOWNGRADE_THRESHOLD_MS = 6_000L
         private const val REWRITE_FLIP_SYNC_MIN_INTERVAL_MS = 8_000L
         private const val REWRITE_PROGRESS_POLL_INTERVAL_MS = 4_000L
+        private const val LIKE_BURST_DEBOUNCE_MS = FeedbackBurstPolicy.DEBOUNCE_MS
+        private const val MAX_FEEDBACK_BURST = FeedbackBurstPolicy.MAX_COUNT
         private const val STATE_FAILED = "failed"
         private val DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE
     }

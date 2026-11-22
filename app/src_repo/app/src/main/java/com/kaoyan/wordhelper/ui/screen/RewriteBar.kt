@@ -1,6 +1,7 @@
 package com.kaoyan.wordhelper.ui.screen
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,6 +44,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
@@ -191,11 +195,12 @@ internal fun RewriteBar(
             }
         }
 
-        // 有标记才画进度；跑完/失败后保留最后一格（100% 或红条），换词时才清掉
-        if (keepProgress && mark != null && (progress != null ||
-                mark.status == RewriteStatus.PENDING || mark.status == RewriteStatus.QUEUED)
+        // 1.5.2：PENDING 还没送到电脑，不再画「生成中…」进度条；
+        // 只有 QUEUED（电脑已收）或已有真实进度时才画。
+        if (keepProgress && mark != null &&
+            (progress != null || mark.status == RewriteStatus.QUEUED)
         ) {
-            ProgressRow(progress)
+            ProgressRow(progress, queued = mark.status == RewriteStatus.QUEUED && progress == null)
         }
 
         // ③ 元数据行：上次重写时间 / 失败原因 + 撤销，压到一行 22.dp
@@ -350,10 +355,14 @@ private fun ExpandedInstructionEditor(
 @Composable
 internal fun RewriteFeedbackRow(
     feedback: String?,
+    likeCount: Int = 0,
+    pendingLikeDelta: Int = 0,
     onFeedback: (String, String) -> Unit,
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
+    val shownLikes = (likeCount + pendingLikeDelta).coerceAtLeast(0)
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -369,11 +378,15 @@ internal fun RewriteFeedbackRow(
             modifier = Modifier.weight(1f)
         )
         FeedbackCapsule(
-            label = if (feedback == RewriteFeedbackRating.UP) "👍 已认可" else "👍 有帮助",
+            label = if (shownLikes > 0) "👍 $shownLikes" else "👍 有帮助",
             selected = feedback == RewriteFeedbackRating.UP,
-            enabled = enabled && feedback != RewriteFeedbackRating.UP,
+            enabled = enabled,
             tag = "rewrite_feedback_up",
-            onClick = { onFeedback(RewriteFeedbackRating.UP, "") }
+            pulse = shownLikes,
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onFeedback(RewriteFeedbackRating.UP, "")
+            }
         )
         FeedbackCapsule(
             label = if (feedback == RewriteFeedbackRating.DOWN) "👎 已记录" else "👎 没帮助",
@@ -394,13 +407,21 @@ private fun FeedbackCapsule(
     selected: Boolean,
     enabled: Boolean,
     tag: String,
+    pulse: Int = 0,
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(14.dp)
     val colors = MaterialTheme.colorScheme
+    val scale = remember { Animatable(1f) }
+    LaunchedEffect(pulse) {
+        if (pulse <= 0) return@LaunchedEffect
+        scale.animateTo(1.14f, animationSpec = tween(90))
+        scale.animateTo(1f, animationSpec = tween(120))
+    }
     Row(
         modifier = Modifier
             .height(28.dp)
+            .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
             .clip(shape)
             .background(
                 if (selected) colors.primaryContainer else colors.surfaceVariant.copy(alpha = 0.42f)
@@ -457,7 +478,7 @@ private fun UndoCapsule(enabled: Boolean, onUndo: () -> Unit) {
  * stage 不明时用不确定进度条；failed 停在最后已知百分比并变红；连不上电脑就直说。
  */
 @Composable
-private fun ProgressRow(progress: RewriteProgressUi?) {
+private fun ProgressRow(progress: RewriteProgressUi?, queued: Boolean = false) {
     val failed = progress?.failed == true
     val offline = progress?.offline == true
     val fraction = progress?.fraction
@@ -490,7 +511,7 @@ private fun ProgressRow(progress: RewriteProgressUi?) {
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = progressLabel(fraction, failed, offline),
+            text = progressLabel(fraction, failed, offline, queued),
             style = MaterialTheme.typography.labelSmall,
             color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1
@@ -498,9 +519,15 @@ private fun ProgressRow(progress: RewriteProgressUi?) {
     }
 }
 
-private fun progressLabel(fraction: Float?, failed: Boolean, offline: Boolean): String = when {
+private fun progressLabel(
+    fraction: Float?,
+    failed: Boolean,
+    offline: Boolean,
+    queued: Boolean = false
+): String = when {
     offline -> "已记下，等电脑上线后自动重写"
     failed -> "重写失败"
+    fraction == null && queued -> "排队中"
     fraction == null -> "生成中…"
     else -> "${(fraction * 100).roundToInt()}%"
 }
@@ -625,8 +652,8 @@ private fun buttonLabel(mark: RewriteQueueItem?): String = when (mark?.status) {
 }
 
 private fun statusText(mark: RewriteQueueItem): String = when (mark.status) {
-    RewriteStatus.PENDING -> "已标记 · 待上传（再点一次取消）"
-    RewriteStatus.QUEUED -> "电脑已收到，排队重生中（再点一次可重发）"
+    RewriteStatus.PENDING -> "已标记 · 待上传（等电脑接收）"
+    RewriteStatus.QUEUED -> "电脑已收到 · 排队中"
     RewriteStatus.DONE -> "上次重写 ${formatTime(mark.updatedAt)}"
     RewriteStatus.FAILED -> "上次没成功：${mark.error ?: "未知原因"}"
     else -> ""

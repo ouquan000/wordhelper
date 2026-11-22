@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kaoyan.wordhelper.data.dao.RewriteQueueBreakdown
 import com.kaoyan.wordhelper.data.repository.SyncPhase
 import com.kaoyan.wordhelper.data.repository.SyncStatusSnapshot
 import com.kaoyan.wordhelper.ui.theme.FuzzyYellow
@@ -69,6 +70,7 @@ fun SyncStatusScreen(
     val snapshot by viewModel.status.collectAsStateWithLifecycle()
     val retrying by viewModel.retrying.collectAsStateWithLifecycle()
     val rewritePending by viewModel.rewritePending.collectAsStateWithLifecycle()
+    val rewriteQueueBreakdown by viewModel.rewriteQueueBreakdown.collectAsStateWithLifecycle()
     val toast by viewModel.toast.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -133,6 +135,7 @@ fun SyncStatusScreen(
             SyncInfoCard(
                 snapshot = snapshot,
                 rewritePending = rewritePending,
+                rewriteQueueBreakdown = rewriteQueueBreakdown,
                 nowMs = nowMs
             )
 
@@ -212,6 +215,7 @@ private fun StatusHeroCard(snapshot: SyncStatusSnapshot) {
 private fun SyncInfoCard(
     snapshot: SyncStatusSnapshot,
     rewritePending: Int,
+    rewriteQueueBreakdown: RewriteQueueBreakdown = RewriteQueueBreakdown(),
     nowMs: Long
 ) {
     BaseCard {
@@ -245,7 +249,10 @@ private fun SyncInfoCard(
                     value = "冲突 ${snapshot.lastConflictCount} / 清理 ${snapshot.lastTrimmedCount} / 重放 ${snapshot.lastReplayCount}"
                 )
             }
-            InfoRow(label = "待重写", value = "$rewritePending 条")
+            InfoRow(
+                label = "待重写",
+                value = "待上传 ${rewriteQueueBreakdown.pendingUpload} 条 · 电脑处理中 ${rewriteQueueBreakdown.processing} 条"
+            )
         }
     }
 }

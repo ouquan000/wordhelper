@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 import random
 import tempfile
@@ -103,6 +104,37 @@ def _atomic_write_json(path, data):
         raise
 
 
+# ------------------------------------------------------ 反馈份数（count）折算
+# 旧客户端一条反馈就是一条；新客户端可以把「同一次判断里按了几次」折成 count
+# 一起送上来。服务端只做温和放大：喊得多算加分，但不许把先验喊翻。
+FEEDBACK_COUNT_MIN = 1
+FEEDBACK_COUNT_MAX = 50
+# down 的增量一直是 up 的 1.2 倍（1.4.6 起就是 alpha+1.0 / beta+1.2），
+# count 只是在这个比例上等比放大，所以 count=1 时和旧行为逐位一致。
+DOWN_FACTOR = 1.2
+
+
+def weight_count(count):
+    """把外部传进来的 count 收敛成 [1, 50] 的整数；bool / 非整数 / 空 → 1。"""
+    if isinstance(count, bool) or not isinstance(count, int):
+        return FEEDBACK_COUNT_MIN
+    if count < FEEDBACK_COUNT_MIN:
+        return FEEDBACK_COUNT_MIN
+    if count > FEEDBACK_COUNT_MAX:
+        return FEEDBACK_COUNT_MAX
+    return count
+
+
+def feedback_weight(count=1):
+    """权重 = 1 + min(3.0, log2(max(1, count)))：1→1、2→2、4→3、8→4（封顶 4）。
+
+    用对数而不是线性：多喊两声该加分（一条反馈里按了 8 次确实比按 1 次更笃定），
+    但线性会让一条 50 次的反馈直接盖掉整个先验，调参就失去意义。
+    """
+    n = max(1, weight_count(count))
+    return 1.0 + min(3.0, math.log2(n))
+
+
 class Profile:
     """单个 data/profile.json 的读写句柄；线程安全。"""
 
@@ -168,24 +200,39 @@ class Profile:
 
     # ---------------------------------------------------------- 更新
 
-    def update_feedback(self, method, vote, event_id=None):
-        """up → alpha+1.0；down → beta+1.2。未知方法/票型抛 ValueError。"""
+    def update_feedback(self, method, vote, event_id=None, count=1):
+        """up → alpha 加权重；down → beta 加权重×1.2。未知方法/票型抛 ValueError。
+
+        `count`（1.4.6 兼容 / 1.5.2 起支持）：同一张卡一次点了 👍 几次就记几票。
+        权重 = 1 + min(3.0, log2(max(1, count)))，即 1→1、2→2、4→3、8→4、再往上封顶 4。
+        用 log 是为了「多喊两声算加分，但不许把一个词的先验喊翻」——线性会让狂点
+        十次直接压过所有基础先验。count 缺省（老客户端不传）= 1，行为与 1.4.6 完全一致。
+        """
         method = normalize_method(method)
         if not method:
             raise ValueError("未知方法：%s" % method)
         vote = str(vote or "").strip().lower()
         if vote not in ("up", "down"):
             raise ValueError("vote 只能是 up/down")
+        weight = feedback_weight(count)
         with self._lock:
             if not self._mark_seen("feedbackIds", event_id):
                 return {"applied": False, "reason": "duplicate", "method": method, "vote": vote}
             row = self._data["methods"][method]
             if vote == "up":
-                row["alpha"] = float(row["alpha"]) + 1.0
+                row["alpha"] = float(row["alpha"]) + weight
             else:
-                row["beta"] = float(row["beta"]) + 1.2
+                row["beta"] = float(row["beta"]) + weight * DOWN_FACTOR
             self.save()
-            return {"applied": True, "method": method, "vote": vote, "alpha": row["alpha"], "beta": row["beta"]}
+            return {
+                "applied": True,
+                "method": method,
+                "vote": vote,
+                "count": weight_count(count),
+                "weight": weight,
+                "alpha": row["alpha"],
+                "beta": row["beta"],
+            }
 
     def update_memory_signal(self, method, event, event_id=None):
         """retained → alpha+1.5；lapsed → beta+1.5。"""
@@ -255,8 +302,8 @@ def get_profile(path=None):
         return instance
 
 
-def update_feedback(method, vote, event_id=None):
-    return get_profile().update_feedback(method, vote, event_id=event_id)
+def update_feedback(method, vote, event_id=None, count=1):
+    return get_profile().update_feedback(method, vote, event_id=event_id, count=count)
 
 
 def update_memory_signal(method, event, event_id=None):

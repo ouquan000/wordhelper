@@ -77,7 +77,7 @@ import kotlinx.coroutines.launch
         RewriteFeedback::class,
         RewriteSkippedResult::class
     ],
-    version = 24,
+    version = 25,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -141,7 +141,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_20_21,
                     MIGRATION_21_22,
                     MIGRATION_22_23,
-                    MIGRATION_23_24
+                    MIGRATION_23_24,
+                    MIGRATION_24_25
                 )
                 .build()
         }
@@ -988,6 +989,18 @@ abstract class AppDatabase : RoomDatabase() {
          * 把 tb_progress 收敛到「当前词书 + 生词本」，其他书从零。
          * 只在 MIGRATION_17_18 里调用，所以不写成 suspend、也不看 DataStore。
          */
+        /**
+         * 1.5.2（DB 25）：点赞++ 的累计次数。
+         *
+         * 只加一列，旧行默认 1；不重建表、不动唯一索引，升级后原来的 👍/👎 一条不丢。
+         */
+        @VisibleForTesting
+        val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureColumnExists(db, "tb_feedback", "count", "INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
         private fun cleanupForeignProgress(db: SupportSQLiteDatabase) {
             val activeBookId = queryLongOrZero(db, "SELECT id FROM tb_book WHERE is_active = 1 LIMIT 1")
             if (activeBookId <= 0L) return
