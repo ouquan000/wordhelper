@@ -325,9 +325,23 @@ class RewriteRepository(
     suspend fun markOf(wordId: Long, bookId: Long): RewriteQueueItem? =
         queueDao.getVisibleForBook(wordId, bookId)
 
-    /** 用户点了「跳过」：先落库，进程死掉也能在下次加载时补插回队列。 */
+    /**
+     * 用户点了「跳过」：先落库，进程死掉也能在下次加载时补插回队列。
+     *
+     * 1.5.2v2：必须是幂等的。旧实现把 UPDATE 行数 == 1 当成成功，
+     * 但 needs_reinsert 已经是 1 时 SQLite 可能返回 0；用户会看到
+     * 「重写记录已变化」而卡片不动。现在只要行还在就算成功，
+     * 更新本身只是把标记再次置 1。
+     */
     suspend fun markNeedsReinsert(wordId: Long, bookId: Long): Boolean =
-        queueWriteMutex.withLock { queueDao.markNeedsReinsert(wordId, bookId) == 1 }
+        queueWriteMutex.withLock {
+            if (queueDao.getForBook(wordId, bookId) == null) {
+                false
+            } else {
+                queueDao.markNeedsReinsert(wordId, bookId)
+                true
+            }
+        }
 
     /**
      * 用户真的作答了这张重写卡（三键 / 太简单 / 拼写成功），才结清欠卡。
@@ -693,7 +707,8 @@ class RewriteRepository(
      */
     suspend fun sync(): RewriteSyncResult {
         return syncMutex.withLock {
-        if (!hasAddress()) return@withLock RewriteSyncResult(error = NO_ADDRESS)
+        val address = hasAddress()
+        if (!address) return@withLock RewriteSyncResult(error = NO_ADDRESS)
         // 先问一句「你是谁、会什么」：老服务端没有 /health（回 404）就是「电脑端版本过旧」，
         // 这一句比等后面某个接口 404 更早、更准。探测本身失败不阻塞主流程。
         probeHealth()
@@ -742,12 +757,22 @@ class RewriteRepository(
             .getOrNull()?.let { feedbackIssue = it }
 
         var cursor = settingsRepository.rewriteResultCursor()
+        // 服务端在“写结果”和“抬 highWater”之间存在一瞬窗口：游标可能已经停在
+        // 最新 seq，但对应结果还没落盘，下一次 since=最新 seq 就再也拉不到它。
+        // 本地还有未结清的排队行时，第一页故意回看 1 条，补上这个边界。
+        val replayFrom = if (queueDao.getOpen().isNotEmpty() && cursor.seq > 0) {
+            cursor.seq - 1
+        } else {
+            cursor.seq
+        }
+        var firstPage = true
         var seqRewound = false
         var skippedChecked = false
         val legacyRewoundSeq = settingsRepository.rewriteLegacyRewoundSeq()
         val skippedAttempts = HashMap<Long, Int>()
         repeat(MAX_PAGES) {
-            val since = cursor.seq
+            val since = if (firstPage) replayFrom else cursor.seq
+            firstPage = false
             val outcome = send("/rewrite/results?since=$since&limit=50")
             if (outcome.kind != RetryPolicy.Kind.OK) {
                 // 404 → 版本过旧；429 → 限流（带剩余秒数）；连不上 → 电脑没连上。
@@ -1091,7 +1116,8 @@ class RewriteRepository(
         //   旧逻辑在这里接受合法 clientId，然后把 bookId 当 0 写进全局那份，
         //   结果就是「撤销后迟到的结果穿透到主书」（1.4.5 验收 P0）。
         // - 有队列行：精确匹配 clientId，不靠词头猜词书。
-        val mark = matchRewriteResultMark(queueDao.getAllForWord(wordId), dto.clientId) ?: return null
+        val allMarks = queueDao.getAllForWord(wordId)
+        val mark = matchRewriteResultMark(allMarks, dto.clientId) ?: return null
         // 已完成的请求被回放，不覆盖当前卡背，也不让迟到的失败倒退状态。
         if (mark.status == RewriteStatus.DONE) return wordId
         if (mark.status == RewriteStatus.FAILED && mark.error == "用户停止") return null
@@ -1640,12 +1666,18 @@ class RewriteRepository(
         }
         // 有 pin 时，明文 HTTP+IP 一律不进候选：token 只能发给 pin 证明过的 HTTPS
         // 或已受信 HTTPS 域名。没有 pin 的老配置保持原行为。
-        val safeOrigins = if (lanPin.isNotBlank()) {
+        // 只有「带口令」时才必须把明文 HTTP+IP 排除在候选外；
+        // 未配对（token 为空）时没有秘密可泄露，显式填的 http://10.0.2.2:8765
+        // 必须能作为 HTTPS 自发现失败后的兜底，否则模拟器/首次配对会出现
+        // 「有地址但一个请求都发不出去」的假死。
+        val safeOrigins = if (lanPin.isNotBlank() && settings.cardBackToken.isNotBlank()) {
             origins.filterNot { isPlainHttpIpOrigin(it) }
         } else {
             origins
         }
-        if (safeOrigins.isEmpty()) return null
+        if (safeOrigins.isEmpty()) {
+            return null
+        }
         return CardBackEndpoint(
             origins = safeOrigins,
             token = settings.cardBackToken,

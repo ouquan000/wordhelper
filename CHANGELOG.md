@@ -2,6 +2,36 @@
 
 本文件记录「不爱背单词」（wordhelper）的版本变更。日期为北京时间。
 
+## v1.5.2v2（2026-11-22）— 跳过真正换卡，词性小标不再只认拉丁字母
+
+v1.5.2 的发版验收漏了两处：二次重写后「跳过」仍可能卡住，记忆思路里的词性小标只识别正文里显式写出的 `v.` / `n.`，`correlate` 这种「动词是……名词是……」的中文描述型完全没有标。v1.5.2v2 按真实点击逐轮修，不再用合成 requestId 或单张 `increase` 截图代替验收。
+
+### 一、跳过：去掉会话锁存，改成数据库当前行 + 本轮 requestId
+
+- `LearningViewModel` 删除 `_skipRewriteLatchedWordId` 及所有 session 锁存；`currentRewriteSkipAvailability` 只由「当前词 + 当前书 + 当前队列行 + 本轮 requestId」推导，App 重启、进程回收、从别的页面回来都不再出现「按钮看着能点、实际弹已经在等结果」。
+- `RewriteRepository.markNeedsReinsert` 改成幂等：只要队列行还在就返回成功，不再把 SQLite 的 0 行更新误判为「重写记录已变化」。
+- `skipCurrentWordForRewrite` 先清掉上一轮遗留的 `pendingReinsertWords` / `restoredWaitingRewriteWords`，再把词放进等待集合并立即从会话队列前移；同一词可以无限轮「重写 → 跳过 → 回队」。
+- 队列末尾/重启恢复：`syncRewriteNow` 在没有当前卡但仍有等待词时主动 `loadQueueForBook`；等待页的「现在刷新」会重新构建队列，`needs_reinsert` 的 DONE 行能插回来。
+
+### 二、结果回收：游标回看 1 条 + 回环地址不再被身份校验误杀
+
+- 服务端「写结果」和「抬 highWater」之间有一瞬窗口，App 可能把游标停到最新 seq 却漏掉刚写入的那条。本地还有排队行时，结果分页第一页故意回看 1 条，补上这个边界。
+- `OriginTrustPolicy.needsProof` 排除 `127.0.0.1` / `localhost` / `::1`；模拟器 `adb reverse` 或本机调试在 `instance_id` 落库后不会再被 `/identity` 挑战静默拦住。
+- 未配对（token 为空）时允许显式填写的明文 HTTP 私网地址作为兜底；带 token 时仍严格禁止公网明文 HTTP。
+
+### 三、记忆思路词性小标：中文描述型也能贴
+
+- 新增 `MemoryPosTagger`：识别显式 `v.` / `n.` / `adj.` 等 token，也识别「动词 / 名词 / 形容词 / 副词……」等中文词性词，并用该词 meaning 里真实存在的词性集合做约束，宁缺毋滥。
+- `LearningScreen` 的 `WordMemorySection` 改为按 `TaggedLine` 分段渲染：有词性的行在行首放 `PosBadge`，正文里已有的显式 token 继续用同色 SpanStyle 染色；箭头 `→` / `——>` 后的义项串按 meaning 的词性顺序分组，跨词性共用义项不丢。
+- 真实样本覆盖 `correlate`（v./n. 中文描述）、`extract`（v./n. 共用「摘录」）、`increase`（双词性）、`create`（清洗后单 `v.`）；`MemoryPosTaggerTest` 14 项。
+
+### 四、验证
+
+- Android：`testProdDebugUnitTest`、`testDevDebugUnitTest` 各 **46 套件 / 326 项 / 0 失败**（含跳过状态机、循环地址、词性解析、点赞封顶）。
+- 后端：`tools/rewrite-service` 214 项 unittest + 30 项 unverified 全过；`tools/cardback-editor` 六组脚本 health 31 / hardening 21 / sync_store 67 / sync_epoch 20 / cards_publish 36 / rate_limit_vip 48 全过。
+- 模拟器 `mf`（API 34，1080×2340）真实点击验收：同一词 `appropriate` 连续三轮「重写 → 跳过」，分别立刻换到 `evaporate`、`system`、`manifest`；每轮结果回来后在队列中插回，第三轮在 14/14 队列末尾由「现在刷新」插回，重启后仍能看到该卡；`create` 只显示一个 `v.` 徽章，`appropriate` 的 `adj.` 行内小标可见。
+- 版本 `versionCode 29` / `versionName 1.5.2v2`；prod APK 24,117,350 B（SHA-256 `4E32DBAF2E4DDF833EA17267EBE9B76AABDE11C3933F202A73D48F1D8971C354`），dev APK 24,117,366 B（SHA-256 `235869395818600AB3576D1EEEA1208C1398D76C8E7912F9D02EBE3117A1CD40`）；两包证书 SHA-256 均为 `963533138ed73e92e9a2859f80fdf18becb4ee5a83132c55634b965d7164ba1c`。
+
 ## v1.5.2（2026-11-22）— 二次重写不再卡、点赞能连击、公网限流不误伤
 
 这一版按体检报告里最影响使用的几处动手：二次重写后「跳过」偶尔点不动、底部「认识」绿框带到下一张、公网 429 后「立即重试」空转，以及词库释义和卡背排版的脏数据。顺手把「点赞」做成可以连击累加的解压交互。
