@@ -145,8 +145,10 @@ import com.kaoyan.wordhelper.ui.viewmodel.LearningViewModel
 import com.kaoyan.wordhelper.ui.viewmodel.SkipRewriteAvailability
 import com.kaoyan.wordhelper.util.DateUtils
 import com.kaoyan.wordhelper.util.MeaningTextFormatter
+import com.kaoyan.wordhelper.util.MemoryPosTagger
 import com.kaoyan.wordhelper.util.PronunciationPlayer
 import com.kaoyan.wordhelper.util.Sm2Scheduler
+import com.kaoyan.wordhelper.util.TaggedLine
 import com.kaoyan.wordhelper.util.rememberPronunciationPlayer
 import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
@@ -1607,6 +1609,8 @@ private fun CardBackBlockView(
         CardBackBlockType.MEMORY -> WordMemorySection(
             title = block.resolvedTitle,
             content = word.approach,
+            // 词性小标的合法性来源：只贴 meaning 里真实存在的词性。
+            meaning = word.meaning,
             titleColor = sectionLabelColor,
             titleStyle = sectionLabelStyle,
             contentStyle = MaterialTheme.typography.bodyMedium.scaledBy(bodyStyle).copy(
@@ -1796,7 +1800,9 @@ private fun WordMemorySection(
     /** MEMORY 左侧 2dp 渐变引导线；搭配区不需要。 */
     showGuide: Boolean = false,
     /** true = 英文亮白、中文柔和灰白（搭配）；false = 整行正文色（思路）。 */
-    bilingual: Boolean = false
+    bilingual: Boolean = false,
+    /** 词性小标的合法性来源（该词的 meaning）；空 = 一个标都不贴。 */
+    meaning: String = ""
 ) {
     val palette = LocalHoloCardPalette.current
     val lines = remember(content) {
@@ -1805,6 +1811,10 @@ private fun WordMemorySection(
             .filter { it.isNotEmpty() }
     }
     if (lines.isEmpty()) return
+    // 思路区逐行贴词性小标：只认正文写明的信号 + meaning 里确实有的词性，判不准就留白。
+    val taggedLines = remember(content, meaning, bilingual) {
+        if (bilingual) emptyList() else MemoryPosTagger.tag(content, meaning)
+    }
     // 换版（正文或原因变了）自动收起：别把上一版的原因留在新正文旁边。
     var reasonExpanded by remember(content, unverifiedReason, unverified) { mutableStateOf(false) }
     val reason = unverifiedReason?.takeIf { it.isNotBlank() }
@@ -1873,17 +1883,19 @@ private fun WordMemorySection(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(if (bilingual) 7.dp else 9.dp)
             ) {
-                lines.forEach { line ->
-                    if (bilingual) {
+                if (bilingual) {
+                    lines.forEach { line ->
                         BilingualLine(
                             text = line,
                             style = contentStyle,
                             strongColor = palette.ink,
                             softColor = palette.subInk
                         )
-                    } else {
-                        MemoryLineWithPosBadges(
-                            text = line,
+                    }
+                } else {
+                    taggedLines.forEach { tagged ->
+                        MemoryPosLine(
+                            line = tagged,
                             style = contentStyle,
                             color = palette.ink,
                             dark = palette.dark
@@ -1896,51 +1908,69 @@ private fun WordMemorySection(
 }
 
 /**
- * 记忆思路正文里的行内词性小标（1.5.2）。
+ * 记忆思路正文的一行（1.5.2：行首词性小标）。
  *
- * 只替换正文中本来就写出来的 `v.` / `n.` 等前缀，不猜测、不乱贴；
- * 用 InlineTextContent 复用顶部 PosBadge 的配色和圆角。
+ * pos 来自 [MemoryPosTagger]：它只认「正文里写明的信号 + meaning 里确实有的词性」，
+ * 判不出就返回 null，此时按纯文字渲染、不贴标（宁缺毋滥）。
+ * 正文里本来就写着的 `v.` / `adj.` 之类显式 token 仍用 SpanStyle 染色，
+ * 这里不用 InlineTextContent（当前 Compose 版本没有该 API），改用行首徽章。
  */
 @Composable
-private fun MemoryLineWithPosBadges(
-    text: String,
+private fun MemoryPosLine(
+    line: TaggedLine,
     style: TextStyle,
     color: Color,
     dark: Boolean
 ) {
-    val matches = remember(text) { MEMORY_POS_TOKEN.findAll(text).toList() }
-    if (matches.isEmpty()) {
-        Text(text = text, style = style, color = color)
+    val annotated = remember(line, dark) { buildTaggedText(line, dark) }
+    val pos = line.pos
+    if (pos == null) {
+        Text(text = annotated, style = style, color = color)
         return
     }
-    val annotated = buildAnnotatedString {
+    // 徽章贴行首：Top 对齐 + 略微下移，行高由正文决定，不会被徽章撑大。
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        PosBadge(pos = pos, dark = dark, modifier = Modifier.padding(top = 3.dp))
+        Text(
+            text = annotated,
+            style = style,
+            color = color,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+/** 把显式 token（v. / n. / adj. 等）染成与 PosBadge 一致的颜色，其余部分保持正文色。 */
+private fun buildTaggedText(line: TaggedLine, dark: Boolean): AnnotatedString {
+    val text = line.text
+    if (line.inlineSpans.isEmpty()) return AnnotatedString(text)
+    return buildAnnotatedString {
         var cursor = 0
-        matches.forEach { match ->
-            append(text.substring(cursor, match.range.first))
-            val badgeColor = posBadgeColor(match.groupValues[1].lowercase(), dark)
+        for (span in line.inlineSpans) {
+            if (span.start < cursor || span.start >= span.end || span.end > text.length) continue
+            append(text.substring(cursor, span.start))
+            val token = text.substring(span.start, span.end)
+            val tokenColor = posBadgeColor(token.lowercase(), dark)
             withStyle(
                 SpanStyle(
-                    color = badgeColor,
-                    background = badgeColor.copy(alpha = if (dark) 0.18f else 0.11f),
+                    color = tokenColor,
+                    background = tokenColor.copy(alpha = if (dark) 0.18f else 0.11f),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 0.sp
                 )
             ) {
-                append(match.value)
+                append(token)
             }
-            cursor = match.range.last + 1
+            cursor = span.end
         }
-        append(text.substring(cursor))
+        if (cursor < text.length) append(text.substring(cursor))
     }
-    Text(text = annotated, style = style, color = color)
 }
-
-/** 记忆思路正文里的行内词性标记：只认独立出现、后面跟空白的 v./n./adj. 等。 */
-private val MEMORY_POS_TOKEN = Regex(
-    """(?<![A-Za-z])((?:n|v|vt|vi|adj|adv|prep|conj|pron|num|art|int|aux)\.)(?=\s)""",
-    RegexOption.IGNORE_CASE
-)
 
 /**
  * 「未复核」角标（1.4.7.1）。

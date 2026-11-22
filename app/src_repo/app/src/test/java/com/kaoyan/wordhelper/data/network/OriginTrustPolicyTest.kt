@@ -18,6 +18,13 @@ class OriginTrustPolicyTest {
     }
 
     @Test
+    fun `loopback never needs proof even after pairing`() {
+        assertFalse(OriginTrustPolicy.needsProof("http://127.0.0.1:8765", "cb-abc"))
+        assertFalse(OriginTrustPolicy.needsProof("http://localhost:8765", "cb-abc"))
+        assertFalse(OriginTrustPolicy.needsProof("http://[::1]:8765", "cb-abc"))
+    }
+
+    @Test
     fun `only 2xx can be remembered as last good`() {
         assertTrue(OriginTrustPolicy.canRememberSuccess(200))
         assertTrue(OriginTrustPolicy.canRememberSuccess(204))
