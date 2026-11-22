@@ -7,6 +7,7 @@ import com.kaoyan.wordhelper.KaoyanWordApp
 import com.kaoyan.wordhelper.data.repository.RewriteSyncResult
 import com.kaoyan.wordhelper.data.repository.SyncPhase
 import com.kaoyan.wordhelper.data.repository.SyncStatusSnapshot
+import com.kaoyan.wordhelper.data.dao.RewriteQueueBreakdown
 import com.kaoyan.wordhelper.data.repository.SyncStatusStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -38,6 +39,11 @@ class SyncStatusViewModel(application: Application) : AndroidViewModel(applicati
     val rewritePending: StateFlow<Int> = rewriteRepository.observeOpenCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
+    /** 1.5.2：待上传 / 电脑处理中分开显示。 */
+    val rewriteQueueBreakdown: StateFlow<RewriteQueueBreakdown> =
+        rewriteRepository.observeQueueBreakdown()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RewriteQueueBreakdown())
+
     private val _retrying = MutableStateFlow(false)
     val retrying: StateFlow<Boolean> = _retrying.asStateFlow()
 
@@ -68,6 +74,8 @@ class SyncStatusViewModel(application: Application) : AndroidViewModel(applicati
         SyncStatusStore.report(SyncPhase.CONNECTING)
         viewModelScope.launch {
             try {
+                // 1.5.2：先清本地冷却，否则「立即重试」在 429 冷却期里只是空转。
+                syncRepository.clearRateLimit()
                 val learning = runCatching { syncRepository.syncOnce() }
                     .getOrElse { Result.failure(it) }
                 val rewrite = runCatching { rewriteRepository.sync() }

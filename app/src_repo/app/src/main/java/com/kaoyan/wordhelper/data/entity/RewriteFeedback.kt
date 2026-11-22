@@ -45,6 +45,14 @@ data class RewriteFeedback(
     val approachRev: Int = 0,
     @ColumnInfo(name = "created_at")
     val createdAt: Long,
+    /**
+     * 1.5.2：同一条反馈被连点累加的次数。
+     *
+     * 👍 支持连击后不再每次插一行，而是把 1.5～2 秒内的连击合并到这一行里；
+     * 旧数据默认 1，和原来的「一次点击一条」完全等价。
+     */
+    @ColumnInfo(name = "count", defaultValue = "1")
+    val count: Int = 1,
     /** 0 = 还没发到电脑端，sync 时补发；1 = 已确认收到。 */
     val synced: Boolean = false
 )

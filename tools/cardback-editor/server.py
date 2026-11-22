@@ -55,7 +55,7 @@ PORT = DEFAULT_PORT
 # 升版本只改 SERVICE_VERSION；加/删能力才动 HEALTH_PROTOCOL 和 CAPABILITIES。
 SERVICE_NAME = "cardback-editor"  # /health 的 service 字段
 SERVICE_PRODUCT = "CardbackEditor"  # HTTP Server 头里的产品名
-SERVICE_VERSION = "1.5.0"
+SERVICE_VERSION = "1.5.2"
 SERVER_VERSION = "%s/%s" % (SERVICE_PRODUCT, SERVICE_VERSION)
 HEALTH_PROTOCOL = 1  # App 握手用：协议变了就说清楚，别靠字段猜
 
@@ -188,12 +188,23 @@ DISCOVERY_MAGIC = b"CARDBACK_EDITOR_DISCOVER_V1"
 # ---- 限流：只卡「会调模型 / 会改数据」的请求，普通读接口不限（手机轮询不受影响）。
 # (窗口秒数, 窗口内次数)；本机也计，否则额度漏了照样能刷穿。
 # 鉴权在限流之前：401 不消耗额度，隧道下别人拿不到口令也打不空你的预算。
+#
+# 1.5.2：额度按「这一枪是谁打的」分两档——
+#   * 公网匿名（没口令，走隧道进来的陌生人）：20/分钟、200/天，尽量小；
+#   * 自家请求（带合法 X-Cardback-Token，或本机 loopback 免票）：120/分钟、5000/天。
+#   分档的理由：一次批量发布 60 张卡是很正常的操作，20/分钟会把自家人也卡死；
+#   而 anonymous 那条线不能松，否则别人拿着公网地址就能把额度烧光。
 RATE_BUDGETS = ((60, 20), (86400, 200))
+RATE_BUDGETS_VIP = ((60, 120), (86400, 5000))
 RATE_LIMITED_PATHS = ("/api/publish", "/api/rollback")
 # /sync/* 单独一档：App 约 30 秒自动同步一次，还要容忍补发突发。
 # 120/min = 每 0.5 秒一次，正常同步（约 2 次/分钟）远远够；20000/天 ≈ 13.9 次/分钟。
+# VIP 档只往上放宽（App 补发一大坨时不至于被自己的桶挡住），绝不往下降。
 SYNC_RATE_BUDGETS = ((60, 120), (86400, 20000))
+SYNC_RATE_BUDGETS_VIP = ((60, 240), (86400, 40000))
 SYNC_RATE_LIMITED_PATHS = ("/sync/push", "/sync/pull")
+# 运维接口：清空内存里的限流桶。它自己**不占额度**——被锁在 429 外面就没法自救了。
+ADMIN_RESET_PATH = "/admin/rate-reset"
 _RATE_LOCK = threading.Lock()
 _RATE_HITS = {}
 
@@ -225,6 +236,11 @@ MOTION_FIELDS = (
 
 HISTORY_RE = re.compile(r"^cardback-(\d+)-(\d{8}-\d{6})(?:-(\d+))?\.json$")
 MAX_BODY = 4 * 1024 * 1024  # 4MB，够放几千个块了
+# 拒绝一个 POST 时，最多把这么点上行 body 读掉再关连接（1.5.2）。
+# 不读就 close，Windows 端会回 RST，客户端看到的是「连接被重置」而不是我们的
+# 401/429——手机和隧道那头会把它当成网络故障、反复重推。只丢有上限的一小段，
+# 既解决 RST，又不至于为匿名流量把 4MB 读进内存。
+DRAIN_LIMIT = 16 * 1024
 
 # 契约 §2「1.4.2 的默认块表」：11 个块，顺序照抄（EF_STATS 自带分隔线，别在它前面再放 DIVIDER）
 DEFAULT_BLOCKS = (
@@ -368,6 +384,60 @@ def _is_loopback_peer(peer):
         return peer in ("localhost", "localhost.")
 
 
+# ---- 真实客户端 IP（1.5.2）：cloudflared 回源时 TCP peer 恒为 127.0.0.1，
+# 只看 peer 等于让全网设备挤进同一个桶（一台刷爆，全都没得用）。
+# 但反过来「无条件认头」更糟：直连 8765 的人随手写个 CF-Connecting-IP 就能换桶绕过限流。
+# 所以只有 loopback peer（也就是必经本机反代/隧道）才信这两个头。
+CF_IP_HEADER = "CF-Connecting-IP"
+FORWARDED_FOR_HEADER = "X-Forwarded-For"
+
+
+def _parse_ip(text):
+    """把 header 里的一个地址段洗成规范 IP 字符串；不是合法 IP 就返回 ""。"""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    if text.startswith("["):  # [2001:db8::1] 或 [2001:db8::1]:443
+        text = text[1:].split("]", 1)[0]
+    elif text.count(":") == 1 and "." in text:  # 1.2.3.4:5678（带端口的 IPv4）
+        text = text.split(":", 1)[0]
+    try:
+        return str(ipaddress.ip_address(text))
+    except ValueError:
+        return ""
+
+
+def client_ip(handler):
+    """限流键用的「真实客户端 IP」。
+
+    - TCP peer 不是 loopback：直接用 peer，**忽略**一切转发头（防伪造绕过）；
+    - TCP peer 是 loopback：说明请求经本机隧道/反代进来，按可信度取
+      CF-Connecting-IP → X-Forwarded-For 第一个地址；两个都拿不出合法 IP 才回落 peer。
+    """
+    peer = ""
+    try:
+        peer = str(getattr(handler, "client_address", ("", ""))[0] or "")
+    except (IndexError, TypeError, AttributeError):
+        peer = ""
+    if not _is_loopback_peer(peer):
+        return peer
+    headers = getattr(handler, "headers", None)
+    if headers is None:
+        return peer
+    try:
+        direct = _parse_ip(headers.get(CF_IP_HEADER))
+        if direct:
+            return direct
+        forwarded = headers.get(FORWARDED_FOR_HEADER) or ""
+    except (AttributeError, TypeError):
+        return peer
+    for chunk in forwarded.split(","):
+        hop = _parse_ip(chunk)
+        if hop:
+            return hop
+    return peer
+
+
 def _origin_host_ok(host):
     host = (host or "").strip().lower().strip("[]")
     if not host:
@@ -406,16 +476,20 @@ def _origin_ok(origin):
     return _origin_host_ok(parts.hostname)
 
 
-def _rate_budget_for(method, path):
+def _rate_budget_for(method, path, vip=False):
     """返回 (桶名, 预算)；不需要限流时返回 (None, None)。
 
-    桶分开记，互不挤占：写接口 20/分钟，/sync/* 120/分钟。
+    桶分开记，互不挤占：写接口 20/分钟（VIP 120），/sync/* 120/分钟（VIP 240）。
     记录页 5 秒轮询的 /rewrite/status、/rewrite/records 不是 POST /rewrite*，不算。
+    `vip=True` 表示这一枪是自家打的（合法口令 / 本机 loopback），拿放宽的那一档。
     """
+    if path == ADMIN_RESET_PATH:
+        # 运维自救口：不占额度。被限流锁死时唯一还能用的就是它。
+        return None, None
     if (method == "POST" and path.startswith("/rewrite")) or path in RATE_LIMITED_PATHS:
-        return "write", RATE_BUDGETS
+        return "write", (RATE_BUDGETS_VIP if vip else RATE_BUDGETS)
     if path in SYNC_RATE_LIMITED_PATHS:
-        return "sync", SYNC_RATE_BUDGETS
+        return "sync", (SYNC_RATE_BUDGETS_VIP if vip else SYNC_RATE_BUDGETS)
     return None, None
 
 
@@ -445,9 +519,14 @@ def _prune_rate(now):
 
 
 def reset_rate_limits():
-    """清空限流计数（测试/排障用；运行中也能安全调用）。"""
+    """清空限流计数（测试 / 排障 / POST /admin/rate-reset 用）。
+
+    返回清掉的桶数（每个「客户端 IP × 桶」算一个），方便调用方自报清了多少。
+    """
     with _RATE_LOCK:
+        cleared = sum(len(entry.get("buckets", {})) for entry in _RATE_HITS.values())
         _RATE_HITS.clear()
+    return cleared
 
 
 def rate_limit_take(peer, now=None, budgets=None, bucket="default"):
@@ -1089,6 +1168,14 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return addr.is_private or addr.is_loopback or addr.is_link_local
 
+    def _client_ip(self):
+        """限流键用的真实客户端 IP —— 见模块级 client_ip()。
+
+        和 _peer() 分开：_peer() 是 TCP 层事实（隧道下永远是 127.0.0.1），
+        _client_ip() 才是「这一枪是谁打的」，限流必须按后者记。
+        """
+        return client_ip(self)
+
     def _post_origin_ok(self):
         """挡跨站 POST —— 尤其是 text/plain 那种不用预检的「简单请求」。"""
         origin = (self.headers.get("Origin") or "").strip()
@@ -1125,16 +1212,22 @@ class Handler(BaseHTTPRequestHandler):
             and self._is_private_peer()
             and bool((parse_qs(urlsplit(self.path).query).get("nonce") or [""])[0].strip())
         )
-        if not nonce_identity and not self._is_local() and not _token_ok(self.headers.get(TOKEN_HEADER, "")):
+        token_ok = _token_ok(self.headers.get(TOKEN_HEADER, ""))
+        local = self._is_local()
+        if not nonce_identity and not local and not token_ok:
             self._reject(401, "token_required", "核对口令")
             return True
         if method == "POST" and not self._post_origin_ok():
             self._reject(403, "origin_rejected", "只接受本机或局域网页面发起的写请求")
             return True
-        bucket, budgets = _rate_budget_for(method, path)
+        # 1.5.2：额度分两档。自家请求（合法口令 / 本机 loopback 免票 / nonce 挑战）
+        # 走 VIP 档；公网匿名请求维持原来的低额度。判定必须放在鉴权之后——
+        # token_ok 是这里才知道的，而且 401 的请求也已经 return 了，不花计数。
+        vip = token_ok or local or nonce_identity
+        bucket, budgets = _rate_budget_for(method, path, vip=vip)
         if bucket is not None:
             ok, retry_after, window = rate_limit_take(
-                self._peer(), budgets=budgets, bucket=bucket
+                self._client_ip(), budgets=budgets, bucket=bucket
             )
             if not ok:
                 self._reject(
@@ -1181,6 +1274,10 @@ class Handler(BaseHTTPRequestHandler):
             # 否则匿名扫端口的流量就能拿来放大内存/带宽。被拒时直接关连接、不读 body：
             # 客户端可能还在写，此时它看到 broken pipe 是预期内的（可接受，也好过放大）。
             if self._guard("POST", path):
+                # 拒绝之后关连接前，先把这一段上行 body 读掉（1.5.2）：
+                # 带着未读数据 close 会让 Windows 回 RST，客户端看到「连接被重置」
+                # 而不是我们的 401/429，手机端会当成网络故障反复重推。
+                self._discard_body()
                 self.close_connection = True
                 return
             body, error = self._read_body()
@@ -1228,6 +1325,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._fail(404, "没有这个路径：%s" % path)
 
     def _route_post(self, path, body):
+        if path == ADMIN_RESET_PATH:
+            return self._api_rate_reset()
         if path.startswith("/rewrite"):
             return self._rewrite_passthrough("POST", body)
         if path == "/sync/push":
@@ -1243,6 +1342,21 @@ class Handler(BaseHTTPRequestHandler):
         return self._fail(404, "没有这个路径：%s" % path)
 
     # ------------------------------------------------------------ 接口
+
+    def _api_rate_reset(self):
+        """POST /admin/rate-reset（1.5.2）：清空内存里所有限流桶。
+
+        为什么本机也要求口令：这条接口能把别人的额度清零。若 loopback 免票就能调，
+        电脑上随便打开的哪个网页（或者隧道另一端的陌生人）一句 fetch 就破了限流。
+        所以这里**绕过 _guard 的免票口径，自己再验一次 token**。
+
+        该路径不参与限流计数（见 _rate_budget_for）——被 429 锁死的时候，
+        它是唯一还能把自己救出来的入口。
+        """
+        if not _token_ok(self.headers.get(TOKEN_HEADER, "")):
+            self._reject(401, "token_required", "核对口令")
+            return
+        self._send_json({"ok": True, "cleared": reset_rate_limits()})
 
     def _api_health(self):
         """GET /health：给 App 握手，也给人 curl 一眼看服务状态。
@@ -1502,6 +1616,39 @@ class Handler(BaseHTTPRequestHandler):
         return data, _content_type(rel, ext)
 
     # ------------------------------------------------------------ 读写 helper
+
+    def _discard_body(self):
+        """把还没读的上行 body 丢掉，好让「拒绝之后关连接」变成正常 FIN 而不是 RST。
+
+        1.5.0 起鉴权先于读 body（不想为匿名流量把 4MB 读进内存），被拒时直接 close。
+        但客户端往往已经把 body 发出去了：带着未读数据的 socket 一 close，Windows 就
+        回 RST，客户端拿到的是 ConnectionAbortedError，而不是我们的 401/429。
+        所以关之前把有上限的一小段（DRAIN_LIMIT）读掉——超限就照旧硬关，
+        不为了这个把大包读进内存。读也设了短超时，极端客户端卡住不会拖死线程。
+        """
+        if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            return
+        if length <= 0 or length > DRAIN_LIMIT:
+            return
+        sock = getattr(self, "connection", None)
+        old_timeout = None
+        try:
+            if sock is not None:
+                old_timeout = sock.gettimeout()
+                sock.settimeout(0.5)
+            self.rfile.read(length)
+        except (OSError, ValueError):
+            pass
+        finally:
+            if sock is not None and old_timeout is not None:
+                try:
+                    sock.settimeout(old_timeout)
+                except OSError:
+                    pass
 
     def _read_body(self):
         if self.headers.get("Transfer-Encoding", "").lower() == "chunked":

@@ -18,7 +18,8 @@ class SkipRewriteAvailabilityTest {
         wordId: Long = 11L,
         bookId: Long = 2L,
         status: String = RewriteStatus.QUEUED,
-        needsReinsert: Boolean = false
+        needsReinsert: Boolean = false,
+        requestId: String = "r1"
     ) = RewriteQueueItem(
         wordId = wordId,
         bookId = bookId,
@@ -26,7 +27,8 @@ class SkipRewriteAvailabilityTest {
         status = status,
         needsReinsert = needsReinsert,
         createdAt = 1L,
-        updatedAt = 1L
+        updatedAt = 1L,
+        requestId = requestId
     )
 
     @Test
@@ -52,7 +54,21 @@ class SkipRewriteAvailabilityTest {
         // 已经合格的稿按既有插回规则处理：入口保留但不可点，命令侧也只提示不换词。
         assertEquals(
             SkipRewriteAvailability.RESULT_READY,
-            skipRewriteAvailability(11L, 2L, mark(status = RewriteStatus.DONE, needsReinsert = true))
+            skipRewriteAvailability(
+                11L,
+                2L,
+                mark(status = RewriteStatus.DONE, needsReinsert = true, requestId = "r1"),
+                activeRequestId = "r1"
+            )
+        )
+    }
+
+    @Test
+    fun historicalDoneWithoutActiveRoundIsStillAvailable() {
+        // 冷启动/进程重建后 activeRequestId 为空：库里的历史 DONE 不能把跳过锁死。
+        assertEquals(
+            SkipRewriteAvailability.AVAILABLE,
+            skipRewriteAvailability(11L, 2L, mark(status = RewriteStatus.DONE, requestId = "old"))
         )
     }
 
@@ -80,6 +96,50 @@ class SkipRewriteAvailabilityTest {
             SkipRewriteAvailability.AVAILABLE,
             skipRewriteAvailability(11L, 2L, mark(bookId = 0L))
         )
+    }
+
+    @Test
+    fun oldDoneRoundDoesNotDisableTheNewRound() {
+        val oldDone = mark(status = RewriteStatus.DONE, requestId = "r1")
+        // 刚点下新一轮、requestId 还没落库：空串代表「本轮已开始」。
+        assertEquals(
+            SkipRewriteAvailability.AVAILABLE,
+            skipRewriteAvailability(11L, 2L, oldDone, activeRequestId = "")
+        )
+        // 新一轮已拿到 requestId，但库里还是上一轮的 DONE：必须仍可跳过。
+        assertEquals(
+            SkipRewriteAvailability.AVAILABLE,
+            skipRewriteAvailability(11L, 2L, oldDone, activeRequestId = "r2")
+        )
+    }
+
+    @Test
+    fun onlyCurrentRoundResultIsReady() {
+        val currentDone = mark(status = RewriteStatus.DONE, requestId = "r2")
+        assertEquals(
+            SkipRewriteAvailability.RESULT_READY,
+            skipRewriteAvailability(11L, 2L, currentDone, activeRequestId = "r2")
+        )
+    }
+
+    @Test
+    fun threeRewriteSkipRoundsStayClickable() {
+        // 同一词连续三轮「重写 → 跳过」：每轮开始都先把 activeRequestId 置空/换新，
+        // 旧轮的 DONE 不能把新一轮的跳过入口置灰。
+        for (round in 1..3) {
+            val previous = mark(status = RewriteStatus.DONE, requestId = "r${round - 1}")
+            assertEquals(
+                "round $round before enqueue",
+                SkipRewriteAvailability.AVAILABLE,
+                skipRewriteAvailability(11L, 2L, previous, activeRequestId = "")
+            )
+            val current = mark(status = RewriteStatus.PENDING, requestId = "r$round")
+            assertEquals(
+                "round $round pending",
+                SkipRewriteAvailability.AVAILABLE,
+                skipRewriteAvailability(11L, 2L, current, activeRequestId = "r$round")
+            )
+        }
     }
 
     @Test

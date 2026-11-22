@@ -2,6 +2,52 @@
 
 本文件记录「不爱背单词」（wordhelper）的版本变更。日期为北京时间。
 
+## v1.5.2（2026-11-22）— 二次重写不再卡、点赞能连击、公网限流不误伤
+
+这一版按体检报告里最影响使用的几处动手：二次重写后「跳过」偶尔点不动、底部「认识」绿框带到下一张、公网 429 后「立即重试」空转，以及词库释义和卡背排版的脏数据。顺手把「点赞」做成可以连击累加的解压交互。
+
+### 一、二次及多轮重写：四道闸门全部打通
+
+- 只有**本轮 requestId** 真的出了结果，才会把「跳过」置灰；旧一轮的 DONE 不再挡住新一轮。
+- 新一轮开始时会把该词从 `sessionSkippedWordIds` 移除，同一词在一个 session 内可以无限轮「重写 → 跳过 → 回队」。
+- `launchSubmit` 重入不再静默吞点击，会提示「正在处理上一步，稍等一下」；`putIfAbsent` 命中已有等待任务时提示「这张卡已经在等结果了」并刷新计数。
+- 新增 `SkipRewriteAvailabilityTest` 覆盖旧 DONE 不挡新轮、仅本轮结果 READY、连续三轮 AVAILABLE。
+
+### 二、底部「认识」绿框不再跨词残留
+
+- `RecognitionActionPanel` 增加 `resetKey`（当前词 id），`LaunchedEffect` 和每次 `submit()` 后都把 `cursorIndex` 清回 `-1`；评分提交后不会把绿色外发光游标带到下一张卡。
+
+### 三、公网 429：真实 IP + VIP 通道 + 可复位
+
+- 后端限流优先读 `CF-Connecting-IP`（再 `X-Forwarded-For`，最后 peer IP），cloudflared 回源不再让所有公网设备共用一个 `127.0.0.1` 桶。
+- 携带合法 `X-Cardback-Token` 的自家请求走 VIP write 桶（120 次/分钟、5000 次/天）；无 token 的公网请求维持 20 次/分钟、200 次/天。
+- 新增需 token 的 `POST /admin/rate-reset`；`SERVICE_VERSION` 升到 `1.5.2`。
+- Android「立即重试」先清 `SyncRepository.rateLimitedUntil` 再发同步，不再冷却期内空转；「我的」与「同步状态」页把模糊的待重写数拆成「待上传 X 条 · 电脑处理中 Y 条」。
+
+### 四、词库脏释义清洗
+
+- 清洗 9 个同一词性重复前缀的词（`create`、`bishop`、`agitate`、`society`、`conduct`、`yield`、`property`、`spare`、`cast`），并把同词性内部完全重复的义项保守去重；跨词性共用义项（如 `extract` 的 `v. 摘录` / `n. 摘录`）保留。
+- 新增 `MeaningTextFormatter`，渲染层同时做合并同类词性、同词性内义项去重兜底；`create` 现在只显示一行 `v.`。
+- 两份 `cet6_cards.json`（`content/seed` 与 App `assets`）同步为 v3 / 5228 词，语义一致。
+
+### 五、卡背「记忆思路」行内词性小标
+
+- 记忆思路正文里本来就写出的 `v.` / `n.` / `adj.` 等前缀，改为同色行内小标（`AnnotatedString` + `SpanStyle`，10sp、半透明底色），不猜、不乱贴；没有词性标记的正文保持原样，不撑行距。
+
+### 六、点赞 ++ 连击
+
+- 卡背「👍 有帮助」支持连续点击累加，按钮实时显示当前词累计赞数（如 `👍 5`），每次点击有缩放弹跳 + 轻震动。
+- 连续点击只在本地累加，停手 1.8 秒或切走卡片时合并成**一条**反馈写入 `tb_feedback`（`count` 字段）并走原批量同步队列；不会每点一次发一次请求。
+- Room 升到 **25**，新增无损 `MIGRATION_24_25`（`tb_feedback.count INTEGER NOT NULL DEFAULT 1`）；不删任何表、不碰 `tb_progress` / `tb_word_memory`。
+- 后端 `POST /rewrite/feedback` 兼容可选 `count`（1..50），`profile` 权重按 `1 + min(3, log2(count))` 平滑，狂点不会把统计模型冲崩。
+
+### 七、验证
+
+- 后端：`tools/rewrite-service` 214 项 unittest 全过、`test_unverified.py` 30 项全过；`tools/cardback-editor` 六组脚本全过（health 31 / hardening 21 / sync_store 67 / sync_epoch 20 / cards_publish 36 / rate_limit_vip 48）。
+- Android：`testProdDebugUnitTest`、`testDevDebugUnitTest` 各 **311 项，0 失败**（新增跳过三轮、释义去重、词性解析、点赞封顶等用例）。
+- 模拟器 `mf`（API 34，1080×2340）实测：`increase` 卡背双词性徽章正常、连点三次显示 `👍 3` 并弹「已记录：这条思路有帮助 +3」、重写后状态只显示「已标记 · 待上传（等电脑接收）」、点「跳过」进入下一张、评分后底部无绿框残留。
+- 版本 `versionCode 28` / `versionName 1.5.2`；prod APK 24,117,354 B（SHA-256 `54E00190363A6DE04B78D01FEBE57F4BB3A5BC65DD2A6D4BFDAEA4E317138DDD`），dev APK 24,117,362 B（SHA-256 `710BEEB236937B3848C1763F43611009FE13A1875628CC75CAA5360EFA6960E6`）；两包证书 SHA-256 均为 `963533138ed73e92e9a2859f80fdf18becb4ee5a83132c55634b965d7164ba1c`。
+
 ## v1.5.1（2026-11-22）— 重写按钮不再装死，换网络也能自己找路
 
 这一版主要修「点重写思路没反应」：不是按钮坏了，是后台同步把本地排队写库的锁占住了。模拟器复现时局域网秒回，所以看起来正常；真机上校园网 IP 一变、公网超时，后台同步要拖几十秒，点击就一直停在「重写思路」，既不落库也不提示。

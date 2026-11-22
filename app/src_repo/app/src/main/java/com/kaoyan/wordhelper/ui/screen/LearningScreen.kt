@@ -50,6 +50,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -143,6 +144,7 @@ import com.kaoyan.wordhelper.ui.viewmodel.LearningCheckInUiState
 import com.kaoyan.wordhelper.ui.viewmodel.LearningViewModel
 import com.kaoyan.wordhelper.ui.viewmodel.SkipRewriteAvailability
 import com.kaoyan.wordhelper.util.DateUtils
+import com.kaoyan.wordhelper.util.MeaningTextFormatter
 import com.kaoyan.wordhelper.util.PronunciationPlayer
 import com.kaoyan.wordhelper.util.Sm2Scheduler
 import com.kaoyan.wordhelper.util.rememberPronunciationPlayer
@@ -210,6 +212,14 @@ fun LearningScreen(
     val rewriteUpdatedTick by viewModel.rewriteUpdatedTick.collectAsStateWithLifecycle()
     // 1.4.6：这条思路的 👍/👎 状态（null = 还没表过态）
     val rewriteFeedback by viewModel.currentRewriteFeedback.collectAsStateWithLifecycle()
+    // 1.5.2：连击点赞的累计值 + 还没落库的临时增量
+    val rewriteLikeCount by viewModel.currentRewriteLikeCount.collectAsStateWithLifecycle()
+    val pendingLikeBurst by viewModel.pendingLikeBurst.collectAsStateWithLifecycle()
+    val pendingLikeDelta = if (pendingLikeBurst.wordId == currentWord?.id) pendingLikeBurst.delta else 0
+    LaunchedEffect(currentWord?.id) { viewModel.flushPendingLikes() }
+    DisposableEffect(Unit) {
+        onDispose { viewModel.flushPendingLikes() }
+    }
     // 回到前台就补发断网时的标记、拉电脑端跑完的结果；没网也只是静默跳过。
     LifecycleResumeEffect(Unit) {
         viewModel.syncRewrite()
@@ -623,7 +633,9 @@ fun LearningScreen(
                                                     )
                                                     RewriteFeedbackRow(
                                                         feedback = rewriteFeedback,
-                                                        onFeedback = viewModel::submitRewriteFeedback,
+                                                        likeCount = rewriteLikeCount,
+                                                        pendingLikeDelta = pendingLikeDelta,
+                                                        onFeedback = viewModel::tapRewriteFeedback,
                                                         enabled = live && !isAnswering
                                                     )
                                                 }
@@ -640,6 +652,7 @@ fun LearningScreen(
                             RecognitionActionPanel(
                                 isAnswering = isAnswering,
                                 isNewWordsBook = isNewWordsBook,
+                                resetKey = currentWord?.id,
                                 onAgain = { handleAnswer(StudyRating.AGAIN) },
                                 onHard = { handleAnswer(StudyRating.HARD) },
                                 onGood = {
@@ -913,6 +926,7 @@ private fun ReviewPressureReliefBanner(
 private fun RecognitionActionPanel(
     isAnswering: Boolean,
     isNewWordsBook: Boolean,
+    resetKey: Any? = null,
     onAgain: () -> Unit,
     onHard: () -> Unit,
     onGood: () -> Unit,
@@ -933,6 +947,11 @@ private fun RecognitionActionPanel(
     var trackWidthPx by remember { mutableFloatStateOf(0f) }
     // 纵向越界作废：游标不是消失，而是平滑淡出 + 缩到 0.82（只改 layer，不重排）。
     var gestureCanceled by remember { mutableStateOf(false) }
+    // 1.5.2：换词/换模式后清掉上一张卡的绿框，评分提交后也立刻复位。
+    LaunchedEffect(resetKey) {
+        cursorIndex = -1
+        gestureCanceled = false
+    }
     val cursorAlpha by animateFloatAsState(
         targetValue = if (gestureCanceled) 0f else 1f,
         animationSpec = tween(durationMillis = 160),
@@ -955,6 +974,8 @@ private fun RecognitionActionPanel(
             1 -> currentOnHard()
             else -> currentOnGood()
         }
+        cursorIndex = -1
+        gestureCanceled = false
     }
 
     Row(
@@ -1752,7 +1773,8 @@ private val MEANING_POS_BREAK = Regex(
 
 private fun formatMeaningByPos(meaning: String): String {
     if (meaning.isBlank()) return meaning
-    return meaning.replace(MEANING_POS_BREAK, "\n").trim()
+    // 1.5.2：统一交给纯 Kotlin 的 MeaningTextFormatter，合并同词性、去重同义项。
+    return MeaningTextFormatter.displayText(meaning)
 }
 
 /**
@@ -1860,10 +1882,11 @@ private fun WordMemorySection(
                             softColor = palette.subInk
                         )
                     } else {
-                        Text(
+                        MemoryLineWithPosBadges(
                             text = line,
                             style = contentStyle,
-                            color = palette.ink
+                            color = palette.ink,
+                            dark = palette.dark
                         )
                     }
                 }
@@ -1871,6 +1894,53 @@ private fun WordMemorySection(
         }
     }
 }
+
+/**
+ * 记忆思路正文里的行内词性小标（1.5.2）。
+ *
+ * 只替换正文中本来就写出来的 `v.` / `n.` 等前缀，不猜测、不乱贴；
+ * 用 InlineTextContent 复用顶部 PosBadge 的配色和圆角。
+ */
+@Composable
+private fun MemoryLineWithPosBadges(
+    text: String,
+    style: TextStyle,
+    color: Color,
+    dark: Boolean
+) {
+    val matches = remember(text) { MEMORY_POS_TOKEN.findAll(text).toList() }
+    if (matches.isEmpty()) {
+        Text(text = text, style = style, color = color)
+        return
+    }
+    val annotated = buildAnnotatedString {
+        var cursor = 0
+        matches.forEach { match ->
+            append(text.substring(cursor, match.range.first))
+            val badgeColor = posBadgeColor(match.groupValues[1].lowercase(), dark)
+            withStyle(
+                SpanStyle(
+                    color = badgeColor,
+                    background = badgeColor.copy(alpha = if (dark) 0.18f else 0.11f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.sp
+                )
+            ) {
+                append(match.value)
+            }
+            cursor = match.range.last + 1
+        }
+        append(text.substring(cursor))
+    }
+    Text(text = annotated, style = style, color = color)
+}
+
+/** 记忆思路正文里的行内词性标记：只认独立出现、后面跟空白的 v./n./adj. 等。 */
+private val MEMORY_POS_TOKEN = Regex(
+    """(?<![A-Za-z])((?:n|v|vt|vi|adj|adv|prep|conj|pron|num|art|int|aux)\.)(?=\s)""",
+    RegexOption.IGNORE_CASE
+)
 
 /**
  * 「未复核」角标（1.4.7.1）。
@@ -2038,7 +2108,7 @@ private fun MeaningBlock(
 ) {
     val palette = LocalHoloCardPalette.current
     val lines = remember(meaning) {
-        formatMeaningByPos(meaning).split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        MeaningTextFormatter.displayLines(meaning)
     }
     val meaningStyle = MaterialTheme.typography.bodyLarge.copy(
         fontSize = 19.sp,
@@ -2048,10 +2118,8 @@ private fun MeaningBlock(
     val meaningColor = overrideColor ?: palette.ink
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         lines.forEach { line ->
-            val match = MEANING_POS_LINE.find(line)
-            if (match != null) {
-                val pos = match.groupValues[1].lowercase()
-                val rest = match.groupValues[2].trim()
+            val pos = line.pos?.lowercase()
+            if (pos != null) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.Top,
@@ -2059,14 +2127,14 @@ private fun MeaningBlock(
                 ) {
                     PosBadge(pos = pos, dark = palette.dark, modifier = Modifier.padding(top = 3.dp))
                     Text(
-                        text = rest,
+                        text = line.text,
                         style = meaningStyle,
                         color = meaningColor,
                         modifier = Modifier.weight(1f)
                     )
                 }
             } else {
-                Text(text = line, style = meaningStyle, color = meaningColor)
+                Text(text = line.text, style = meaningStyle, color = meaningColor)
             }
         }
     }

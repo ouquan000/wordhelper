@@ -8,7 +8,8 @@
 
 覆盖：
   1. 401 不消耗写额度（先鉴权后限流）；
-  2. 带 token 时 429 仍生效，带 Retry-After；
+  2. 带 token 时 429 仍生效，带 Retry-After（1.5.2：带合法 token 走 VIP 档 120/5000，
+     公网匿名档仍是 20/200，等级细节见 test_rate_limit_vip.py）；
   3. 写额度与 /sync 额度分桶，互不挤占；
   4. /sync/* 阈值 120/min、20000/day，30 秒一次的 App 同步不受影响；
   5. /health 不参与限流。
@@ -80,10 +81,10 @@ def use_temp_data_dir(tmp):
     return server.ensure_token()
 
 
-def post_json(path, token="", cf=False, payload=None):
+def post_json(path, token="", cf=False, payload=None, cf_ip=None):
     headers = {"Content-Type": "application/json"}
     if cf:
-        headers["CF-Connecting-IP"] = CF
+        headers["CF-Connecting-IP"] = cf_ip or CF
     if token:
         headers[server.TOKEN_HEADER] = token
     return http(path, method="POST", headers=headers, body=json.dumps(payload or {}))
@@ -109,22 +110,31 @@ def test_auth_before_rate(token):
 
 
 def test_write_rate_limit(token):
+    """写额度（1.5.2 起分档）：带合法 token 走 VIP 档 120/分钟、5000/天。"""
     server.reset_rate_limits()
+    limit = server.RATE_BUDGETS_VIP[0][1]
     codes = []
-    for i in range(20):
+    for _ in range(limit):
         status, _, _ = post_json("/api/publish", token=token, cf=True, payload={})
         codes.append(status)
-    check("前 20 次写请求都进到路由（400）", set(codes) == {400}, repr(sorted(set(codes))))
+    check("VIP 前 %d 次写请求都进到路由（400）" % limit,
+          set(codes) == {400}, repr(sorted(set(codes))))
 
     status, headers, body = post_json("/api/publish", token=token, cf=True, payload={})
-    check("第 21 次写请求 429", status == 429, "→ %d" % status)
+    check("VIP 第 %d 次写请求 429" % (limit + 1), status == 429, "→ %d" % status)
     data = json.loads(body)
     check("429 error=rate_limited", data.get("error") == "rate_limited", repr(data))
     retry = headers.get("Retry-After") or headers.get("retry-after")
     check("429 带 Retry-After 且 >= 1", bool(retry) and int(retry) >= 1, repr(retry))
-    check("429 文案用的是写额度 20/200", "20 次" in body and "200 次" in body, body[:200])
+    check("429 文案用的是 VIP 写额度 120/5000",
+          "120 次" in body and "5000 次" in body, body[:200])
 
-    # 写额度耗尽不影响 /sync 桶
+    # 限流键已从 TCP peer 换成真实客户端 IP：换个 CF-Connecting-IP 就是另一个桶。
+    status, _, _ = post_json("/api/publish", token=token, cf=True,
+                             payload={}, cf_ip="203.0.113.9")
+    check("换个公网 IP 不吃同一个桶（400 而不是 429）", status == 400, "→ %d" % status)
+
+    # 写额度耗尽不影响 /sync 桶（第 1 个 IP 的 sync 桶是干净的）
     status, _, _ = http(
         "/sync/pull?since_rev=999999",
         headers={"CF-Connecting-IP": CF, server.TOKEN_HEADER: token},

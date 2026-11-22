@@ -465,7 +465,12 @@ def _marks(body):
 
 
 def _feedback(body):
-    """卡背 👍/👎（1.4.6）：落盘，同时喂跨词画像与样例池。"""
+    """卡背 👍/👎（1.4.6）：落盘，同时喂跨词画像与样例池。
+
+    1.5.2 起每条反馈可带可选整数 count（1..50，缺省 1），表示「这条票代表几次」：
+    卡背连点两下不是手抖就是真觉得有用。count 只放大画像里的这一次投票，
+    不改变 clientId 幂等语义；旧客户端不带 count 时行为与 1.4.6 完全一致。
+    """
     payload = _read_body(body)
     items = payload.get("items") if isinstance(payload, dict) else payload
     if not isinstance(items, list):
@@ -476,8 +481,8 @@ def _feedback(body):
     log("收反馈 %d 条：接受 %d 拒绝 %d" % (len(items), len(accepted), len(rejected)))
     # add_feedback 对重复 clientId 也回 accepted，不能拿返回值判断新增；
     # 直接用原始 items，profile/exemplars 各自按 id 幂等。
-    # store 只拒收「非对象 / 缺 clientId / rating 非 up/down」，下面三道校验天然排除，
-    # 被拒的非法反馈不会算进画像。
+    # store 只拒收「非对象 / 缺 clientId / rating 非 up/down / count 非法」，下面几道校验
+    # 天然排除，被拒的非法反馈不会算进画像。
     try:
         current = _profile_state()
         for raw in items:
@@ -486,8 +491,11 @@ def _feedback(body):
             client_id = str(raw.get("clientId") or "").strip()
             method = profile.normalize_method(raw.get("method"))
             rating = str(raw.get("rating") or "").strip().lower()
+            count, count_error = store_mod.feedback_count(raw.get("count"))
+            if count_error:  # store 已把这条拒了，画像不能偷偷记票
+                continue
             if client_id and method and rating in ("up", "down"):
-                current.update_feedback(method, rating, event_id="feedback:" + client_id)
+                current.update_feedback(method, rating, event_id="feedback:" + client_id, count=count)
         _exemplar_state().ingest_feedback(items)
     except Exception as exc:  # noqa: BLE001 - 旁路学习失败不能影响已落盘的反馈
         log("更新画像/样例失败：%r" % (exc,))

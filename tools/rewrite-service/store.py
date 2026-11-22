@@ -172,6 +172,26 @@ def stage_of(item):
     return _STATE_STAGE.get(item.get("state") or "pending", "queued")
 
 
+FEEDBACK_COUNT_MIN = 1
+FEEDBACK_COUNT_MAX = 50
+
+
+def feedback_count(value):
+    """把反馈里的可选 `count` 规范化：缺省 1，必须是 1..50 的整数。
+
+    返回 (count, reason)：reason 非空表示这条的 count 非法，调用方拒掉这一条即可。
+    bool 不算整数（`True`/`False` 是 JSON 里的 true/false，不是 1/0）；字符串也不收，
+    免得手机端把 "3" 和 3 混着发出来两边记成不同口径。
+    """
+    if value is None:
+        return FEEDBACK_COUNT_MIN, ""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0, "count 只能是 1..50 的整数"
+    if value < FEEDBACK_COUNT_MIN or value > FEEDBACK_COUNT_MAX:
+        return 0, "count 只能是 1..50 的整数"
+    return value, ""
+
+
 class Store:
     def __init__(self, data_dir):
         self.data_dir = data_dir
@@ -303,6 +323,10 @@ class Store:
         反馈是旁路数据，只追加、不碰队列。手机断网会把同一批重推，
         所以按 clientId 去重：重复的算「已接受」，但不会再写一行。
         返回 (accepted, rejected)，形状和 add_marks 保持一致。
+
+        每条可选 `count`（1.5.2 起）：同一张卡一次按了几次 👍/👎。缺省 1，
+        合法范围 1..50；非法（0、51、true、字符串……）整条拒掉，不影响同批其它条。
+        未知字段照旧原样透传（record = dict(raw)），落盘行里一定有 count 和 receivedAt。
         """
         accepted, rejected = [], []
         with self._lock:
@@ -321,11 +345,17 @@ class Store:
                     if rating not in ("up", "down"):
                         rejected.append({"clientId": client_id, "reason": "rating 只能是 up/down"})
                         continue
+                    # count 可选（1.5.2）：老客户端不发就按 1 记；发了就必须是 1..50 的整数
+                    count, count_error = feedback_count(raw.get("count"))
+                    if count_error:
+                        rejected.append({"clientId": client_id, "reason": count_error})
+                        continue
                     if client_id in self._feedback_ids:
                         accepted.append(client_id)  # 幂等：之前收过了
                         continue
                     record = dict(raw)
                     record["rating"] = rating
+                    record["count"] = count
                     record["receivedAt"] = _now()
                     # print 自带换行：不手写转义，避免不同编辑器把换行写歪
                     print(json.dumps(record, ensure_ascii=False), file=fh)

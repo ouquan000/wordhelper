@@ -7,6 +7,7 @@ import com.kaoyan.wordhelper.data.dao.BookDao
 import com.kaoyan.wordhelper.data.dao.BookMemoryDao
 import com.kaoyan.wordhelper.data.dao.RewriteFeedbackDao
 import com.kaoyan.wordhelper.data.dao.RewriteQueueDao
+import com.kaoyan.wordhelper.data.dao.RewriteQueueBreakdown
 import com.kaoyan.wordhelper.data.dao.RewriteSkippedDao
 import com.kaoyan.wordhelper.data.dao.WordDao
 import com.kaoyan.wordhelper.data.dao.WordMemoryDao
@@ -300,6 +301,9 @@ class RewriteRepository(
 
     fun observeOpenCount(): Flow<Int> = queueDao.observeOpenCount()
 
+    /** 1.5.2：待上传 / 电脑处理中分开显示，别再给一个糊在一起的数字。 */
+    fun observeQueueBreakdown(): Flow<RewriteQueueBreakdown> = queueDao.observeQueueBreakdown()
+
     /** 1.4.6.1：当前这本书还有几条重写在排队/等结果（完成判定以它为准）。 */
     fun observeOpenCountForBook(bookId: Long): Flow<Int> = queueDao.observeOpenCountForBook(bookId)
 
@@ -431,6 +435,12 @@ class RewriteRepository(
         }
         return wordMemoryDao.getByWordId(wordId)?.method.orEmpty()
     }
+
+    /**
+     * 当前本词本书这条队列行的 requestId；用于区分「本轮新请求」和上一轮遗留的 DONE。
+     */
+    suspend fun requestIdOf(wordId: Long, bookId: Long): String? =
+        queueDao.getForBook(wordId, bookId)?.requestId
 
     /**
      * 打标记并立刻尝试上传。返回 true 表示已发到电脑（status=queued）；
@@ -881,6 +891,10 @@ class RewriteRepository(
     fun observeFeedback(wordId: Long, bookId: Long): Flow<List<RewriteFeedback>> =
         feedbackDao.observeForWord(wordId, bookId)
 
+    /** 1.5.2：当前这一版思路的累计赞数，用来显示「👍 5」。 */
+    fun observeLikeCount(wordId: Long, bookId: Long, approachRev: Int): Flow<Int> =
+        feedbackDao.observeLikeCount(wordId, bookId, approachRev.coerceAtLeast(0))
+
     /** 只取「当前这一版思路」上的态度；换版后返回 null，允许重新评价。 */
     fun observeFeedbackRating(wordId: Long, bookId: Long, approachRev: Int): Flow<String?> =
         feedbackDao.observeRatingForRevision(wordId, bookId, approachRev)
@@ -899,9 +913,31 @@ class RewriteRepository(
         model: String,
         instruction: String,
         bookId: Long = 0L,
-        approachRev: Int = 0
+        approachRev: Int = 0,
+        /** 1.5.2 点赞++：本次合并进来的连击次数（1..50）。 */
+        count: Int = 1
     ): Boolean {
         if (!RewriteFeedbackRating.isValid(rating)) return false
+        val safeRev = approachRev.coerceAtLeast(0)
+        val safeCount = count.coerceIn(1, MAX_FEEDBACK_BURST)
+        val now = System.currentTimeMillis()
+
+        // 👍 是累加：同一版思路只保留一行，连击加进 count。
+        // 👎 仍然是一次表态，重复点不重复入库（唯一索引兜底）。
+        if (rating == RewriteFeedbackRating.UP) {
+            val existing = feedbackDao.find(wordId, bookId, rating, safeRev)
+            if (existing != null) {
+                // 累计值封顶 50，避免历史累计超过后端单条 1..50 的校验。
+                val nextCount = (existing.count + safeCount).coerceAtMost(MAX_FEEDBACK_BURST)
+                val added = nextCount - existing.count
+                if (added > 0) {
+                    feedbackDao.addCount(existing.id, added, now)
+                    runCatching { pushFeedback(feedbackDao.getUnsynced(FEEDBACK_BATCH)) }
+                }
+                return true
+            }
+        }
+
         val inserted = feedbackDao.insert(
             RewriteFeedback(
                 wordId = wordId,
@@ -912,8 +948,9 @@ class RewriteRepository(
                 method = method,
                 model = model,
                 instruction = instruction.take(MAX_FEEDBACK_CHARS),
-                approachRev = approachRev.coerceAtLeast(0),
-                createdAt = System.currentTimeMillis()
+                approachRev = safeRev,
+                createdAt = now,
+                count = if (rating == RewriteFeedbackRating.UP) safeCount else 1
             )
         )
         // -1 = 唯一索引挡下了（之前已经表过态），不用再发一次。
@@ -950,6 +987,7 @@ class RewriteRepository(
                     model = item.model,
                     instruction = item.instruction,
                     approachRev = item.approachRev,
+                    count = item.count,
                     createdAt = isoTime(item.createdAt)
                 )
             }
@@ -1865,6 +1903,8 @@ class RewriteRepository(
         val instruction: String,
         /** 这一版思路的版本号；电脑端只做记录，不参与生成。 */
         val approachRev: Int = 0,
+        /** 1.5.2：连击合并后的次数；旧服务端会忽略未知字段，不影响兼容。 */
+        val count: Int = 1,
         val createdAt: String?
     )
 
@@ -1917,6 +1957,9 @@ class RewriteRepository(
 
         /** 一次补发/补拉多少条，别把一页请求撑太大。 */
         private const val FEEDBACK_BATCH = 50
+
+        /** 1.5.2：单次连击合并的上限，和后端 1..50 的校验对齐。 */
+        private const val MAX_FEEDBACK_BURST = FeedbackBurstPolicy.MAX_COUNT
         private const val SKIPPED_RETRY_LIMIT = 20
 
         /** 反馈正文最多带这么多字（思路可能很长，电脑端只需要够判断就行）。 */
