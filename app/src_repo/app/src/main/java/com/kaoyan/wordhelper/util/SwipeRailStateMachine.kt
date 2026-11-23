@@ -38,13 +38,13 @@ internal class SwipeRailStateMachine(private val originX: Float, private val ori
         }
     }
 
-    fun hold(elapsedMillis: Long, width: Float, optionCount: Int): Boolean {
+    fun hold(elapsedMillis: Long, width: Float, optionCount: Int, fingerX: Float = lastX): Boolean {
         if (phase != Phase.Waiting || elapsedMillis < HOLD_MILLIS || width <= 0f || optionCount <= 0) {
             return false
         }
         this.width = width
         this.optionCount = optionCount
-        openingX = lastX
+        openingX = fingerX
         selection = Selection(hit(openingX))
         phase = Phase.Tracking
         return true

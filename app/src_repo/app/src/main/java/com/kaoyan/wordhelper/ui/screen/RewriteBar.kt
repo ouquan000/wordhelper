@@ -343,11 +343,12 @@ private fun ActionPill(
                     fun inArea(position: Offset): Offset = area.localPositionOf(button, position) / density
                     val origin = inArea(down.position)
                     val machine = SwipeRailStateMachine(origin.x, origin.y)
+                    var fingerX = origin.x
                     var lockedOptions: List<RailOption>? = null
 
-                    fun lock(elapsed: Long) {
+                    fun lock(elapsed: Long, fingerX: Float) {
                         val available = SwipeRailStateMachine.displayOrder(currentOptions, control == RailControl.Down || control == RailControl.Rewrite)
-                        if (machine.hold(elapsed, area.size.width / density, available.size)) {
+                        if (machine.hold(elapsed, area.size.width / density, available.size, fingerX)) {
                             lockedOptions = available
                             currentHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             publish(OpenRail(control, available, checkNotNull(machine.selection)))
@@ -363,7 +364,7 @@ private fun ActionPill(
                             awaitPointerEvent(PointerEventPass.Main)
                         }
                         if (event == null) {
-                            lock(SwipeRailStateMachine.HOLD_MILLIS)
+                            lock(SwipeRailStateMachine.HOLD_MILLIS, fingerX)
                             if (lockedOptions == null) break
                             continue
                         }
@@ -382,10 +383,9 @@ private fun ActionPill(
                         }
                         val elapsed = change.uptimeMillis - down.uptimeMillis
                         val point = inArea(change.position)
+                        fingerX = point.x
                         if (elapsed >= SwipeRailStateMachine.HOLD_MILLIS && lockedOptions == null) {
-                            machine.move(point.x, point.y)
-                            if (machine.yielded) break
-                            lock(elapsed)
+                            lock(elapsed, fingerX)
                         }
                         val before = machine.selection
                         machine.move(point.x, point.y)

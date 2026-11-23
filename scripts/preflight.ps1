@@ -21,7 +21,13 @@ try {
         $limits.Add($matches[2],[int]$matches[1])
     }
     $count=0
-    foreach ($file in $files | Where-Object {$_ -match '\.(kt|py)$'}) {
+    $lineFiles=$files
+    if ($AllowDirty) {
+        $lineFiles+=@(git -c core.quotepath=false ls-files --others --exclude-standard)
+        if ($LASTEXITCODE -ne 0) {throw '未跟踪文件清单失败'}
+    }
+    foreach ($file in $lineFiles | Where-Object {$_ -match '\.(kt|py)$'}) {
+        if ($AllowDirty -and !(Test-Path -LiteralPath $file)) {continue}
         $lines=[IO.File]::ReadAllLines((Join-Path $r $file)).Length
         $limit=if ($limits.ContainsKey($file)) {$limits[$file]} else {450}
         if ($lines -gt $limit) {throw "行数超限：$file $lines > $limit"}

@@ -24,6 +24,14 @@ class SwipeRailStateMachineTest {
     }
 
     @Test
+    fun holdUsesLatestPointEvenWhenItCrossesASegmentBeforeTheDeadline() {
+        val rail = SwipeRailStateMachine(78f, 20f)
+        rail.move(81f, 20f)
+        assertTrue(rail.hold(180, 320f, 4))
+        assertEquals(Release.Commit(1), rail.release(181))
+    }
+
+    @Test
     fun rightHandOrderPlacesPrimaryAtTheRightEdge() {
         val choices = listOf("primary", "second", "third")
         assertEquals(choices.reversed(), SwipeRailStateMachine.displayOrder(choices, true))
