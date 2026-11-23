@@ -1,4 +1,0 @@
-{"kind":"launch","pid":35208,"port":63361,"exe":"D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-32116\\system-powershell-router-missing\\run\\wb2api.exe"}
-{"kind":"http","pid":35208,"method":"GET","path":"/healthz"}
-{"kind":"http","pid":35208,"method":"GET","path":"/healthz"}
-{"kind":"exit","pid":35208,"stopped":true}

@@ -99,3 +99,7 @@ artifacts/
 
 # ── 基线定妆照只保留在云盘交付包，不进 Git ──
 baseline/
+
+# 工程门禁与本机交付物
+*.apk
+.preflight-*/

@@ -1,1 +1,0 @@
-{"kind":"powershell","argv":["-NoProfile","-ExecutionPolicy","Bypass","-File","D:\\deepseek_v4.1flash1017\\thebigfish\\tools\\wb-config-sanitize.ps1","-Dir","D:\\deepseek harness\\work_anki_enligish\\docs\\wb-gateway-repair-20261107\\round1\\.runtime-g34-9996\\startup-sanitize-fail\\run\\.","-LogPath","D:\\Apps\\Bot\\health\\wb-guard.log","-Quiet"]}

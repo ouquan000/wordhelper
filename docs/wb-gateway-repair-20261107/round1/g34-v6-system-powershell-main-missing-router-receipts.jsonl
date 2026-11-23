@@ -1,4 +1,0 @@
-{"kind":"launch","port":62967,"exe":"C:\\Program Files\\nodejs\\node.EXE","pid":34324}
-{"kind":"http","method":"GET","path":"/_router/status","pid":34324}
-{"kind":"http","method":"GET","path":"/_router/status","pid":34324}
-{"kind":"exit","stopped":true,"pid":34324}
