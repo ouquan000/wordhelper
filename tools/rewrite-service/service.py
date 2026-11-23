@@ -61,7 +61,7 @@ BATCH_ENABLED = os.environ.get("BATCH_MODE", "0").strip().lower() not in (
 )
 MAX_LOG_BYTES = 2 * 1024 * 1024
 #: 服务版本。1.5.3 起了点踩结构化 / 手改锁定 / 闲时洗词三件事，面板按它判断功能有没有。
-SERVICE_VERSION = "1.5.3"
+SERVICE_VERSION = "1.5.3v2"
 CAPABILITIES = ("rewrite_scoped",)
 
 _state = {"store": None, "threads": [], "startedAt": "", "ready": False}

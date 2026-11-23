@@ -426,6 +426,16 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** 1.5.3v2：当前词有没有「上一版」可恢复（编辑弹窗里的恢复按钮据此亮灭）。 */
+    val memoryEditCanRestore: StateFlow<Boolean> = combine(activeBook, _currentWord) { book, word ->
+        (book?.id ?: 0L) to word
+    }
+        .flatMapLatest { (bookId, word) ->
+            if (word == null) flowOf(false)
+            else rewriteRepository.observePrevApproach(word.id, bookId).map { !it.isNullOrBlank() }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     /**
      * 1.4.7.1：当前这版思路的「未复核」标记（服务端 unverified + reason）。
      * 和 [liveApproach] 用同一套按书回退规则，角标永远跟着正文走；
@@ -979,6 +989,42 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /** 1.5.3v2：把当前手改思路回退到上一版（撤销胶囊的替代，放在编辑弹窗内）。 */
+    fun restoreMemoryEdit() {
+        val word = _currentWord.value ?: return
+        val bookId = activeBook.value?.id ?: 0L
+        if (bookId <= 0L) return
+        viewModelScope.launch {
+            runCatching {
+                var restored = false
+                database.withTransaction {
+                    val existing = database.bookMemoryDao().getForBook(word.id, bookId) ?: return@withTransaction
+                    val prev = existing.prevApproach?.trim().orEmpty()
+                    if (prev.isBlank()) return@withTransaction
+                    database.bookMemoryDao().upsert(
+                        existing.copy(
+                            approach = prev,
+                            prevApproach = null,
+                            prevMethod = null,
+                            method = existing.prevMethod ?: existing.method,
+                            updatedAt = System.currentTimeMillis(),
+                            source = WordMemory.SOURCE_USER,
+                            rev = existing.rev + 1,
+                            unverified = false,
+                            unverifiedReason = null
+                        )
+                    )
+                    restored = true
+                }
+                restored
+            }.onSuccess { restored ->
+                _message.value = if (restored) "已恢复上一版" else "没有可恢复的上一版了"
+            }.onFailure {
+                _message.value = "恢复失败：${it.message ?: "数据库写入异常"}"
+            }
+        }
+    }
+
     /** 1.5.3：免洗金牌开关。本地立即生效，电脑端后台尽力同步。 */
     fun toggleMemoryLock() {
         val word = _currentWord.value ?: return
@@ -994,13 +1040,16 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                         updatedAt = System.currentTimeMillis()
                     )
                 )
-            }.onSuccess {
+            }.onSuccess { lockId ->
                 _message.value = if (locked) "已锁定：闲时洗词不会覆盖这份助记" else "已解锁"
                 launch {
                     val synced = runCatching {
                         rewriteRepository.setMemoryLock(word.id, bookId, locked)
                     }.getOrDefault(false)
-                    if (!synced) {
+                    if (synced) {
+                        // 1.5.3v2 C5：锁已推到电脑端，标记 synced=1，不再重复补发。
+                        runCatching { database.memoryLockDao().markSynced(lockId) }
+                    } else {
                         _message.value = if (locked) {
                             "已本地锁定，电脑端稍后自动同步"
                         } else {
@@ -1270,6 +1319,11 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             syncRewriteNow()
             val after = rewriteRepository.markOf(word.id, bookId)?.status
             pendingTerminalSync = after != RewriteStatus.DONE && after != RewriteStatus.FAILED
+            // 1.5.3v2 C1：本轮重写已 DONE 落地展示，清理该词的活跃 requestId，
+            // 让 skipRewriteAvailability 落到 NO_MARK，右下角「跳过」彻底收回。
+            if (after == RewriteStatus.DONE) {
+                _activeRewriteRequestIds.update { it - word.id }
+            }
         }
     }
 

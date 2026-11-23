@@ -20,6 +20,10 @@ interface BookMemoryDao {
     @Query("SELECT method FROM tb_book_memory WHERE word_id = :wordId AND book_id = :bookId LIMIT 1")
     fun observeMethodForBook(wordId: Long, bookId: Long): Flow<String?>
 
+    /** 1.5.3v2：上一版思路（手改前保留），「恢复上一版」按钮据此判断可不可点。 */
+    @Query("SELECT prev_approach FROM tb_book_memory WHERE word_id = :wordId AND book_id = :bookId LIMIT 1")
+    fun observePrevApproachForBook(wordId: Long, bookId: Long): Flow<String?>
+
     /** 这本书当前思路的版本号；反馈要绑在用户真正看到的那一版上。 */
     @Query("SELECT rev FROM tb_book_memory WHERE word_id = :wordId AND book_id = :bookId LIMIT 1")
     fun observeRevForBook(wordId: Long, bookId: Long): Flow<Int?>

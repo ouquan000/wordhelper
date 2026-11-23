@@ -5,6 +5,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.kaoyan.wordhelper.data.dao.BookDao
 import com.kaoyan.wordhelper.data.dao.BookMemoryDao
+import com.kaoyan.wordhelper.data.dao.MemoryLockDao
 import com.kaoyan.wordhelper.data.dao.RewriteFeedbackDao
 import com.kaoyan.wordhelper.data.dao.RewriteQueueDao
 import com.kaoyan.wordhelper.data.dao.RewriteQueueBreakdown
@@ -45,6 +46,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -172,6 +174,8 @@ class RewriteRepository(
     private val feedbackDao: RewriteFeedbackDao,
     /** 1.4.6：同步时因认领不到/词还没导进来而跳过的结果，落在这里等补拉，不能静默丢。 */
     private val skippedDao: RewriteSkippedDao,
+    /** 1.5.3：免洗金牌本地锁；1.5.3v2 起同步时补发 synced=0 的锁。 */
+    private val memoryLockDao: MemoryLockDao,
     /** 只为把书名带上去：记录页按书筛，可书只在手机库里。 */
     private val bookDao: BookDao
 ) {
@@ -420,6 +424,12 @@ class RewriteRepository(
         if (bookId <= 0L) return global
         return bookMemoryDao.observeMethodForBook(wordId, bookId)
             .combine(global) { own, fallback -> own?.takeIf { it.isNotBlank() } ?: fallback }
+    }
+
+    /** 1.5.3v2：上一版思路（手改前保留）。bookId=0 的老路径没有按书副本，恒为 null。 */
+    fun observePrevApproach(wordId: Long, bookId: Long = 0L): Flow<String?> {
+        if (bookId <= 0L) return flowOf(null)
+        return bookMemoryDao.observePrevApproachForBook(wordId, bookId)
     }
 
     /**
@@ -755,6 +765,18 @@ class RewriteRepository(
         var feedbackIssue: String? = null
         runCatching { pushFeedback(feedbackDao.getUnsynced(FEEDBACK_BATCH)) }
             .getOrNull()?.let { feedbackIssue = it }
+
+        // 1.5.3v2 C5：离线点的「免洗金牌」补发。锁先落本地 synced=0，这里逐条推给电脑端，
+        // 成功才置 synced=1；失败留给下一次 sync 再试，绝不丢锁、也不阻塞主流程。
+        runCatching {
+            memoryLockDao.unsynced().forEach { lock ->
+                val ok = runCatching { setMemoryLock(lock.wordId, lock.bookId, lock.locked) }
+                    .getOrDefault(false)
+                if (ok) {
+                    memoryLockDao.markSynced(lock.id)
+                }
+            }
+        }
 
         var cursor = settingsRepository.rewriteResultCursor()
         // 服务端在“写结果”和“抬 highWater”之间存在一瞬窗口：游标可能已经停在
@@ -1152,6 +1174,12 @@ class RewriteRepository(
         // - 有队列行：精确匹配 clientId，不靠词头猜词书。
         val allMarks = queueDao.getAllForWord(wordId)
         val mark = matchRewriteResultMark(allMarks, dto.clientId) ?: return null
+        // 1.5.3v2 C5：worker 闲时洗词的结果不能覆盖用户锁定的「免洗金牌」。
+        // 本地锁是用户的最终决定，哪怕后端在锁同步到之前已经开洗，结果落地时也直接丢弃
+        // （仍然返回 wordId 认领结果、推进游标，只是不写卡背、不改状态）。
+        if (shouldSkipWorkerResult(dto.source, memoryLockDao.isLocked(wordId, mark.bookId))) {
+            return wordId
+        }
         // 已完成的请求被回放，不覆盖当前卡背，也不让迟到的失败倒退状态。
         if (mark.status == RewriteStatus.DONE) return wordId
         if (mark.status == RewriteStatus.FAILED && mark.error == "用户停止") return null
@@ -1928,7 +1956,9 @@ class RewriteRepository(
          */
         val unverified: Boolean? = null,
         /** 未复核的原因（服务端 reason），可能没有；空白按没有处理。 */
-        val reason: String? = null
+        val reason: String? = null,
+        /** 1.5.3v2：结果来源。worker=后端闲时洗词主动产出（不得覆盖本地锁）；空=用户点重写。 */
+        val source: String = ""
     )
 
     private data class StatusPage(val items: List<StatusItem>?)
@@ -2070,5 +2100,9 @@ class RewriteRepository(
         private const val FSRS_LAPSE_INSTRUCTION =
             "FSRS 监测到该词真实复习多次遗忘（难度过高），请彻底废弃当前思路与方法，" +
                 "改用更直白、基于初高中熟词或一跳谐音的聪明室友小抄写法。"
+
+        /** 1.5.3v2 C5：worker 闲时洗词的结果遇到本地「免洗金牌」锁时，必须跳过覆盖。 */
+        fun shouldSkipWorkerResult(source: String?, isLocked: Boolean): Boolean =
+            source == "worker" && isLocked
     }
 }

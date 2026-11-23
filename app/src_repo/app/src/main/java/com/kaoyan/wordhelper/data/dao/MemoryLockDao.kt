@@ -19,6 +19,13 @@ interface MemoryLockDao {
     @Query("SELECT * FROM tb_memory_lock WHERE word_id = :wordId AND book_id = :bookId LIMIT 1")
     fun observe(wordId: Long, bookId: Long): Flow<MemoryLock?>
 
+    /** 1.5.3v2：还没同步到后端的锁（离线点锁漏发的水）。 */
+    @Query("SELECT * FROM tb_memory_lock WHERE synced = 0")
+    suspend fun unsynced(): List<MemoryLock>
+
+    @Query("UPDATE tb_memory_lock SET synced = 1 WHERE id = :id")
+    suspend fun markSynced(id: Long)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(lock: MemoryLock): Long
 

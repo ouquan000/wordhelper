@@ -62,6 +62,13 @@ _state = {
 }
 _runtime_cache = {"path": "", "data": None}
 
+# 词库只读兜底：feedback 行缺音标/释义时从这里补，不改写任何数据文件。
+_WORD_SOURCE_PATHS = (
+    os.path.join(REPO_ROOT, "content", "seed", "cet6_cards.json"),
+    os.path.join(REPO_ROOT, "tools", "cardback-editor", "published", "cards", "cet6_cards.json"),
+)
+_word_index = {"loaded": False, "by_word": {}}
+
 
 # ----------------------------------------------------------------- 工具
 
@@ -253,6 +260,58 @@ def _row_count(row):
     return 0 if error else count
 
 
+def _reasons_text(row):
+    """feedback 行的 reasons（list / JSON 字符串）合成一行文本；缺失返回空串。"""
+    raw = row.get("reasons")
+    if isinstance(raw, list):
+        return "；".join(str(x).strip() for x in raw if str(x).strip())
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return ""
+        try:
+            decoded = json.loads(text)
+        except ValueError:
+            decoded = None
+        if isinstance(decoded, list):
+            return "；".join(str(x).strip() for x in decoded if str(x).strip())
+        return text
+    return ""
+
+
+def _row_complaint(row):
+    """一条反馈行的用户原话：reasons + comment + instruction 合成，喂进生成 pipeline。"""
+    parts = []
+    reasons = _reasons_text(row)
+    if reasons:
+        parts.append(reasons)
+    comment = str(row.get("comment") or "").strip()
+    if comment:
+        parts.append(comment)
+    instruction = str(row.get("instruction") or "").strip()
+    if instruction:
+        parts.append(instruction)
+    return "；".join(parts)
+
+
+def _word_source_lookup(word):
+    """best-effort 只读：从 cet6_cards.json 读音标/释义，补 feedback 行缺失字段。"""
+    if not _word_index["loaded"]:
+        _word_index["loaded"] = True
+        by_word = {}
+        for path in _WORD_SOURCE_PATHS:
+            raw = store_mod._read_json(path)
+            words = (raw or {}).get("words")
+            if isinstance(words, list):
+                for entry in words:
+                    if isinstance(entry, dict):
+                        key = str(entry.get("word") or "").strip().lower()
+                        if key and key not in by_word:
+                            by_word[key] = entry
+        _word_index["by_word"] = by_word
+    return _word_index["by_word"].get(str(word or "").strip().lower())
+
+
 def candidates(store, config=None, runtime=None, limit=20):
     """挑出「该洗」的词：差评够多、差评多于好评、没锁定、最近没洗过。
 
@@ -306,7 +365,7 @@ def candidates(store, config=None, runtime=None, limit=20):
             method = profile.normalize_method(row.get("method"))
             if method:
                 bucket["method"] = method
-            instruction = str(row.get("instruction") or "")
+            instruction = _row_complaint(row)
             if instruction:
                 bucket["instruction"] = instruction
             for field in ("phonetic", "pos", "meaning", "model"):
@@ -316,6 +375,18 @@ def candidates(store, config=None, runtime=None, limit=20):
             fresh = [str(x) for x in (row.get("approach") or row.get("currentApproach") or []) if str(x).strip()]
             if fresh:
                 bucket["approach"] = fresh[:5]
+
+    # 词库兜底：feedback 行没带音标/释义的词，从 cet6_cards.json 补全再进 pipeline。
+    for bucket in buckets.values():
+        if bucket["phonetic"] and bucket["meaning"]:
+            continue
+        entry = _word_source_lookup(bucket["word"])
+        if not isinstance(entry, dict):
+            continue
+        if not bucket["phonetic"]:
+            bucket["phonetic"] = str(entry.get("phonetic") or "").strip()
+        if not bucket["meaning"]:
+            bucket["meaning"] = str(entry.get("meaning") or "").strip()
 
     picked = []
     for key, bucket in buckets.items():

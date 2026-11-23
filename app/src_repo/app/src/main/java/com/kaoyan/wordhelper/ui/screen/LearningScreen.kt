@@ -221,14 +221,10 @@ fun LearningScreen(
     val rewriteUpdatedTick by viewModel.rewriteUpdatedTick.collectAsStateWithLifecycle()
     // 1.4.6：这条思路的 👍/👎 状态（null = 还没表过态）
     val rewriteFeedback by viewModel.currentRewriteFeedback.collectAsStateWithLifecycle()
-    // 1.5.2：连击点赞的累计值 + 还没落库的临时增量
+    // 1.5.2：连击点赞的累计值（👍胶囊上的数字）
     val rewriteLikeCount by viewModel.currentRewriteLikeCount.collectAsStateWithLifecycle()
-    val pendingLikeBurst by viewModel.pendingLikeBurst.collectAsStateWithLifecycle()
-    val pendingLikeDelta = if (pendingLikeBurst.wordId == currentWord?.id) pendingLikeBurst.delta else 0
     val memoryLocked by viewModel.currentMemoryLocked.collectAsStateWithLifecycle()
-    var showDownFeedbackDialog by rememberSaveable { mutableStateOf(false) }
-    var downFeedbackReasons by rememberSaveable { mutableStateOf(listOf<String>()) }
-    var downFeedbackComment by rememberSaveable { mutableStateOf("") }
+    val memoryEditCanRestore by viewModel.memoryEditCanRestore.collectAsStateWithLifecycle()
     var showMemoryEditDialog by rememberSaveable { mutableStateOf(false) }
     var memoryDraft by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(currentWord?.id) { viewModel.flushPendingLikes() }
@@ -421,77 +417,6 @@ fun LearningScreen(
         )
     }
 
-    val downReasonOptions = listOf(
-        "谐音不准", "词根太生僻", "绕弯注水",
-        "不像人话", "没扣住词义", "标签贴歪"
-    )
-    if (showDownFeedbackDialog) {
-        AlertDialog(
-            onDismissRequest = { showDownFeedbackDialog = false },
-            title = { Text("哪里没帮上？") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "可多选，也可以补一句；不选也能提交。",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    downReasonOptions.chunked(3).forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            row.forEach { reason ->
-                                FilterChip(
-                                    selected = reason in downFeedbackReasons,
-                                    onClick = {
-                                        downFeedbackReasons = if (reason in downFeedbackReasons) {
-                                            downFeedbackReasons - reason
-                                        } else {
-                                            downFeedbackReasons + reason
-                                        }
-                                    },
-                                    label = {
-                                        Text(reason, style = MaterialTheme.typography.labelSmall)
-                                    },
-                                    modifier = Modifier.testTag("down_reason_$reason")
-                                )
-                            }
-                        }
-                    }
-                    OutlinedTextField(
-                        value = downFeedbackComment,
-                        onValueChange = { downFeedbackComment = it.take(200) },
-                        label = { Text("补一句吐槽（可选）") },
-                        minLines = 2,
-                        maxLines = 4,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("down_comment")
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.tapRewriteFeedback(
-                            rating = RewriteFeedbackRating.DOWN,
-                            reasons = downFeedbackReasons,
-                            comment = downFeedbackComment
-                        )
-                        showDownFeedbackDialog = false
-                    },
-                    modifier = Modifier.testTag("down_submit")
-                ) { Text("提交") }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.tapRewriteFeedback(RewriteFeedbackRating.DOWN)
-                        showDownFeedbackDialog = false
-                    },
-                    modifier = Modifier.testTag("down_submit_without_reason")
-                ) { Text("不选原因") }
-            }
-        )
-    }
-
     if (showMemoryEditDialog) {
         AlertDialog(
             onDismissRequest = { showMemoryEditDialog = false },
@@ -524,7 +449,17 @@ fun LearningScreen(
                 ) { Text("保存") }
             },
             dismissButton = {
-                TextButton(onClick = { showMemoryEditDialog = false }) { Text("取消") }
+                Row {
+                    TextButton(
+                        enabled = memoryEditCanRestore,
+                        onClick = {
+                            viewModel.restoreMemoryEdit()
+                            showMemoryEditDialog = false
+                        },
+                        modifier = Modifier.testTag("memory_edit_restore")
+                    ) { Text("恢复上一版") }
+                    TextButton(onClick = { showMemoryEditDialog = false }) { Text("取消") }
+                }
             }
         )
     }
@@ -735,6 +670,9 @@ fun LearningScreen(
                                             // 点角标展开原因。没这个字段（老服务端）就是 false，什么都不显示。
                                             unverified = liveApproachReview.unverified,
                                             unverifiedReason = liveApproachReview.reason,
+                                            lastRewriteText = rewriteMark
+                                                ?.takeIf { it.status == RewriteStatus.DONE }
+                                                ?.let { "上次重写 ${formatRewriteTime(it.updatedAt)}" },
                                             // 1.4.3.1：重写条挪进卡背底部，只在背面出现；
                                             // live = 背面当前可见，翻回正面时按钮跟着禁用，不接住正面的触摸。
                                             backActions = { live ->
@@ -747,34 +685,42 @@ fun LearningScreen(
                                                         models = rewriteModels,
                                                         selectedModelId = rewriteModelId,
                                                         onSelectModel = viewModel::selectRewriteModel,
-                                                        onMark = viewModel::markRewrite,
+                                                        onRewrite = viewModel::markRewrite,
                                                         onCancel = viewModel::cancelRewrite,
-                                                        onUndo = viewModel::undoRewrite,
+                                                        onFeedbackUp = { count, reasons, comment ->
+                                                            viewModel.submitRewriteFeedback(
+                                                                rating = RewriteFeedbackRating.UP,
+                                                                count = count,
+                                                                reasons = reasons,
+                                                                comment = comment
+                                                            )
+                                                        },
+                                                        onFeedbackDown = { count, reasons, comment ->
+                                                            viewModel.submitRewriteFeedback(
+                                                                rating = RewriteFeedbackRating.DOWN,
+                                                                count = count,
+                                                                reasons = reasons,
+                                                                comment = comment
+                                                            )
+                                                            val complaint = listOf(
+                                                                reasons.joinToString("、"),
+                                                                comment
+                                                            ).filter { it.isNotBlank() }.joinToString("；")
+                                                            if (complaint.isNotBlank()) viewModel.markRewrite(complaint)
+                                                        },
+                                                        feedback = rewriteFeedback,
+                                                        likeCount = rewriteLikeCount,
                                                         enabled = live && !isAnswering,
                                                         progress = rewriteProgress,
                                                         justUpdated = rewriteJustUpdated
                                                     )
-                                                    RewriteFeedbackRow(
-                                                        feedback = rewriteFeedback,
-                                                        likeCount = rewriteLikeCount,
-                                                        pendingLikeDelta = pendingLikeDelta,
-                                                        onFeedback = { rating, instruction ->
-                                                            if (rating == RewriteFeedbackRating.DOWN) {
-                                                                downFeedbackReasons = emptyList()
-                                                                downFeedbackComment = ""
-                                                                showDownFeedbackDialog = true
-                                                            } else {
-                                                                viewModel.tapRewriteFeedback(rating, instruction)
-                                                            }
-                                                        },
-                                                        enabled = live && !isAnswering
-                                                    )
                                                     Row(
                                                         modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        TextButton(
+                                                        CompactActionChip(
+                                                            text = "编辑思路",
                                                             onClick = {
                                                                 memoryDraft = liveApproach
                                                                     ?: cardState.word.approach
@@ -782,19 +728,13 @@ fun LearningScreen(
                                                             },
                                                             enabled = live && !isAnswering,
                                                             modifier = Modifier.testTag("memory_edit")
-                                                        ) {
-                                                            Text("编辑思路", style = MaterialTheme.typography.labelSmall)
-                                                        }
-                                                        TextButton(
+                                                        )
+                                                        CompactActionChip(
+                                                            text = if (memoryLocked) "已锁定 · 免洗" else "锁定 · 免洗",
                                                             onClick = viewModel::toggleMemoryLock,
                                                             enabled = live && !isAnswering,
                                                             modifier = Modifier.testTag("memory_lock")
-                                                        ) {
-                                                            Text(
-                                                                if (memoryLocked) "已锁定 · 免洗" else "锁定 · 免洗",
-                                                                style = MaterialTheme.typography.labelSmall
-                                                            )
-                                                        }
+                                                        )
                                                     }
                                                 }
                                             },
@@ -820,10 +760,9 @@ fun LearningScreen(
                                         handleAnswer(StudyRating.GOOD)
                                     }
                                 },
-                                // 1.4.7v7-bugfix：位置固定，但只有真的能跳过才可点；
-                                // 结果已合格时保留胶囊并置灰（不再「亮着点不动」）。
-                                showSkip = skipAvailability == SkipRewriteAvailability.AVAILABLE ||
-                                    skipAvailability == SkipRewriteAvailability.RESULT_READY,
+                                // 1.5.3v2 C1：重写完成后彻底收回「跳过」——DONE 落稳即隐藏，
+                                // 不再靠 RESULT_READY 留一个灰色占位把三段胶囊挤窄。
+                                showSkip = skipAvailability == SkipRewriteAvailability.AVAILABLE,
                                 skipEnabled = skipAvailability == SkipRewriteAvailability.AVAILABLE,
                                 onSkip = viewModel::skipCurrentWordForRewrite
                             )
@@ -1364,6 +1303,8 @@ private fun WordCard(
     unverified: Boolean = false,
     /** 未复核的原因；点角标时展开它。空 = 只有角标没有说明。 */
     unverifiedReason: String? = null,
+    /** 1.5.3v2：上次重写时间（MM-dd HH:mm），显示在卡顶信息栏；null = 不显示。 */
+    lastRewriteText: String? = null,
     backActions: (@Composable (Boolean) -> Unit)? = null,
     cardStyle: HoloCardStyle,
     glossHigh: Boolean,
@@ -1503,12 +1444,22 @@ private fun WordCard(
                                 }
                             }
                         }
-                        AnimatedStarToggle(
-                            checked = isInNewWords,
-                            onCheckedChange = { onToggleNewWords() },
-                            enabled = actionsEnabled,
-                            modifier = Modifier.testTag("learning_star_toggle")
-                        )
+                        // 1.5.3v2：卡顶右上收藏星仅在正面显示（正面主流程不变）；卡背原位改为「上次重写」极淡浅灰小字。
+                        if (!showBack) {
+                            AnimatedStarToggle(
+                                checked = isInNewWords,
+                                onCheckedChange = { onToggleNewWords() },
+                                enabled = actionsEnabled,
+                                modifier = Modifier.testTag("learning_star_toggle")
+                            )
+                        } else if (lastRewriteText != null) {
+                            Text(
+                                text = lastRewriteText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = faceSoftInk.copy(alpha = 0.65f),
+                                maxLines = 1
+                            )
+                        }
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                     Box(
@@ -1641,52 +1592,82 @@ private fun CardBackBlocks(
 ) {
     val palette = LocalHoloCardPalette.current
     val blocks = config.renderableBlocks
-    Column(
+    // 1.5.3v2：上下两端平滑透明渐隐，消除文字被卡片边缘拦腰截断。
+    val fadeTop = Brush.verticalGradient(
+        0f to palette.frontTop,
+        1f to palette.frontTop.copy(alpha = 0f)
+    )
+    val fadeBottom = Brush.verticalGradient(
+        0f to palette.frontBottom.copy(alpha = 0f),
+        1f to palette.frontBottom
+    )
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .padding(horizontal = 4.dp, vertical = 8.dp)
-            .verticalScroll(scrollState, enabled = interactive)
-            .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
-        blocks.forEachIndexed { index, block ->
-            if (index > 0) {
-                val previous = blocks[index - 1]
-                val gap = when {
-                    previous.type == CardBackBlockType.TITLE &&
-                        block.type == CardBackBlockType.PHONETIC -> 2
-                    block.type == CardBackBlockType.MEANING -> 8
-                    block.type == CardBackBlockType.MEMORY -> 18
-                    else -> config.spacingDp
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .padding(horizontal = 4.dp, vertical = 8.dp)
+                .verticalScroll(scrollState, enabled = interactive)
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+        ) {
+            blocks.forEachIndexed { index, block ->
+                if (index > 0) {
+                    val previous = blocks[index - 1]
+                    val gap = when {
+                        previous.type == CardBackBlockType.TITLE &&
+                            block.type == CardBackBlockType.PHONETIC -> 2
+                        block.type == CardBackBlockType.MEANING -> 8
+                        block.type == CardBackBlockType.MEMORY -> 18
+                        else -> config.spacingDp
+                    }
+                    Spacer(modifier = Modifier.height(gap.dp))
                 }
-                Spacer(modifier = Modifier.height(gap.dp))
+                CardBackBlockView(
+                    block = block,
+                    word = word,
+                    displayWord = displayWord,
+                    backWordStyle = backWordStyle,
+                    unverified = unverified,
+                    unverifiedReason = unverifiedReason
+                )
             }
-            CardBackBlockView(
-                block = block,
-                word = word,
-                displayWord = displayWord,
-                backWordStyle = backWordStyle,
-                unverified = unverified,
-                unverifiedReason = unverifiedReason
-            )
-        }
-        // 1.4.3.2：重写区放在正文最后，跟着滚动；用分隔线把「内容」和「操作」分开。
-        if (backActions != null) {
-            Spacer(modifier = Modifier.height(6.dp))
-            HorizontalDivider(color = palette.panelBorder.copy(alpha = 0.8f))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    // 吞掉空白区的点击，免得点状态文字时把卡片翻回正面（背面不可见时不吞）
-                    .clickable(
-                        enabled = interactive,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { }
-            ) {
-                backActions(interactive)
+            // 1.4.3.2：重写区放在正文最后，跟着滚动；用分隔线把「内容」和「操作」分开。
+            if (backActions != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                HorizontalDivider(color = palette.panelBorder.copy(alpha = 0.8f))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // 吞掉空白区的点击，免得点状态文字时把卡片翻回正面（背面不可见时不吞）
+                        .clickable(
+                            enabled = interactive,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { }
+                ) {
+                    backActions(interactive)
+                }
             }
         }
+        // 渐隐遮罩：盖在滚动内容最上/最下，只淡出 22dp，不挡中间正文。
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(22.dp)
+                .align(Alignment.TopCenter)
+                .background(fadeTop)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(22.dp)
+                .align(Alignment.BottomCenter)
+                .background(fadeBottom)
+        )
     }
 }
 
@@ -2499,13 +2480,44 @@ internal fun String.adaptiveWordText(): String {
     return trimmed.toCharArray().joinToString(separator = "\u200B")
 }
 
+/**
+ * 1.5.3v2：卡背底部「编辑思路 / 锁定·免洗」的极简胶囊，与上方操作胶囊同高同风格，
+ * 告别裸蓝字 TextButton。
+ */
+@Composable
+private fun CompactActionChip(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = modifier
+            .height(32.dp)
+            .clip(shape)
+            .background(colors.surfaceVariant.copy(alpha = 0.42f))
+            .border(1.dp, colors.outlineVariant.copy(alpha = 0.55f), shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (enabled) colors.onSurfaceVariant else colors.onSurfaceVariant.copy(alpha = 0.4f),
+            maxLines = 1
+        )
+    }
+}
+
 @Composable
 private fun ReviewTimeTag(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
-) {
-    Surface(
+) {    Surface(
         modifier = modifier
             .testTag("learning_review_tag")
             .clickable(onClick = onClick),

@@ -2,6 +2,14 @@
 
 本文件记录「不爱背单词」（wordhelper）的版本变更。日期为北京时间。
 
+## v1.5.3v2（2026-11-23）— 卡背瘦身、反馈反哺大脑、模型精简到 4 档
+
+- 卡背瘦身 + 一维直滑手势：跳过彻底收回、进度条复活。
+- 词性小标补丁：行内徽章与 `→`/`——>` 后的义项分组按考纲原义贴。
+- 反馈反哺大脑：差评的 `reasons`/`comment` 进入历史摘要与洗词上下文，「太烂了」触发整套换招硬约束。
+- 免洗金牌离线锁补漏：锁定词在闲时洗词/批量重写/词卡热更时全程受保护。
+- 模型精简到 4 档：DeepSeek V4.1 Flash / V4 Pro / GLM 5.3 / MiniMax M3.1 Flash；其余全部关闭。
+
 ## v1.5.3（2026-11-23）— 四笔旧账清完，助记大脑换血
 
 1.5.3 先把 1.5.2v2 没修透的四笔账结清，再把重写服务的「脑子」换掉：跳过按钮不再在历史 DONE 词上常驻，RewriteBar 只保留一条状态文案，记忆思路的词性小标改成真正的行内徽章；点踩可以多选原因并补一句吐槽，手改助记可以一键锁定免洗；后端新增闲时洗词 Worker、红黑榜风格规则和可配置模型/Judge 规则。
@@ -34,7 +42,7 @@
 
 ### 五、五组黑榜词重洗样本
 
-`referee`、`obscure`、`monopoly`、`create`、`cathedral` 已用新 brain 重洗，全部 `status=ok`；完整前后对照见交付包 `blacklist_before_after.json` 与发版报告。典型变化：`referee` 从「热法理」拆音改为「ref—e—ree + 哨声」动作链；`monopoly` 从抽象解释改为「摸拿不离」；`create` 从 cre/ate 词根课改为「可立—诶特」画面。
+`referee`、`obscure`、`monopoly`、`create`、`cathedral` 已用新 brain 重洗，全部 `status=ok`；完整前后对照见交付包 `blacklist_before_after.json` 与发版报告。典型变化：`referee` 从「热法理」拆音改为「ref—e—ree + 哨声」动作链；`monopoly` 从「摸拿不离」改为抽象解释；`create` 从 cre/ate 词根课改为「可立—诶特」画面。
 
 ### 六、验证
 

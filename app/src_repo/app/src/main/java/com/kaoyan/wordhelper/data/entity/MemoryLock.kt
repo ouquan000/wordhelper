@@ -27,6 +27,9 @@ data class MemoryLock(
     val locked: Boolean = true,
     @ColumnInfo(name = "note", defaultValue = "''")
     val note: String = "",
+    /** 1.5.3v2：是否已同步到后端。0=离线时点的锁还没发出去，上线后补发。 */
+    @ColumnInfo(name = "synced", defaultValue = "0")
+    val synced: Int = 0,
     @ColumnInfo(name = "updated_at")
     val updatedAt: Long
 )

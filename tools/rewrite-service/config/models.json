@@ -19,10 +19,10 @@
       "weight": 40
     },
     {
-      "id": "step5",
-      "display": "Step 5",
+      "id": "ds-v4-pro",
+      "display": "DeepSeek V4 Pro",
       "provider": "wb",
-      "model": "cn:step-5-preview",
+      "model": "cn:deepseek-v4-pro",
       "reasoning": "high",
       "tier": "deep",
       "enabled": true,
@@ -36,7 +36,27 @@
       "reasoning": "high",
       "tier": "deep",
       "enabled": true,
+      "weight": 20
+    },
+    {
+      "id": "minimax-m31-flash",
+      "display": "MiniMax M3.1 Flash",
+      "provider": "wb",
+      "model": "cn:minimax-m3.1-flash",
+      "reasoning": "high",
+      "tier": "fast",
+      "enabled": true,
       "weight": 15
+    },
+    {
+      "id": "step5",
+      "display": "Step 5",
+      "provider": "wb",
+      "model": "cn:step-5-preview",
+      "reasoning": "high",
+      "tier": "deep",
+      "enabled": false,
+      "weight": 0
     },
     {
       "id": "kimi-k31-pro",
@@ -45,8 +65,8 @@
       "model": "cn:kimi-k3.1-pro",
       "reasoning": "high",
       "tier": "deep",
-      "enabled": true,
-      "weight": 10
+      "enabled": false,
+      "weight": 0
     },
     {
       "id": "portdan-gpt",
@@ -55,8 +75,8 @@
       "model": "gpt-6.1-sol",
       "reasoning": "high",
       "tier": "cross",
-      "enabled": true,
-      "weight": 5
+      "enabled": false,
+      "weight": 0
     },
     {
       "id": "portdan-grok",
@@ -65,8 +85,8 @@
       "model": "grok-4.7",
       "reasoning": "high",
       "tier": "cross",
-      "enabled": true,
-      "weight": 3
+      "enabled": false,
+      "weight": 0
     }
   ],
   "judge_candidates": [

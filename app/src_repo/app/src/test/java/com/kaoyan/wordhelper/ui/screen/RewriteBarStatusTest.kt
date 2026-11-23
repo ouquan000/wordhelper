@@ -37,10 +37,13 @@ class RewriteBarStatusTest {
     }
 
     @Test
-    fun queuedWithRealProgressStillHasNoSecondQueuedLine() {
+    fun queuedWithRealProgressDrivesProgressRowWithoutDuplicateQueuedText() {
+        // 1.5.3v2：QUEUED 且拿到进度 → ProgressRow 复活，状态行只报「电脑已收到」，
+        // 不重复进度条里的「排队中」。
         val p = rewriteBarPresentation(mark(RewriteStatus.QUEUED), hasProgress = true, justUpdated = false)
-        assertEquals("电脑已收到 · 排队中", p.statusLine)
-        assertFalse(p.showProgress)
+        assertEquals("电脑已收到", p.statusLine)
+        assertTrue(p.showProgress)
+        assertFalse(p.showUndo)
     }
 
     @Test

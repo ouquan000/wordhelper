@@ -43,10 +43,12 @@ internal fun rewriteBarPresentation(
             showUndo = false
         )
         RewriteStatus.QUEUED -> RewriteBarPresentation(
-            statusLine = "电脑已收到 · 排队中",
-            // QUEUED 阶段只保留这一行状态；进度百分比等运行态由后续状态切换承载，
-            // 避免再出现「排队中」与「电脑已收到 · 排队中」两行同义文案。
-            showProgress = false,
+            // 有真实进度时，进度条自己会显示「排队中」/百分比，状态行只报「电脑已收到」，
+            // 不再出现「电脑已收到 · 排队中」与进度条「排队中」两行同义文案。
+            statusLine = if (hasProgress) "电脑已收到" else "电脑已收到 · 排队中",
+            // 1.5.3v2：QUEUED 且拿到 progress 时，ProgressRow 是活代码——它把 0.08/0.45/0.75/0.92
+            // 的阶段进度真实画出来，而不是永远压在「排队中」文案后面。
+            showProgress = hasProgress,
             showUndo = false
         )
         RewriteStatus.DONE -> RewriteBarPresentation(

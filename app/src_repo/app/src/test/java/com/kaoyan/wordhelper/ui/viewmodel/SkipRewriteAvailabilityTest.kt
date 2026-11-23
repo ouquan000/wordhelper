@@ -154,4 +154,45 @@ class SkipRewriteAvailabilityTest {
             skipRewriteAvailability(11L, null, mark())
         )
     }
+
+    @Test
+    fun c1_doneLandingClearsActiveRequestIdSoSkipIsFullyRetracted() {
+        // 1.5.3v2 C1：本轮重写 DONE 落地后，pollRewriteProgressOnce 会把该词从
+        // _activeRewriteRequestIds 清掉。清理后纯函数必须落到 NO_MARK —— 右下角
+        // 「跳过」彻底消失，而不是留在 RESULT_READY 灰色占位把三段胶囊挤窄。
+        val done = mark(status = RewriteStatus.DONE, needsReinsert = true, requestId = "r1")
+        assertEquals(
+            SkipRewriteAvailability.NO_MARK,
+            skipRewriteAvailability(11L, 2L, done, activeRequestId = null)
+        )
+        // 清理前仍是 RESULT_READY；1.5.3v2 的 UI 层 showSkip 已不再渲染该状态。
+        assertEquals(
+            SkipRewriteAvailability.RESULT_READY,
+            skipRewriteAvailability(11L, 2L, done, activeRequestId = "r1")
+        )
+    }
+
+    @Test
+    fun c1_whileRoundIsInFlightSkipStaysAvailable() {
+        // 重写排队中（本轮 requestId 已落库、状态还是 QUEUED/PENDING）时，
+        // 跳过入口必须仍然可点 —— 这才是「同词无限轮 重写→跳过→回队」的前提。
+        assertEquals(
+            SkipRewriteAvailability.AVAILABLE,
+            skipRewriteAvailability(
+                11L,
+                2L,
+                mark(status = RewriteStatus.QUEUED, requestId = "r1"),
+                activeRequestId = "r1"
+            )
+        )
+        assertEquals(
+            SkipRewriteAvailability.AVAILABLE,
+            skipRewriteAvailability(
+                11L,
+                2L,
+                mark(status = RewriteStatus.PENDING, requestId = "r1"),
+                activeRequestId = "r1"
+            )
+        )
+    }
 }

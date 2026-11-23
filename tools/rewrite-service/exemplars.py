@@ -141,14 +141,44 @@ def _feedback_positive(row):
     }
 
 
+def _negative_note(row):
+    """差评的「为什么不好」：reasons（list / JSON 字符串）逐项 + comment + 单数 reason + instruction。"""
+    parts = []
+    reasons = row.get("reasons")
+    if isinstance(reasons, list):
+        for item in reasons:
+            text = str(item or "").strip()
+            if text:
+                parts.append(text)
+    elif isinstance(reasons, str):
+        text = reasons.strip()
+        if text:
+            try:
+                decoded = json.loads(text)
+            except ValueError:
+                decoded = None
+            if isinstance(decoded, list):
+                parts.extend(str(x or "").strip() for x in decoded if str(x or "").strip())
+            else:
+                parts.append(text)
+    comment = str(row.get("comment") or "").strip()
+    if comment:
+        parts.append(comment)
+    reason = str(row.get("reason") or "").strip()
+    if reason:
+        parts.append(reason)
+    instruction = str(row.get("instruction") or "").strip()
+    if instruction:
+        parts.append(instruction)
+    return "；".join(parts).strip()
+
+
 def _feedback_negative(row):
     """rating=down 且带用户吐槽原话的反例；没有原话就不收。"""
     method = normalize_method(row.get("method"))
     client_id = str(row.get("clientId") or "").strip()
     word = str(row.get("word") or "").strip()
-    complaint = str(
-        row.get("instruction") or row.get("comment") or row.get("reason") or ""
-    ).strip()
+    complaint = _negative_note(row)
     if not method or not client_id or not word or not complaint:
         return None
     derivation = _lines(

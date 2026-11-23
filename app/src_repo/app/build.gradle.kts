@@ -78,8 +78,8 @@ android {
         applicationId = "com.kaoyan.wordhelper"
         minSdk = 26
         targetSdk = 34
-        versionCode = 30
-        versionName = "1.5.3"
+        versionCode = 31
+        versionName = "1.5.3v2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appName"] = "不爱背单词"
 

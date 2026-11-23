@@ -181,6 +181,72 @@ class MemoryPosTaggerTest {
         assertEquals("不及物动词", body.substring(tagged[0].badges[1].start, tagged[0].badges[1].end))
     }
 
+    // ---------------------------------------------------------------- 1.5.3v2 顿号/兜底/防连坐
+
+    @Test
+    fun linger_顿号粘连的义项也能逐块贴标() {
+        // 手机版脏 meaning：逗号/顿号把两个义项粘成一块
+        val meaning = "v. 逗留、徘徊；缓慢消失；消磨。"
+        val body = "老赖在屋里不走，就是 → 逗留、徘徊；缓慢消失；消磨。"
+        val tagged = MemoryPosTagger.tag(body, meaning)
+
+        assertEquals(1, tagged.size)
+        assertEquals("v.", tagged[0].pos)
+        assertEquals(listOf("v."), tagged[0].badges.map { it.pos })
+        // 四块义项同词性 → 合并成一组，只插一枚。
+        assertEquals(1, tagged[0].badges.size)
+        assertEquals(body.indexOf("逗留"), tagged[0].badges[0].start)
+    }
+
+    @Test
+    fun linger_种子版释义句靠防连坐也能贴上v() {
+        // 种子版正文「词义就是徘徊、逗留」：第一块措辞查不到，不能把整行小标清零。
+        val meaning = "v. 徘徊；逗留"
+        val body = "赖在屋里不走就是 → 词义就是徘徊、逗留"
+        val tagged = MemoryPosTagger.tag(body, meaning)
+
+        assertEquals(1, tagged.size)
+        assertEquals("v.", tagged[0].pos)
+        assertEquals(1, tagged[0].badges.size)
+        // 「词义就是徘徊」查不到被跳过，小标落在查得到的「逗留」前。
+        assertEquals(body.indexOf("逗留"), tagged[0].badges[0].start)
+    }
+
+    @Test
+    fun 单词性兜底_义项全查不到时直接在箭头后嵌唯一词性() {
+        // exist 只有 v.：即使整串措辞都查不到，也直接嵌 v.，不再整行丢标。
+        val body = "赖在屋里迟迟不走，就是 → 一直待着不离开"
+        val tagged = MemoryPosTagger.tag(body, existMeaning)
+
+        assertEquals(1, tagged.size)
+        assertEquals("v.", tagged[0].pos)
+        assertEquals(1, tagged[0].badges.size)
+        assertEquals(body.indexOf("一直"), tagged[0].badges[0].start)
+    }
+
+    @Test
+    fun 多词性行_单块措辞微调只跳过该块不整行清零() {
+        // 「互相挂钩」在 meaning 里没有：旧版会让整行连坐清零，现在只跳过这一块。
+        val body = "老师指着两条曲线说 → 关联；互相挂钩；相关物"
+        val tagged = MemoryPosTagger.tag(body, correlateMeaning)
+
+        assertEquals(1, tagged.size)
+        assertNull(tagged[0].pos)
+        assertEquals(listOf("v.", "n."), tagged[0].badges.map { it.pos })
+        assertEquals(body.indexOf("关联"), tagged[0].badges[0].start)
+        assertEquals(body.indexOf("相关物"), tagged[0].badges[1].start)
+    }
+
+    @Test
+    fun 多词性行_全部块都查不到才整行留白() {
+        // 兜底只在 meaning 唯一词性时触发；多词性且全查不到 → 仍留白，不瞎猜。
+        val body = "突出的就是 → 某种没说清的收口"
+        val tagged = MemoryPosTagger.tag(body, correlateMeaning)
+        assertEquals(1, tagged.size)
+        assertNull(tagged[0].pos)
+        assertTrue(tagged[0].badges.isEmpty())
+    }
+
     // ---------------------------------------------------------------- appropriate / 留白
 
     @Test

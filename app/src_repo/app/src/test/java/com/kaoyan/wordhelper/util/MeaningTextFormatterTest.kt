@@ -152,13 +152,13 @@ class MeaningTextFormatterTest {
     }
 
     @Test
-    fun blocksAreNeverMergedAcrossLines() {
-        // 同一词性跨块不去重、不合并：行数保持原样
+    fun samePosAcrossLines_isMerged() {
+        // 1.5.3v2：相同词性跨换行块也合并、同义项去重
         val meaning = "v. 发射\nv. 发射；投掷"
         assertEquals(
-            listOf(MeaningLine("v.", "发射"), MeaningLine("v.", "发射；投掷")),
+            listOf(MeaningLine("v.", "发射；投掷")),
             MeaningTextFormatter.displayLines(meaning)
         )
-        assertEquals("v. 发射\nv. 发射；投掷", MeaningTextFormatter.displayText(meaning))
+        assertEquals("v. 发射；投掷", MeaningTextFormatter.displayText(meaning))
     }
 }

@@ -57,6 +57,9 @@ object MemoryPosTagger {
     private const val SPACE = ' '
     private const val IDEOGRAPHIC_SPACE = '\u3000'
 
+    /** 中文基本区：用于判定 `→` 后是否跟着有效中文义项/释义句。 */
+    private val CJK_RANGE = '\u4e00'..'\u9fff'
+
     /** 正文里**显式写出来**的词性 token，如 `v.` / `adj.` / `vt.`（要求前后不是字母）。 */
     private val EXPLICIT_TOKEN = Regex(
         """(?<!\w)(n|v|vt|vi|adj|adv|prep|conj|pron|num|art|int|aux)\.(?!\w)""",
@@ -132,7 +135,7 @@ object MemoryPosTagger {
         glosses: Map<String, Set<String>>,
     ): TaggedLine {
         val markers = collectMarkers(line, legal)
-        if (markers.isEmpty()) return tagClosingGlosses(line, glosses)
+        if (markers.isEmpty()) return tagClosingGlosses(line, glosses, legal)
 
         val badges = markers.map { marker -> PosMark(marker.start, marker.end, marker.pos) }
         val distinct = markers.map { it.pos }.distinct()
@@ -141,14 +144,19 @@ object MemoryPosTagger {
     }
 
     /**
-     * 行内没有词性信号，但行末用 `→` 收口了一串义项：按 `；` 切块，逐块到 [glosses]
+     * 行内没有词性信号，但行末用 `→` 收口了一串义项：按分号/顿号/逗号切块，逐块到 [glosses]
      * 里查唯一词性，同词性连续合并成组，每组第一块前面插一个小标。
      *
-     * 任何一块查不到唯一词性 → 整行留白（宁可一个小标都没有，也不能标错）。
+     * 1.5.3v2 两条兜底：
+     * - 防连坐清零：单个块查不到唯一词性时跳过这一块，其余块照贴；只有**一块都贴不出**
+     *   才整行留白（不再因 AI 微调了某一个义项的措辞而整行丢标）。
+     * - 单词性兜底：`meaning` 只含唯一词性、行末 `→` 后是有效中文义项/释义句（兼容种子版
+     *   「词义就是徘徊、逗留」）时，直接在整个义项串前面嵌上这个唯一词性。
      */
     private fun tagClosingGlosses(
         line: String,
         glosses: Map<String, Set<String>>,
+        legal: Set<String>,
     ): TaggedLine {
         if (glosses.isEmpty()) return TaggedLine(line, null)
         val arrow = line.lastIndexOf(ARROW)
@@ -162,7 +170,11 @@ object MemoryPosTagger {
         for (chunk in chunks) {
             val gloss = normalizeGloss(line.substring(chunk.first, chunk.last + 1))
             if (gloss.isEmpty()) continue
-            val pos = glosses[gloss]?.singleOrNull() ?: return TaggedLine(line, null)
+            val pos = glosses[gloss]?.singleOrNull()
+            if (pos == null) {
+                // 防连坐：这块查不到唯一词性就跳过，不影响其余块。
+                continue
+            }
             // 和上一块同词性就并进上一组，否则新开一组。
             if (poses.isNotEmpty() && poses.last() == pos) {
                 decided[decided.lastIndex] = decided.last().first..chunk.last
@@ -171,7 +183,18 @@ object MemoryPosTagger {
                 poses.add(pos)
             }
         }
-        if (decided.isEmpty()) return TaggedLine(line, null)
+        if (decided.isEmpty()) {
+            // 单词性兜底：meaning 只有一种词性，→ 后是有效中文内容，直接嵌该词性。
+            if (legal.size == 1) {
+                val pos = legal.first()
+                val after = line.substring(arrow + 1).trim()
+                if (after.any { it in CJK_RANGE }) {
+                    val at = skipSpaces(line, arrow + 1)
+                    return TaggedLine(line, pos, listOf(PosMark(at, at, pos)))
+                }
+            }
+            return TaggedLine(line, null)
+        }
 
         val badges = ArrayList<PosMark>(decided.size)
         for (index in decided.indices) {
@@ -182,14 +205,14 @@ object MemoryPosTagger {
         return TaggedLine(line, if (poses.size == 1) poses.first() else null, badges)
     }
 
-    /** 把 `from` 之后的义项串按 `；`/`;` 切开，分隔符留在前一块末尾。 */
+    /** 把 `from` 之后的义项串按 `；` `;` `、` `，` `,` 切开，分隔符留在前一块末尾。 */
     private fun splitGlossChunks(line: String, from: Int): List<IntRange> {
         val chunks = ArrayList<IntRange>()
         var start = from
         var index = from
         while (index < line.length) {
             val ch = line[index]
-            if (ch == '\uff1b' || ch == ';') {
+            if (isGlossSeparator(ch)) {
                 chunks.add(start until index + 1)
                 start = index + 1
             }
@@ -198,6 +221,10 @@ object MemoryPosTagger {
         if (start < line.length) chunks.add(start until line.length)
         return chunks
     }
+
+    /** 义项分隔符：全角/半角分号、顿号、全角/半角逗号。 */
+    private fun isGlossSeparator(ch: Char): Boolean =
+        ch == '\uff1b' || ch == ';' || ch == '\u3001' || ch == '\uff0c' || ch == ','
 
     /** 收集行内所有词性信号（显式 token + 中文词性词），按出现位置升序。 */
     private fun collectMarkers(line: String, legal: Set<String>): List<Marker> {
@@ -250,11 +277,31 @@ object MemoryPosTagger {
         val map = LinkedHashMap<String, MutableSet<String>>()
         for (line in MeaningTextFormatter.parse(meaning)) {
             val pos = line.pos?.lowercase() ?: continue
-            val gloss = normalizeGloss(line.text)
-            if (gloss.isEmpty()) continue
-            map.getOrPut(gloss) { LinkedHashSet() }.add(pos)
+            // 义项文本里还可能残留顿号/逗号粘连（如 `逗留、徘徊`），再切一刀，
+            // 让正文 `→ 逗留、徘徊；…` 里的每个小片都能命中。
+            for (piece in splitGlossPieces(line.text)) {
+                val gloss = normalizeGloss(piece)
+                if (gloss.isEmpty()) continue
+                map.getOrPut(gloss) { LinkedHashSet() }.add(pos)
+            }
         }
         return map
+    }
+
+    /** 把一段义项文本按分号/顿号/逗号切细（与 [splitGlossChunks] 同套分隔符）。 */
+    private fun splitGlossPieces(text: String): List<String> {
+        val pieces = ArrayList<String>()
+        var start = 0
+        var index = 0
+        while (index < text.length) {
+            if (isGlossSeparator(text[index])) {
+                pieces.add(text.substring(start, index))
+                start = index + 1
+            }
+            index++
+        }
+        pieces.add(text.substring(start))
+        return pieces
     }
 
     /** 义项比对用的归一化：剥掉首尾标点/空白，只留实词。 */

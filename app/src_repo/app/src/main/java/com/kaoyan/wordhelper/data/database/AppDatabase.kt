@@ -80,7 +80,7 @@ import kotlinx.coroutines.launch
         RewriteSkippedResult::class,
         MemoryLock::class
     ],
-    version = 26,
+    version = 27,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -147,7 +147,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_22_23,
                     MIGRATION_23_24,
                     MIGRATION_24_25,
-                    MIGRATION_25_26
+                    MIGRATION_25_26,
+                    MIGRATION_26_27
                 )
                 .build()
         }
@@ -1030,6 +1031,19 @@ abstract class AppDatabase : RoomDatabase() {
                     "CREATE UNIQUE INDEX IF NOT EXISTS index_tb_memory_lock_word_id_book_id " +
                         "ON tb_memory_lock(word_id, book_id)"
                 )
+            }
+        }
+
+        /**
+         * 1.5.3v2（DB 27）：给 tb_memory_lock 加 synced 列。
+         *
+         * 无损：只新增列，旧行 synced 默认 0（视为未同步，上线后由 sync 补发一次，无害）；
+         * 严禁改 MIGRATION_25_26，tb_progress / tb_word_memory 结构不动。
+         */
+        @VisibleForTesting
+        val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureColumnExists(db, "tb_memory_lock", "synced", "INTEGER NOT NULL DEFAULT 0")
             }
         }
 

@@ -54,21 +54,22 @@ object MeaningTextFormatter {
     }
 
     /**
-     * 展示用：同一块内相同词性的段合并成一行、词性前缀只留一次，
+     * 展示用：相同词性的段合并成一行、词性前缀只留一次，
      * 同词性内完全相同的义项只留第一次出现的那一个（顺序不变）。
-     * 不同块（原数据里的换行）保持各自的边界，不跨块合并，避免打乱义项顺序。
+     * 1.5.3v2：相同词性跨换行块也合并（脏数据里 `n.` 义项常被拆到多个 \n 块，
+     * 合并后一行一个词性，不再出现两行 `n.`）。
      */
     fun displayLines(meaning: String): List<MeaningLine> {
         val result = ArrayList<MeaningLine>()
+        val glossesByPos = LinkedHashMap<String?, LinkedHashSet<String>>()
         for (block in splitBlocks(meaning)) {
-            val glossesByPos = LinkedHashMap<String?, LinkedHashSet<String>>()
             for (item in block) {
                 glossesByPos.getOrPut(item.pos) { LinkedHashSet() }.add(item.text)
             }
-            for ((pos, glosses) in glossesByPos) {
-                if (glosses.isEmpty()) continue
-                result.add(MeaningLine(pos, glosses.joinToString(GLOSS_JOINER)))
-            }
+        }
+        for ((pos, glosses) in glossesByPos) {
+            if (glosses.isEmpty()) continue
+            result.add(MeaningLine(pos, glosses.joinToString(GLOSS_JOINER)))
         }
         return result
     }

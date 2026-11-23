@@ -64,6 +64,7 @@ class KaoyanWordApp : Application() {
             queueDao = database.rewriteQueueDao(),
             feedbackDao = database.rewriteFeedbackDao(),
             skippedDao = database.rewriteSkippedDao(),
+            memoryLockDao = database.memoryLockDao(),
             bookDao = database.bookDao()
         )
     }

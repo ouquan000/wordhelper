@@ -68,6 +68,51 @@ def _squash(text, limit=MAX_APPROACH):
     return text[:limit] + ("…" if len(text) > limit else "")
 
 
+def _reasons_of(row):
+    """feedback 行的 reasons 收成 list：兼容 list 与 JSON 字符串；缺失返回 []。"""
+    raw = row.get("reasons")
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        items = raw
+    elif isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return []
+        try:
+            decoded = json.loads(text)
+        except ValueError:
+            decoded = None
+        items = decoded if isinstance(decoded, list) else [raw]
+    else:
+        return []
+    return [str(x).strip() for x in items if str(x).strip()]
+
+
+def _complaint_text(row):
+    """差评 complaint：reasons 逐条 + comment + instruction 合成；三者都空才回退。
+
+    「太烂了」触发硬约束：整套推翻、换一种记忆方法重来。硬约束先预留长度再加，
+    宁可把前面的原话截短，也保证这条硬约束完整进入最终 Prompt。
+    """
+    parts = _reasons_of(row)
+    comment = str(row.get("comment") or "").strip()
+    if comment:
+        parts.append(comment)
+    instruction = str(row.get("instruction") or "").strip()
+    if instruction:
+        parts.append(instruction)
+    base = "；".join(parts)
+    if not base:
+        return "只点了踩，没写原因"
+    if any("太烂了" in item for item in _reasons_of(row)):
+        constraint = "。整套推翻，严禁沿用原拆法，必须切换另一种记忆方法重来"
+        # 预留约束的完整长度：先给 base 留 80-|constraint|-1 个字符（-1 给可能的省略号），
+        # 保证 outer _squash(..., 80) 不会再截掉这条硬约束的任何一个字。
+        return _squash(base, 80 - len(constraint) - 1) + constraint
+    return base
+
+
 def _method_label(row):
     method = str(row.get("method") or "").strip()
     return {"sound": "谐音", "meaning": "含义", "shape": "字形",
@@ -128,7 +173,7 @@ def build(data_dir, word, instruction="", *, scope=None):
         lines.append("【这个词以前被否掉的路线（默认避开；用户这次明确要求才可重提）】")
         for row in downs[-6:]:
             rev = revision_of(row)
-            complaint = _squash(row.get("instruction") or "只点了踩，没写原因", 80)
+            complaint = _squash(_complaint_text(row), 80)
             approach = _squash(row.get("approach") or "", 120)
             tag = "第%d版" % rev if rev else "旧版"
             method = _method_label(row)

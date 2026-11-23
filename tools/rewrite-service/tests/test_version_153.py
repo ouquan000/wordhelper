@@ -51,12 +51,12 @@ class VersionTest(unittest.TestCase):
         return status, json.loads(raw.decode("utf-8"))
 
     def test_service_version_constant(self):
-        self.assertEqual(service.SERVICE_VERSION, "1.5.3")
+        self.assertEqual(service.SERVICE_VERSION, "1.5.3v2")
 
     def test_status_carries_version_and_worker(self):
         status, payload = self._call("GET", "/rewrite/status")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["version"], "1.5.3")
+        self.assertEqual(payload["version"], "1.5.3v2")
         self.assertIn("worker", payload)
         self.assertFalse(payload["worker"]["enabled"])
         # 老字段一个都不能少
@@ -66,7 +66,7 @@ class VersionTest(unittest.TestCase):
     def test_models_carries_version(self):
         status, payload = self._call("GET", "/models")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["version"], "1.5.3")
+        self.assertEqual(payload["version"], "1.5.3v2")
         self.assertIsInstance(payload["models"], (dict, list))
 
     def test_new_endpoints_are_routed(self):
@@ -77,7 +77,7 @@ class VersionTest(unittest.TestCase):
         status, payload = self._call("GET", "/rewrite/worker/status")
         self.assertEqual(status, 200)
         self.assertTrue(payload["ok"])
-        self.assertEqual(payload["version"], "1.5.3")
+        self.assertEqual(payload["version"], "1.5.3v2")
 
         status, payload = self._call("POST", "/rewrite/lock", {"wordId": 5, "bookId": 2})
         self.assertEqual(status, 200)
