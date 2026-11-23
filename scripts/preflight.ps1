@@ -43,7 +43,7 @@ try {
             robocopy "$r/_toolchain/gradle-home/$name" "$env:GRADLE_USER_HOME/$name" /E /XJ /R:0 /W:0 /XF *.lock /NFL /NDL /NJH /NJS /NP | Out-Null
             if ($LASTEXITCODE -ge 8) {throw '复制离线缓存失败'}
         }
-        & "$r/_toolchain/gradle-8.9/bin/gradle.bat" -p $android --offline --no-daemon --no-build-cache --rerun-tasks :app:testProdDebugUnitTest :app:testDevDebugUnitTest
+        & "$r/_toolchain/gradle-8.9/bin/gradle.bat" -p $android --offline --no-daemon --no-build-cache :app:testProdDebugUnitTest --rerun :app:testDevDebugUnitTest --rerun
         if ($LASTEXITCODE -ne 0) {throw 'Gradle 单测失败'}
         foreach ($v in 'Prod','Dev') {
             $n=$failed=$skipped=0
@@ -65,9 +65,17 @@ try {
         $env:REWRITE_DATA_DIR=Join-Path $tmp 'rewrite-data'
         Push-Location $iso
         try {
-            foreach ($suite in 'tools/rewrite-service/tests','tools/rewrite-service','tools/cardback-editor','tools/word-audit') {
+            foreach ($suite in 'tools/rewrite-service/tests','tools/word-audit/tests') {
                 python -B -X utf8 -m unittest discover -s $suite -p 'test*.py'
                 if ($LASTEXITCODE -ne 0) {throw "后端单测失败 $suite"}
+            }
+            $scripts = @('tools/rewrite-service/test_unverified.py') + @(
+                Get-ChildItem 'tools/cardback-editor/test*.py' | ForEach-Object { $_.FullName }
+            )
+            foreach ($script in $scripts) {
+                Write-Output ("Backend " + (Split-Path $script -Leaf))
+                python -B -X utf8 $script
+                if ($LASTEXITCODE -ne 0) {throw "后端验收失败：$(Split-Path $script -Leaf)"}
             }
         } finally {Pop-Location}
         Write-Output 'Full PASS'
