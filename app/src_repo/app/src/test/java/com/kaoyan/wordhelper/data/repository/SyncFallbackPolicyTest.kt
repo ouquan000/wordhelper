@@ -72,4 +72,30 @@ class SyncFallbackPolicyTest {
         // 没配公网时不存在「公网候选」。
         assertFalse(SyncFallbackPolicy.isPublicOrigin("https://sync.example.cn", ""))
     }
+
+    @Test
+    fun verifiedDiscoveryWinsWhenTheLastSessionWasOnThePublicOrigin() {
+        val remote = "https://sync.example.com"
+        val lan = "https://192.168.2.40:8443"
+        assertEquals(
+            listOf(lan, "https://192.168.1.30:8443", remote),
+            SyncFallbackPolicy.preferredOrigins(
+                discovered = lan, active = remote,
+                configured = "https://192.168.1.30:8443", lastGood = remote,
+                cloud = remote, pinned = true
+            )
+        )
+    }
+
+    @Test
+    fun pinnedRoutesSkipCleartextAndRetainThePublicFallback() {
+        val remote = "https://sync.example.com"
+        assertEquals(
+            listOf(remote),
+            SyncFallbackPolicy.preferredOrigins(
+                discovered = null, active = remote, configured = "http://192.168.1.30:8765",
+                lastGood = "http://192.168.1.31:8765", cloud = remote, pinned = true
+            )
+        )
+    }
 }

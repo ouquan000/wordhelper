@@ -241,7 +241,7 @@ class SettingsRepository(private val context: Context) {
      * 网络可用性（1.4.6.1）。冷流，供 RewriteRepository 在网络恢复后补一次同步用；
      * 不做轮询，collect 结束就注销系统回调。
      */
-    val networkAvailableFlow: Flow<Boolean> = NetworkAvailability.observe(context)
+    val connectedNetworkFlow = NetworkAvailability.observe(context)
 
     suspend fun updateNewWordsLimit(limit: Int) {
         dataStore.edit { prefs -> prefs[KEY_NEW_WORDS_LIMIT] = limit.coerceIn(1, 500) }

@@ -102,17 +102,35 @@ class RewriteBarGestureTest {
     }
 
     @Test
-    fun holdingLikeAndDraggingUp60DpCancelsWithoutCommit() {
+    fun holdingLikeAndDraggingUp110DpCancelsWithoutCommit() {
         launch()
         val button = holdOn("rewrite_feedback_up")
         button.performTouchInput {
             advanceEventTime(250)
-            moveBy(Offset(0f, -60.dp.toPx()))
+            moveBy(Offset(0f, -110.dp.toPx()))
         }
         rule.onNodeWithTag("rewrite_rail_canceled").assertIsDisplayed()
         button.performTouchInput { up() }
         rule.runOnIdle {
             assertEquals(0, upCommits)
+            assertTrue(rewrites.isEmpty())
+            assertEquals(0, scrollState.value)
+        }
+    }
+
+    @Test
+    fun holdingLikeAndDraggingDown60DpStillCommits() {
+        launch()
+        val button = holdOn("rewrite_feedback_up")
+        button.performTouchInput {
+            advanceEventTime(250)
+            moveBy(Offset(0f, 60.dp.toPx()))
+        }
+        rule.onNodeWithTag("rewrite_action_rail").assertIsDisplayed()
+        rule.onNodeWithTag("rewrite_rail_canceled").assertDoesNotExist()
+        button.performTouchInput { up() }
+        rule.runOnIdle {
+            assertEquals(1, upCommits)
             assertTrue(rewrites.isEmpty())
             assertEquals(0, scrollState.value)
         }

@@ -1443,6 +1443,7 @@ private fun WordCard(
                                 modifier = Modifier.testTag("learning_star_toggle")
                             )
                         } else {
+                            val haptic = LocalHapticFeedback.current
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 MemoryActionIcon(
                                     icon = Icons.Outlined.Edit,
@@ -1458,7 +1459,10 @@ private fun WordCard(
                                     ink = if (memoryLocked) Color(0xFF81500A) else faceInk,
                                     enabled = actionsEnabled,
                                     highlighted = memoryLocked,
-                                    onClick = onToggleMemoryLock,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onToggleMemoryLock()
+                                    },
                                     modifier = Modifier.testTag("memory_lock")
                                 )
                             }
@@ -1659,7 +1663,8 @@ private fun CardBackBlocks(
             // 1.4.3.2：重写区放在正文最后，跟着滚动；用分隔线把「内容」和「操作」分开。
             if (backActions != null) {
                 Spacer(modifier = Modifier.height(6.dp))
-                HorizontalDivider(color = palette.panelBorder.copy(alpha = 0.8f))
+                HorizontalDivider(color = palette.ink.copy(alpha = 0.12f))
+                Spacer(modifier = Modifier.height(11.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

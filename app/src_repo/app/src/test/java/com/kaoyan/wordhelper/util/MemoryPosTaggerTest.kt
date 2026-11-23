@@ -347,4 +347,15 @@ class MemoryPosTaggerTest {
     /** 取正文的第 [index] 行（1-based，已 trim），避免在断言里手抄长句。 */
     private fun appropriateLineOf(body: String, index: Int): String =
         body.split("\n")[index - 1].trim()
+
+    @Test
+    fun pipeWithEnglishPrefixMergesBothNounGlossesBeforeTheFirstChunk() {
+        val text = "→ pipe 管子；烟斗。"
+        val tagged = MemoryPosTagger.tag(text, "n. 管子；烟斗").single()
+
+        assertEquals(text, tagged.text)
+        assertEquals("n.", tagged.pos)
+        val start = text.indexOf("pipe")
+        assertEquals(listOf(PosMark(start, start, "n.")), tagged.badges)
+    }
 }

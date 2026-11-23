@@ -91,6 +91,10 @@ object MemoryPosTagger {
 
     private const val ARROW = '\u2192'
 
+    private val ENGLISH_GLOSS_PREFIX = Regex(
+        """^(?:[A-Za-z]+[\s\u3000]+)+(?=[\u4e00-\u9fff])"""
+    )
+
     /** 种子数据里出现过各种箭头写法（`-->`、`——>`、`－>`），统一成 [ARROW]。 */
     private val ARROW_VARIANTS = Regex("""(?:\u2014+|\uff0d+|-+)>""")
 
@@ -170,7 +174,8 @@ object MemoryPosTagger {
         for (chunk in chunks) {
             val gloss = normalizeGloss(line.substring(chunk.first, chunk.last + 1))
             if (gloss.isEmpty()) continue
-            val pos = glosses[gloss]?.singleOrNull()
+            val matches = glosses[gloss] ?: glosses[ENGLISH_GLOSS_PREFIX.replaceFirst(gloss, "")]
+            val pos = matches?.singleOrNull()
             if (pos == null) {
                 // 防连坐：这块查不到唯一词性就跳过，不影响其余块。
                 continue

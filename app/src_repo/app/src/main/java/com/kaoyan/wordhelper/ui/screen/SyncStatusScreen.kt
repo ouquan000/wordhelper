@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kaoyan.wordhelper.data.network.CardBackAddress
 import com.kaoyan.wordhelper.data.dao.RewriteQueueBreakdown
 import com.kaoyan.wordhelper.data.repository.SyncPhase
 import com.kaoyan.wordhelper.data.repository.SyncStatusSnapshot
@@ -227,7 +228,17 @@ private fun SyncInfoCard(
             Text(text = "连接信息", style = MaterialTheme.typography.titleLarge)
             InfoRow(label = "最后成功", value = formatTimestamp(snapshot.lastSuccessAt))
             InfoRow(label = "最后尝试", value = formatTimestamp(snapshot.lastAttemptAt))
-            InfoRow(label = "实际连接", value = snapshot.lastOrigin ?: "—")
+            InfoRow(
+                label = "实际连接",
+                value = snapshot.lastOrigin?.let { origin ->
+                    val channel = when {
+                        CardBackAddress.isLanOrigin(origin) -> "局域网"
+                        origin.startsWith("https://") -> "公网 HTTPS"
+                        else -> "远程"
+                    }
+                    "$channel · $origin"
+                } ?: "—"
+            )
             InfoRow(label = "待发送", value = "${snapshot.pendingCount} 条")
             InfoRow(
                 label = "下次重试",

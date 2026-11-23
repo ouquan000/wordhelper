@@ -19,7 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -88,8 +88,6 @@ class SyncRepository(
     private var anchorFetchedKey = ""
 
     /** 断网恢复自动补同步的节流。 */
-    @Volatile
-    private var lastAutoSyncAt = 0L
 
     /**
      * 1.4.7.1：最近一次 [syncOnce] 跑完的时间戳（成功失败都算）。
@@ -116,17 +114,7 @@ class SyncRepository(
         rateLimitedUntil = 0L
     }
 
-    /** 上次 GET /health 的时间：60 秒最多探一次，别让状态页每次刷新都多打一个请求。 */
-    @Volatile
-    private var lastHealthProbeAt = 0L
 
-    /** 上次探测的地址；地址变了要立刻重探，不能拿旧电脑的 instance 判断新电脑。 */
-    @Volatile
-    private var lastHealthProbeOrigin = ""
-
-    /** 上次探测通过身份校验的地址；60 秒节流内复用，避免每轮都打 /health。 */
-    @Volatile
-    private var lastVerifiedOrigin: String? = null
 
     /**
      * 上一次上报的状态。4 秒一轮自动同步时，同一个失败会重复几十次；
@@ -616,7 +604,7 @@ class SyncRepository(
      * 把「自己刚推上去的」在别的设备上的结果是同一份，顺手把服务端补的字段收回来。
      */
     private suspend fun syncOnceLocked(): Result<String> = syncMutex.withLock {
-        // 1.4.7：同步前先问一句 /health（60 秒节流一次），状态页才有电脑端版本与能力可显示。
+        // 1.4.7：同步前用 /health 校验实际候选，状态页才有电脑端版本与能力可显示。
         // 探不到不阻塞：老服务端没有这个接口，真正的同步请求会拿到 404，由 call() 归档成 SERVER_TOO_OLD。
         val probeConfig = config()
         val verifiedOrigin = if (probeConfig != null) probeHealth(probeConfig) else null
@@ -668,17 +656,12 @@ class SyncRepository(
         if (networkRecoveryStarted) return
         networkRecoveryStarted = true
         autoSyncScope.launch {
-            settings.networkAvailableFlow
+            settings.connectedNetworkFlow
                 .distinctUntilChanged()
                 // 订阅时读到的当前状态不算「恢复」：启动时的正常同步会处理。
                 .drop(1)
-                .filter { it }
+                .filterNotNull()
                 .collect {
-                    // 已经在同步：这一轮会用到刚恢复的网络，别再排一轮。
-                    if (syncMutex.isLocked) return@collect
-                    val now = System.currentTimeMillis()
-                    if (now - lastAutoSyncAt < AUTO_SYNC_MIN_INTERVAL_MS) return@collect
-                    lastAutoSyncAt = now
                     runCatching { syncOnce() }
                 }
         }
@@ -746,54 +729,22 @@ class SyncRepository(
         var lanPort = settings.cardBackTlsPort
         // 首次配对：配对行已经给了 pin + tls_port。此时 instance_id 还是空的，
         // 不能让流程退回「先 HTTP 发 token 再学身份」——必须先走 pin 绑定的 HTTPS。
-        val firstPairOrigin = firstPairPinnedOrigin(settings, lanPin, lanPort)
-        if (firstPairOrigin != null) {
-            activeOrigin = firstPairOrigin
-            lanPort = settings.cardBackTlsPort.takeIf { it in 1..65535 } ?: DEFAULT_TLS_PORT
+        val configured = firstPairPinnedOrigin(settings, lanPin, lanPort) ?: settings.cardBackUrl
+        val lan = if (rotate && settings.cardBackLanAuto) resolveLan(settings) else null
+        if (lan != null) {
+            lanPin = lan.pin
+            lanPort = lan.port
         }
-        if (rotate && settings.cardBackLanAuto && firstPairOrigin == null) {
-            val lan = resolveLan(settings)
-            if (lan != null) {
-                activeOrigin = lan.origin
-                lanPin = lan.pin
-                lanPort = lan.port
-            }
-        }
-        // 1.4.6.1 P1：和改写链路同一套候选/上次成功，手填地址写坏时学习记录也能自愈。
-        // 1.5.1：公网域名垫在 lastGood 之前 —— 局域网全灭时它是唯一还能走通的出口，
-        // 而 lastGood 很可能就是那个刚刚失效的局域网地址。
-        val rawOrigins = if (rotate) {
-            CardBackAddress.candidates(
-                active = activeOrigin,
-                current = settings.cardBackUrl,
-                lastGood = settings.cardBackLastGoodUrl,
-                cloudFallback = cloudFallback
-            )
-        } else {
-            listOfNotNull(
-                CardBackAddress.preferred(
-                    active = activeOrigin,
-                    current = settings.cardBackUrl,
-                    lastGood = settings.cardBackLastGoodUrl
-                ),
-                // 只打一发的路径也要能落到公网：局域网首选不通时，域名是最后一次机会。
-                cloudFallback
-            )
-        }
-        // 有 pin 时，同一台电脑的明文 HTTP 地址一律不进候选：token 只能发给
-        // 「pin 证明过的 https://ip:tlsPort」或已受信的 HTTPS 域名。
-        val kept = if (lanPin.isNotBlank()) {
-            rawOrigins.filterNot { isPlainHttpIpOrigin(it) }
-        } else {
-            rawOrigins
-        }.distinct()
-        if (kept.isEmpty()) return null
-        // 用户手填的地址、active、lastGood 可能就是同一个公网域名：按 host 判定，
-        // 命中公网的候选要拿长超时，剩下的都按局域网短超时处理。
-        val publicOrigins = kept.filter { SyncFallbackPolicy.isPublicOrigin(it, publicOrigin) }.toSet()
-        // 稳定排序：局域网候选永远排在公网之前。activeOrigin 可能就是上次成功的公网域名，
-        // 若照原顺序它会被顶到最前面，在家时反而先白等一次公网超时 —— 与「局域网优先」相反。
-        val origins = kept.sortedBy { if (it in publicOrigins) 1 else 0 }
+        val origins = SyncFallbackPolicy.preferredOrigins(
+            discovered = lan?.origin,
+            active = activeOrigin,
+            configured = configured,
+            lastGood = settings.cardBackLastGoodUrl,
+            cloud = cloudFallback,
+            pinned = lanPin.isNotBlank()
+        )
+        if (origins.isEmpty()) return null
+        val publicOrigins = origins.filter { SyncFallbackPolicy.isPublicOrigin(it, publicOrigin) }.toSet()
         return SyncConfig(
             origins = origins,
             token = token,
@@ -815,16 +766,18 @@ class SyncRepository(
         var pin = TlsPinned.normalizePin(settings.cardBackTlsPin)
         var port = settings.cardBackTlsPort.takeIf { it in 1..65535 } ?: 8443
         val now = System.currentTimeMillis()
-        val anchorKey = "${settings.cardBackUrl}|$expected|${token.hashCode()}"
-        val httpsConfig = TlsPinned.normalizedHttpsOrigin(settings.cardBackUrl) != null
-        val shouldFetchAnchor = httpsConfig && (
+        val anchorUrl = sequenceOf(settings.cardBackUrl, settings.wordbookRemoteUrl)
+            .mapNotNull { TlsPinned.normalizedHttpsOrigin(it) }
+            .firstOrNull { !TlsPinned.isLanHttps(it) }
+        val anchorKey = "${anchorUrl}|$expected|${token.hashCode()}"
+        if (anchorUrl != null && (
             pin == null ||
                 anchorFetchedKey != anchorKey ||
                 now - anchorFetchedAt >= ANCHOR_REFRESH_MS
             )
-        if (shouldFetchAnchor) {
+        ) {
             val anchor = runCatching {
-                LanDiscovery.fetchAnchor(settings.cardBackUrl, token, expected)
+                LanDiscovery.fetchAnchor(anchorUrl, token, expected)
             }.getOrNull()
             anchorFetchedAt = now
             anchorFetchedKey = anchorKey
@@ -1156,17 +1109,6 @@ class SyncRepository(
      * 探测失败不阻塞主流程 —— 真正的同步请求会给出最终结论。
      */
     private suspend fun probeHealth(config: SyncConfig): String? {
-        val now = System.currentTimeMillis()
-        val firstOrigin = config.origins.firstOrNull().orEmpty()
-        // 地址变了（LAN/域名/换电脑）必须立刻重探，否则 60 秒内会拿旧电脑的
-        // instance_id 判断新电脑，游标不归零，拉取会静默漏行。
-        val originChanged = firstOrigin != lastHealthProbeOrigin
-        if (!originChanged && now - lastHealthProbeAt < HEALTH_PROBE_MIN_INTERVAL_MS) {
-            return lastVerifiedOrigin
-        }
-        lastHealthProbeAt = now
-        lastHealthProbeOrigin = firstOrigin
-        lastVerifiedOrigin = null
         val knownInstance = settingsRepository?.settingsFlow?.first()?.cardBackInstanceId.orEmpty()
         for (origin in config.origins) {
             // 有 pin 时，明文 HTTP+IP 绝不能拿 token；首配也必须先走 pin 绑定的 HTTPS。
@@ -1230,7 +1172,6 @@ class SyncRepository(
                     }
                     rememberSuccess(origin)
                     serverHealth = info
-                    lastVerifiedOrigin = origin
                     if (verifiedInstance.isBlank()) {
                         settingsRepository?.updateCardBackInstanceId(instanceId)
                     }
@@ -1386,8 +1327,6 @@ class SyncRepository(
         private const val PUSH_BATCH = 100
         private const val MAX_PULL_PAGES = 20
 
-        /** /health 探测节流：60 秒最多问一次，再怎么点同步也不该多打请求。 */
-        private const val HEALTH_PROBE_MIN_INTERVAL_MS = 60_000L
         /** HTTPS 配置地址的 TLS 锚点刷新间隔；pin 轮换时不必等下次冷启动。 */
         private const val ANCHOR_REFRESH_MS = 10 * 60_000L
 
@@ -1396,7 +1335,6 @@ class SyncRepository(
         private const val CAP_SYNC_CURSOR = "sync_cursor"
 
         /** 断网/重连回调常连着抖几次，30 秒内只补一轮。 */
-        private const val AUTO_SYNC_MIN_INTERVAL_MS = 30_000L
 
         /**
          * 局域网候选的超时：建连 2 秒、整体 8 秒。
@@ -1482,6 +1420,20 @@ internal object SyncFallbackPolicy {
         if (!base.startsWith("https://", ignoreCase = true)) return ""
         return CardBackAddress.originOf(base).orEmpty()
     }
+
+    /** 已发现的 LAN 优先，显式配置和已成功地址有序去重，公网作为退路。 */
+    fun preferredOrigins(
+        discovered: String?,
+        active: String?,
+        configured: String?,
+        lastGood: String?,
+        cloud: String?,
+        pinned: Boolean
+    ): List<String> = (listOfNotNull(CardBackAddress.originOf(discovered)) +
+        CardBackAddress.candidates(active, configured, lastGood, cloud))
+        .distinct()
+        .filterNot { pinned && it.startsWith("http://") }
+        .sortedBy { if (isPublicOrigin(it, cloud.orEmpty())) 1 else 0 }
 
     /**
      * [origin] 是否就是公网域名 [publicUrl]（都已经过 [normalizePublicUrl] 更好）。

@@ -44,7 +44,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -216,9 +216,6 @@ class RewriteRepository(
     @Volatile
     private var anchorFetchedKey = ""
 
-    /** 自动补发节流：断网/重连常常连着抖几个回调，不必每次都全量 sync。 */
-    @Volatile
-    private var lastAutoSyncAt = 0L
 
     /**
      * 1.4.7：被 429 限流到什么时候（epoch ms）。
@@ -259,6 +256,8 @@ class RewriteRepository(
         // 和卡背刷新一样：调用频率低，不池化连接，避开复用已被服务端关掉的连接
         .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
         .retryOnConnectionFailure(true)
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build()
 
     /**
@@ -284,17 +283,12 @@ class RewriteRepository(
         // 1.4.6.1：网络恢复后补一次同步。只跟系统回调走，不轮询；
         // App 被杀回调就没了 —— 不要求后台发送，下次打开时的启动同步会补。
         autoSyncScope.launch {
-            settingsRepository.networkAvailableFlow
+            settingsRepository.connectedNetworkFlow
                 .distinctUntilChanged()
                 // 第一个值是订阅时读到的「当前状态」：启动同步已经会做，别重复发一次。
                 .drop(1)
-                .filter { it }
+                .filterNotNull()
                 .collect {
-                    // 正在同步：这一轮已经会用到刚恢复的网络，别再排队来一遍。
-                    if (syncMutex.isLocked) return@collect
-                    val now = System.currentTimeMillis()
-                    if (now - lastAutoSyncAt < AUTO_SYNC_MIN_INTERVAL_MS) return@collect
-                    lastAutoSyncAt = now
                     runCatching { sync() }
                 }
         }
@@ -1140,9 +1134,7 @@ class RewriteRepository(
      */
     suspend fun statusOf(mark: RewriteQueueItem): RewriteStatusSnapshot? {
         val word = mark.word
-        // /health 已经说过「这台电脑没有 rewrite 能力」：别再每 4 秒撞一次 404。
-        if (ServerHealth.supports(serverHealth, CAP_REWRITE) == false) return null
-        val outcome = send("/rewrite/status", attempts = 1, rotate = false, report = false)
+        val outcome = send(PROGRESS_PATH, attempts = 1, report = false)
         if (outcome.kind != RetryPolicy.Kind.OK) return null
         val body = outcome.body
         if (body.isNullOrBlank()) return null
@@ -1597,7 +1589,14 @@ class RewriteRepository(
                 maxAttempts = attempts,
                 respectRateLimit = respectRateLimit,
                 report = report,
-                client = originClient
+                client = if (path == PROGRESS_PATH && (CardBackAddress.isLanOrigin(origin) || TlsPinned.isLanHttps(origin))) {
+                    originClient.newBuilder()
+                        .readTimeout(12, TimeUnit.SECONDS)
+                        .callTimeout(15, TimeUnit.SECONDS)
+                        .build()
+                } else {
+                    originClient
+                }
             )
             last = outcome
             if (OriginTrustPolicy.canRememberSuccess(outcome.code)) {
@@ -1712,54 +1711,22 @@ class RewriteRepository(
         var lanPort = settings.cardBackTlsPort
         // 首次配对：配对行已经给了 pin + tls_port，但 instance_id 还空。
         // 此时必须先走 pin 绑定的 HTTPS，不能让 token 先发明文 HTTP。
-        val firstPairOrigin = firstPairPinnedOrigin(settings, lanPin, lanPort)
-        if (firstPairOrigin != null) {
-            activeOrigin = firstPairOrigin
-            lanPort = settings.cardBackTlsPort.takeIf { it in 1..65535 } ?: DEFAULT_TLS_PORT
+        val configured = firstPairPinnedOrigin(settings, lanPin, lanPort) ?: settings.cardBackUrl
+        val lan = if (rotate && settings.cardBackLanAuto) resolveLan(settings) else null
+        if (lan != null) {
+            lanPin = lan.pin
+            lanPort = lan.port
         }
-        if (rotate && settings.cardBackLanAuto && firstPairOrigin == null) {
-            val lan = resolveLan(settings)
-            if (lan != null) {
-                activeOrigin = lan.origin
-                lanPin = lan.pin
-                lanPort = lan.port
-            }
-        }
-        // 1.4.8：只有已配对（有 token）才把公网域名作为兜底候选。
-        // 没 token 时强行请求域名只会换回一个无意义的 401，不如直接报「没配置地址」。
-        // 1.5.1：域名不再硬编码，统一读设置里的公网同步地址（可由本地 keystore.properties
-        // 注入 BuildConfig.DEFAULT_REMOTE_URL 后自动预填）。这样私人域名不会进 Git。
-        // 域名走系统信任，不拿 LAN 的 SPKI pin 校验证书（httpClientFor 按 origin 区分）。
-        val cloudFallback = settings.wordbookRemoteUrl
-            .takeIf { settings.cardBackToken.isNotBlank() }
-            ?.let(::normalizeCloudOrigin)
-        val origins = if (rotate) {
-            CardBackAddress.candidates(
-                active = activeOrigin,
-                current = settings.cardBackUrl,
-                lastGood = settings.cardBackLastGoodUrl,
-                cloudFallback = cloudFallback
-            )
-        } else {
-            listOfNotNull(
-                CardBackAddress.preferred(
-                    active = activeOrigin,
-                    current = settings.cardBackUrl,
-                    lastGood = settings.cardBackLastGoodUrl
-                )
-            )
-        }
-        // 有 pin 时，明文 HTTP+IP 一律不进候选：token 只能发给 pin 证明过的 HTTPS
-        // 或已受信 HTTPS 域名。没有 pin 的老配置保持原行为。
-        // 只有「带口令」时才必须把明文 HTTP+IP 排除在候选外；
-        // 未配对（token 为空）时没有秘密可泄露，显式填的 http://10.0.2.2:8765
-        // 必须能作为 HTTPS 自发现失败后的兜底，否则模拟器/首次配对会出现
-        // 「有地址但一个请求都发不出去」的假死。
-        val safeOrigins = if (lanPin.isNotBlank() && settings.cardBackToken.isNotBlank()) {
-            origins.filterNot { isPlainHttpIpOrigin(it) }
-        } else {
-            origins
-        }
+        val cloudFallback = SyncFallbackPolicy.normalizePublicUrl(settings.wordbookRemoteUrl)
+            .takeIf { settings.cardBackToken.isNotBlank() && it.isNotBlank() }
+        val safeOrigins = SyncFallbackPolicy.preferredOrigins(
+            discovered = lan?.origin,
+            active = activeOrigin,
+            configured = configured,
+            lastGood = settings.cardBackLastGoodUrl,
+            cloud = cloudFallback,
+            pinned = lanPin.isNotBlank() && settings.cardBackToken.isNotBlank()
+        )
         if (safeOrigins.isEmpty()) {
             return null
         }
@@ -1785,10 +1752,6 @@ class RewriteRepository(
         return "https://$host:$tlsPort"
     }
 
-    /** 有 pin 时任何明文 http 候选都不能再发口令，不只是 IP 字面量。 */
-    private fun isPlainHttpIpOrigin(origin: String): Boolean =
-        origin.startsWith("http://", ignoreCase = true)
-
     /**
      * 自动发现 LAN HTTPS 端点；pin 缺失时只允许从 HTTPS 配置地址的 /identity 取锚点。
      */
@@ -1799,16 +1762,18 @@ class RewriteRepository(
         var pin = TlsPinned.normalizePin(settings.cardBackTlsPin)
         var port = settings.cardBackTlsPort.takeIf { it in 1..65535 } ?: 8443
         val now = System.currentTimeMillis()
-        val anchorKey = "${settings.cardBackUrl}|$expected|${token.hashCode()}"
-        val httpsConfig = TlsPinned.normalizedHttpsOrigin(settings.cardBackUrl) != null
-        val shouldFetchAnchor = httpsConfig && (
+        val anchorUrl = sequenceOf(settings.cardBackUrl, settings.wordbookRemoteUrl)
+            .mapNotNull { TlsPinned.normalizedHttpsOrigin(it) }
+            .firstOrNull { !TlsPinned.isLanHttps(it) }
+        val anchorKey = "${anchorUrl}|$expected|${token.hashCode()}"
+        if (anchorUrl != null && (
             pin == null ||
                 anchorFetchedKey != anchorKey ||
                 now - anchorFetchedAt >= ANCHOR_REFRESH_MS
             )
-        if (shouldFetchAnchor) {
+        ) {
             val anchor = runCatching {
-                LanDiscovery.fetchAnchor(settings.cardBackUrl, token, expected)
+                LanDiscovery.fetchAnchor(anchorUrl, token, expected)
             }.getOrNull()
             anchorFetchedAt = now
             anchorFetchedKey = anchorKey
@@ -1884,40 +1849,10 @@ class RewriteRepository(
      */
     private fun httpClientFor(origin: String, pin: String): OkHttpClient? {
         if (TlsPinned.isLanHttps(origin)) return TlsPinned.clientFor(pin)
-        return if (isLanOrigin(origin)) lanClient else cloudClient
+        return if (CardBackAddress.isLanOrigin(origin)) lanClient else cloudClient
     }
 
     /** 1.5.1：判断一个 origin 是不是内网地址（只用于选超时，不参与信任判断）。 */
-    private fun isLanOrigin(origin: String): Boolean {
-        val host = runCatching { URI(origin).host }.getOrNull()?.lowercase(Locale.ROOT)
-            ?: return false
-        if (host == "localhost" || host.endsWith(".local")) return true
-        val parts = host.split('.')
-        if (parts.size != 4 || parts.any { it.toIntOrNull() == null }) return false
-        val a = parts[0].toIntOrNull() ?: return false
-        val b = parts[1].toIntOrNull() ?: return false
-        return a == 10 || a == 127 ||
-            (a == 172 && b in 16..31) ||
-            (a == 192 && b == 168) ||
-            (a == 169 && b == 254)
-    }
-
-    /**
-     * 公网地址归一成 origin：补 https、去掉卡片路径和结尾斜杠。
-     * 解析失败返回 null，调用方按「没配置」处理，绝不拿半截字符串去请求。
-     */
-    private fun normalizeCloudOrigin(raw: String): String? {
-        val text = raw.trim()
-        if (text.isEmpty()) return null
-        val withScheme = if (text.startsWith("http://", true) || text.startsWith("https://", true)) {
-            text
-        } else {
-            "https://$text"
-        }
-        val origin = CardBackAddress.originOf(withScheme) ?: return null
-        if (!origin.startsWith("https://", ignoreCase = true) && !isLanOrigin(origin)) return null
-        return origin
-    }
 
     /** 电脑端不在本机时，每个请求都得带口令；没填就照发（本机浏览器编辑卡背免票）。 */
     private fun withToken(builder: Request.Builder, token: String): Request.Builder {
@@ -2062,9 +1997,9 @@ class RewriteRepository(
         private const val CAP_FEEDBACK = "feedback"
 
         /** 网络恢复自动补发的最小间隔：连重连抖动几下也只发一次。 */
-        private const val AUTO_SYNC_MIN_INTERVAL_MS = 30_000L
 
         /** /rewrite/status 连上了，但列表里没有这个词（电脑端清过数据）。 */
+        private const val PROGRESS_PATH = "/rewrite/status"
         const val STATE_MISSING = "missing"
         private const val STALE_QUEUED_MILLIS = 30 * 60 * 1000L
         private const val FAILED_DEBT_RETRY_MILLIS = 60_000L

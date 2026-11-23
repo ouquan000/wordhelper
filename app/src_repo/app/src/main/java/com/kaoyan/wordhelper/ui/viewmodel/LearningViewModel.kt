@@ -33,6 +33,8 @@ import com.kaoyan.wordhelper.data.repository.CardbackAuth
 import com.kaoyan.wordhelper.data.repository.FeedbackBurstPolicy
 import com.kaoyan.wordhelper.data.repository.RewriteMarkPolicy
 import com.kaoyan.wordhelper.data.repository.RewriteRepository
+import com.kaoyan.wordhelper.data.repository.SyncStatusStore
+import com.kaoyan.wordhelper.data.repository.rewriteClientId
 import com.kaoyan.wordhelper.data.repository.TodayNewWordsPlan
 import com.kaoyan.wordhelper.ml.core.AdaptiveResponseThreshold
 import com.kaoyan.wordhelper.ml.integration.MLEnhancedScheduler
@@ -145,6 +147,9 @@ data class RewriteProgressUi(
     val failed: Boolean = false,
     val offline: Boolean = false
 )
+
+internal fun rewritePollingOffline(missed: Int, lastConnectionAt: Long?, now: Long): Boolean =
+    missed >= 2 && (lastConnectionAt == null || now - lastConnectionAt > 45_000L)
 
 private data class QueueLoadParams(
     val book: Book?,
@@ -542,6 +547,8 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
 
     /** 上一次轮询的是哪个词，用来在换词时把进度清零。 */
     private var polledWordId: Long? = null
+    private var polledRequestId: String? = null
+    private var missedProgressPolls = 0
 
     /** 这条标记到了终态还要不要拉一次结果；标记/换词时重新置上。 */
     private var pendingTerminalSync = true
@@ -918,8 +925,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 approachRev = burst.approachRev,
                 count = burst.delta
             )
-        }.onSuccess {
-            _message.value = "已记录：这条思路有帮助 +${burst.delta}"
         }
     }
 
@@ -974,8 +979,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                         )
                     }
                 }
-            }.onSuccess {
-                _message.value = "已保存手改思路"
             }.onFailure {
                 _message.value = "保存失败：${it.message ?: "数据库写入异常"}"
             }
@@ -989,7 +992,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         if (bookId <= 0L) return
         viewModelScope.launch {
             runCatching {
-                var restored = false
                 database.withTransaction {
                     val existing = database.bookMemoryDao().getForBook(word.id, bookId) ?: return@withTransaction
                     val prev = existing.prevApproach?.trim().orEmpty()
@@ -1007,11 +1009,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                             unverifiedReason = null
                         )
                     )
-                    restored = true
                 }
-                restored
-            }.onSuccess { restored ->
-                _message.value = if (restored) "已恢复上一版" else "没有可恢复的上一版了"
             }.onFailure {
                 _message.value = "恢复失败：${it.message ?: "数据库写入异常"}"
             }
@@ -1034,7 +1032,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     )
                 )
             }.onSuccess { lockId ->
-                _message.value = if (locked) "已锁定：闲时洗词不会覆盖这份助记" else "已解锁"
                 launch {
                     val synced = runCatching {
                         rewriteRepository.setMemoryLock(word.id, bookId, locked)
@@ -1042,12 +1039,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     if (synced) {
                         // 1.5.3v2 C5：锁已推到电脑端，标记 synced=1，不再重复补发。
                         runCatching { database.memoryLockDao().markSynced(lockId) }
-                    } else {
-                        _message.value = if (locked) {
-                            "已本地锁定，电脑端稍后自动同步"
-                        } else {
-                            "已本地解锁，电脑端稍后自动同步"
-                        }
                     }
                 }
             }.onFailure {
@@ -1274,17 +1265,27 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         val bookId = activeBook.value?.id ?: 0L
         val mark = currentRewriteMark.value ?: return
         if (mark.wordId != word.id || (mark.bookId != bookId && mark.bookId != 0L)) return
+        val requestId = rewriteClientId(mark)
+        if (requestId != polledRequestId) {
+            polledRequestId = requestId
+            missedProgressPolls = 0
+            _rewriteProgress.value = null
+        }
         val snapshot = rewriteRepository.statusOf(mark)
-        if (_currentWord.value?.id != word.id || (activeBook.value?.id ?: 0L) != bookId) return
+        if (_currentWord.value?.id != word.id || (activeBook.value?.id ?: 0L) != bookId ||
+            currentRewriteMark.value?.let(::rewriteClientId) != requestId
+        ) return
         if (snapshot == null) {
-            // 连不上电脑：保留上一次的百分比，只把「等电脑上线」点亮
-            _rewriteProgress.value = RewriteProgressUi(
-                fraction = _rewriteProgress.value?.fraction,
-                failed = _rewriteProgress.value?.failed == true,
-                offline = true
+            missedProgressPolls++
+            val previous = _rewriteProgress.value ?: RewriteProgressUi(fraction = null)
+            _rewriteProgress.value = previous.copy(
+                offline = rewritePollingOffline(
+                    missedProgressPolls, SyncStatusStore.state.value.lastOriginSuccessAt, System.currentTimeMillis()
+                )
             )
             return
         }
+        missedProgressPolls = 0
         if (snapshot.state == RewriteRepository.STATE_MISSING) {
             _rewriteProgress.value = RewriteProgressUi(fraction = null)
             return

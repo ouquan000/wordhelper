@@ -47,21 +47,27 @@ class ActionRailGestureStateMachineTest {
     }
 
     @Test
-    fun draggingAboveOrBelow44DpCancels() {
-        listOf(15f, 105f).forEach { y ->
-            val gesture = ActionRailGestureStateMachine(30f, 60f)
-            gesture.hold(180, 320f, 4, 0)
-            gesture.move(220f, y)
-            assertTrue(gesture.selection?.canceled == true)
-            assertNull(gesture.release(300))
-        }
+    fun draggingUp110DpCancels() {
+        machine.hold(180, 320f, 4, 0)
+        machine.move(220f, -50f)
+        assertTrue(machine.selection?.canceled == true)
+        assertNull(machine.release(300))
     }
 
     @Test
-    fun draggingBackToTheBoundaryRecoversTheCurrentSlot() {
+    fun draggingDown60DpKeepsTheChoiceAndCommits() {
         machine.hold(180, 320f, 4, 0)
-        machine.move(220f, 15f)
-        machine.move(255f, 16f)
+        machine.move(220f, 120f)
+        assertEquals(ActionRailGestureStateMachine.Selection(2), machine.selection)
+        assertEquals(Release.Commit(2), machine.release(300))
+    }
+
+    @Test
+    fun draggingBackToThe96DpBoundaryRecoversTheCurrentSlot() {
+        machine.hold(180, 320f, 4, 0)
+        machine.move(220f, -50f)
+        assertTrue(machine.selection?.canceled == true)
+        machine.move(255f, -36f)
         assertEquals(ActionRailGestureStateMachine.Selection(3), machine.selection)
         assertEquals(Release.Commit(3), machine.release(340))
     }

@@ -32,34 +32,26 @@ object NetworkAvailability {
         return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    /**
-     * 网络可用性变化。冷流：每次 collect 注册一次系统回调，collect 结束（awaitClose）自动注销。
-     * 先发一次当前状态，之后只在真的变化时发（distinctUntilChanged），
-     * 系统连发多次回调时用 conflate 丢掉中间态。
-     */
-    fun observe(context: Context): Flow<Boolean> = callbackFlow {
-        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+    /** 默认网络身份发生变化时触发补同步，包含蜂窝和 Wi-Fi 间的直接切换。 */
+    fun observe(context: Context): Flow<Network?> = callbackFlow {
+        val manager = context.getSystemService(ConnectivityManager::class.java)
         if (manager == null) {
-            trySend(true)
+            trySend(null)
             close()
             return@callbackFlow
         }
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                trySend(true)
-            }
-
-            override fun onLost(network: Network) {
-                trySend(isOnline(context))
-            }
-
-            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-                trySend(capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))
-            }
+        fun refresh() {
+            trySend(manager.activeNetwork?.takeIf {
+                manager.getNetworkCapabilities(it)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            })
         }
-        // 没有 ACCESS_NETWORK_STATE 时这里会抛 SecurityException（已加权限，兜底防 ROM 差异）。
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = refresh()
+            override fun onLost(network: Network) = refresh()
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = refresh()
+        }
         val registered = runCatching { manager.registerDefaultNetworkCallback(callback) }.isSuccess
-        trySend(isOnline(context))
+        refresh()
         if (!registered) {
             close()
             return@callbackFlow

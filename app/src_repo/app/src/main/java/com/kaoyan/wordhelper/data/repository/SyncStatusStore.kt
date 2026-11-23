@@ -51,6 +51,7 @@ data class SyncStatusSnapshot(
     val lastMessage: String? = null,
     /** 最近一次成功请求实际命中的 origin（不含口令）。手填地址失败回退到上次成功时，这里显示回退后的地址。 */
     val lastOrigin: String? = null,
+    val lastOriginSuccessAt: Long? = null,
     val pendingCount: Int = 0,
     val retryAtEpochMs: Long? = null,
     val serverVersion: String? = null,
@@ -156,7 +157,8 @@ object SyncStatusStore {
 
     /** 最近一次成功请求实际命中的 origin；用来识别「手填地址连不上、回退到上次成功」。 */
     fun reportOrigin(origin: String) {
-        _state.update { it.copy(lastOrigin = origin) }
+        val now = System.currentTimeMillis()
+        _state.update { it.copy(lastOrigin = origin, lastOriginSuccessAt = now) }
     }
 
     /** 回到冷启动状态（换地址、清口令之后用）。 */

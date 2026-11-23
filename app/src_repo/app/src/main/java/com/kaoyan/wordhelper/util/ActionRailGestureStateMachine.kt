@@ -33,7 +33,7 @@ internal class ActionRailGestureStateMachine(private val originX: Float, private
                 } else {
                     current.index
                 }
-                selection = Selection(index, abs(y - originY) > CANCEL_DISTANCE_DP)
+                selection = Selection(index, originY - y > UPWARD_CANCEL_DP)
             }
             else -> Unit
         }
@@ -69,7 +69,7 @@ internal class ActionRailGestureStateMachine(private val originX: Float, private
     companion object {
         const val HOLD_MILLIS = 180L
         private const val TOUCH_SLOP_DP = 10f
-        private const val CANCEL_DISTANCE_DP = 44f
+        private const val UPWARD_CANCEL_DP = 96f
     }
 }
 

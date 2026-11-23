@@ -72,4 +72,18 @@ object CardBackAddress {
     fun preferred(active: String?, current: String?, lastGood: String?): String? {
         return originOf(active) ?: originOf(current) ?: originOf(lastGood)
     }
+    fun isLanOrigin(origin: String): Boolean {
+        val host = runCatching { URI(origin).host }.getOrNull()?.lowercase(Locale.ROOT)
+            ?: return false
+        if (host == "localhost" || host.endsWith(".local")) return true
+        val parts = host.split('.')
+        if (parts.size != 4 || parts.any { it.toIntOrNull() == null }) return false
+        val a = parts[0].toIntOrNull() ?: return false
+        val b = parts[1].toIntOrNull() ?: return false
+        return a == 10 || a == 127 ||
+            (a == 172 && b in 16..31) ||
+            (a == 192 && b == 168) ||
+            (a == 169 && b == 254)
+    }
+
 }

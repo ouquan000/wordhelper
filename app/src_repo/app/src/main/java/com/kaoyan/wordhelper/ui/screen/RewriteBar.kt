@@ -29,10 +29,19 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.SwapHoriz
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -49,7 +58,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -57,7 +65,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -69,7 +76,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
@@ -84,6 +90,7 @@ import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
 import com.kaoyan.wordhelper.data.entity.RewriteStatus
 import com.kaoyan.wordhelper.data.model.RewriteModel
 import com.kaoyan.wordhelper.data.model.RewriteModels
+import com.kaoyan.wordhelper.ui.component.LocalHoloCardPalette
 import com.kaoyan.wordhelper.ui.theme.LocalAppDarkTheme
 import com.kaoyan.wordhelper.ui.viewmodel.RewriteProgressUi
 import com.kaoyan.wordhelper.util.ActionRailGestureStateMachine
@@ -173,15 +180,15 @@ internal fun RewriteBar(
 
     fun feedbackOptions(rating: RailFeedback, reasons: List<String>, editor: Instruction) =
         reasons.map { reason -> RailOption(reason) { submitFeedback(rating, reason) } } +
-            RailOption("✎ 写一句") { openInstruction(editor) }
+            RailOption("写一句") { openInstruction(editor) }
 
     val modelOptions = models.map { model ->
         RailOption(shortNameOf(model.name)) { select(model.id) }
     }
     val rewriteOptions = if (presentation.fill != null) {
-        listOf(RailOption("再点重发") { rewrite("") }, RailOption("✕ 取消排队") { cancel() })
+        listOf(RailOption("再点重发") { rewrite("") }, RailOption("取消排队") { cancel() })
     } else {
-        listOf(RailOption("直接重写") { rewrite("") }, RailOption("✎ 写要求重写") {
+        listOf(RailOption("直接重写") { rewrite("") }, RailOption("写要求重写") {
             openInstruction(Instruction.Rewrite)
         })
     }
@@ -206,25 +213,25 @@ internal fun RewriteBar(
         ) {
             Column(
                 Modifier.fillMaxWidth().graphicsLayer { alpha = rowAlpha },
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().height(38.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ActionPill(
                         wordId = wordId,
                         control = RailControl.Model,
-                        label = "⇄ ${shortNameOf(RewriteModels.nameOf(models, selectedModelId))}",
+                        label = "${shortNameOf(RewriteModels.nameOf(models, selectedModelId))}",
                         enabled = enabled && models.isNotEmpty(),
                         options = modelOptions,
                         defaultIndex = models.indexOfFirst { it.id == selectedModelId }.coerceAtLeast(0),
                         onTap = ::nextModel,
                         areaCoordinates = { areaCoordinates },
                         onRail = publishRail,
-                        modifier = Modifier.weight(0.42f).fillMaxHeight()
+                        modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                     ActionPill(
                         wordId = wordId,
                         control = RailControl.Rewrite,
-                        label = "✨ ${presentation.label}",
+                        label = "${presentation.label}",
                         enabled = enabled,
                         options = rewriteOptions,
                         onTap = {
@@ -232,15 +239,15 @@ internal fun RewriteBar(
                         },
                         areaCoordinates = { areaCoordinates },
                         onRail = publishRail,
-                        modifier = Modifier.weight(0.58f).fillMaxHeight(),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                         fill = presentation.fill
                     )
                 }
-                Row(Modifier.fillMaxWidth().height(36.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().height(38.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ActionPill(
                         wordId = wordId,
                         control = RailControl.Up,
-                        label = if (likeCount > 0) "👍 有帮助 $likeCount" else "👍 有帮助",
+                        label = if (likeCount > 0) "有帮助 $likeCount" else "有帮助",
                         enabled = enabled,
                         options = upOptions,
                         onTap = { submitFeedback(RailFeedback.Up) },
@@ -252,7 +259,7 @@ internal fun RewriteBar(
                     ActionPill(
                         wordId = wordId,
                         control = RailControl.Down,
-                        label = "👎 没帮助",
+                        label = "没帮助",
                         enabled = enabled,
                         options = downOptions,
                         onTap = { submitFeedback(RailFeedback.Down) },
@@ -294,10 +301,32 @@ private fun ActionPill(
     selected: Boolean = false,
     fill: Float? = null
 ) {
-    val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(20.dp)
+    val palette = LocalHoloCardPalette.current
+    val shape = RoundedCornerShape(19.dp)
     val primary = control == RailControl.Rewrite
-    val chargeColor = Color(0xFF5D49B8)
+    val glow = when (control) {
+        RailControl.Model -> Color(0xFF899BE4)
+        RailControl.Rewrite -> Color(0xFFAA8DE8)
+        RailControl.Up -> Color(0xFF73C9B4)
+        RailControl.Down -> Color(0xFFE8A2B6)
+    }
+    val frosted = if (palette.dark) Color(0xFF252A38) else Color(0xFFF9FAFF)
+    val top = lerp(frosted, glow, if (primary || selected) 0.31f else 0.04f)
+    val bottom = lerp(frosted, glow, if (primary || selected) 0.15f else 0.01f)
+    val icon = when (control) {
+        RailControl.Model -> Icons.Outlined.SwapHoriz
+        RailControl.Rewrite -> Icons.Outlined.AutoAwesome
+        RailControl.Up -> if (selected) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp
+        RailControl.Down -> if (selected) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown
+    }
+    val ink = when {
+        !enabled -> palette.subInk.copy(alpha = 0.55f)
+        palette.dark -> if (primary || selected) lerp(Color.White, glow, 0.29f) else palette.ink
+        primary -> Color(0xFF493571)
+        selected && control == RailControl.Up -> Color(0xFF245B50)
+        selected && control == RailControl.Down -> Color(0xFF773B50)
+        else -> palette.ink
+    }
     val haptic = LocalHapticFeedback.current
     val currentHaptic by rememberUpdatedState(haptic)
     val tap by rememberUpdatedState(onTap)
@@ -407,15 +436,20 @@ private fun ActionPill(
     Box(
         modifier.clip(shape)
             .background(
-                when {
-                    !enabled -> colors.surfaceVariant.copy(alpha = 0.36f)
-                    fill != null -> chargeColor.copy(alpha = 0.15f)
-                    primary -> colors.primary
-                    selected -> colors.primaryContainer
-                    else -> colors.surfaceVariant.copy(alpha = 0.52f)
-                }
+                Brush.verticalGradient(
+                    listOf(top.copy(alpha = if (enabled) 0.74f else 0.38f), bottom.copy(alpha = 0.48f))
+                )
             )
-            .border(1.dp, colors.outlineVariant.copy(alpha = 0.48f), shape)
+            .border(
+                0.6.dp,
+                Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = if (palette.dark) 0.27f else 0.78f),
+                        glow.copy(alpha = if (palette.dark) 0.19f else 0.28f)
+                    )
+                ),
+                shape
+            )
             .testTag(control.tag)
             .onGloballyPositioned { coordinates = it }
             .then(gesture)
@@ -431,32 +465,32 @@ private fun ActionPill(
         contentAlignment = Alignment.Center
     ) {
         if (fill != null && enabled) {
-            Box(
-                Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(progress)
-                    .background(Brush.horizontalGradient(listOf(chargeColor, Color(0xFF6E57C9))))
-            )
+            val charge = if (palette.dark) {
+                listOf(Color(0xFF4A3A73), Color(0xFF39456C))
+            } else {
+                listOf(Color(0xFFCBB9F1), Color(0xFFBFCDF4))
+            }
+            Box(Modifier.fillMaxSize().padding(2.5.dp)) {
+                Box(
+                    Modifier.align(Alignment.CenterStart)
+                        .fillMaxHeight()
+                        .fillMaxWidth(progress)
+                        .clip(RoundedCornerShape(50))
+                        .background(Brush.horizontalGradient(charge))
+                )
+            }
         }
-        val labelModifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp)
-        val style = if (primary) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelSmall
-        val ink = when {
-            fill != null -> colors.onSurface
-            primary && enabled -> colors.onPrimary
-            selected -> colors.onPrimaryContainer
-            else -> colors.onSurfaceVariant
-        }
-        Text(label, modifier = labelModifier, style = style, color = ink, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (fill != null && enabled) {
-            // Use the button's on-primary ink precisely where the charging fill crosses the label.
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(16.dp))
             Text(
                 label,
-                modifier = Modifier.fillMaxWidth().clearAndSetSemantics { }
-                    .drawWithContent {
-                        clipRect(right = size.width * progress) { this@drawWithContent.drawContent() }
-                    }
-                    .padding(horizontal = 5.dp),
-                textAlign = TextAlign.Center,
-                style = style,
-                color = Color.White,
+                color = ink,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (primary || selected) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
