@@ -27,7 +27,7 @@ try {
     $saved=$env:WORDHELPER_STORE_PASS
     try {
         $env:WORDHELPER_STORE_PASS=((Get-Content -LiteralPath $props | Where-Object {$_ -match '^\s*storePassword\s*='}) -split '=',2)[1].Trim()
-        $cert=& "$jdk/bin/keytool.exe" -J-Duser.language=en -list -v -alias wordhelper -keystore $key -storepass:env WORDHELPER_STORE_PASS 2>&1
+        $cert=& "$jdk/bin/keytool.exe" -list -v -alias wordhelper -keystore $key -storepass:env WORDHELPER_STORE_PASS 2>&1
         if ($LASTEXITCODE -ne 0 -or (($cert -join ' ') -replace ':','') -notmatch '963533138ed73e92e9a2859f80fdf18becb4ee5a83132c55634b965d7164ba1c') {throw '签名材料校验失败'}
     } finally {$env:WORDHELPER_STORE_PASS=$saved}
     if ($Quick) {Write-Output 'Quick PASS'; return}
