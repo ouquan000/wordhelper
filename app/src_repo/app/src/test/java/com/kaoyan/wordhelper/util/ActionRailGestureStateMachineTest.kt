@@ -1,14 +1,34 @@
 package com.kaoyan.wordhelper.util
 
-import com.kaoyan.wordhelper.util.ActionRailGestureStateMachine.Release
+import com.kaoyan.wordhelper.util.SwipeRailStateMachine.Release
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class ActionRailGestureStateMachineTest {
-    private val machine = ActionRailGestureStateMachine(30f, 60f)
+class SwipeRailStateMachineTest {
+    private val machine = SwipeRailStateMachine(30f, 60f)
+
+    @Test
+    fun openingAndOnePixelMovementUseTheSameSegmentAcrossDensities() {
+        for (density in listOf(1f, 2f, 3.5f)) {
+            for ((x, slot) in listOf(10f to 0, 159.9f to 1, 310f to 3)) {
+                val rail = SwipeRailStateMachine(x, 0f)
+                assertTrue(rail.hold(180, 320f, 4))
+                assertEquals(slot, rail.selection?.index)
+                rail.move(x + 1f / density, 0f)
+                assertEquals(Release.Commit(slot), rail.release(190))
+            }
+        }
+    }
+
+    @Test
+    fun rightHandOrderPlacesPrimaryAtTheRightEdge() {
+        val choices = listOf("primary", "second", "third")
+        assertEquals(choices.reversed(), SwipeRailStateMachine.displayOrder(choices, true))
+        assertEquals(choices, SwipeRailStateMachine.displayOrder(choices, false))
+    }
 
     @Test
     fun quickStationaryReleaseIsATapExactlyOnce() {
@@ -22,23 +42,23 @@ class ActionRailGestureStateMachineTest {
         machine.move(30f, 49.9f)
         assertTrue(machine.yielded)
         machine.move(30f, 60f)
-        assertFalse(machine.hold(200, 320f, 4, 0))
+        assertFalse(machine.hold(200, 320f, 4))
         assertNull(machine.release(200))
     }
 
     @Test
-    fun holdsAt180MsAndStartsOnTheCurrentlySelectedModel() {
-        assertFalse(machine.hold(179, 320f, 4, 2))
+    fun holdsAt180MsAndStartsAtFinger() {
+        assertFalse(machine.hold(179, 320f, 4))
         machine.move(40f, 70f)
-        assertTrue(machine.hold(180, 320f, 4, 2))
+        assertTrue(machine.hold(180, 320f, 4))
         machine.move(30f, 60f)
-        assertEquals(2, machine.selection?.index)
-        assertEquals(Release.Commit(2), machine.release(181))
+        assertEquals(0, machine.selection?.index)
+        assertEquals(Release.Commit(0), machine.release(181))
     }
 
     @Test
     fun horizontalDragCrossesMultipleSegmentsInBothDirections() {
-        machine.hold(180, 320f, 4, 0)
+        machine.hold(180, 320f, 4)
         listOf(82f to 1, 165f to 2, 260f to 3, 154f to 1, -20f to 0).forEach { (x, index) ->
             machine.move(x, 60f)
             assertEquals(index, machine.selection?.index)
@@ -48,7 +68,7 @@ class ActionRailGestureStateMachineTest {
 
     @Test
     fun draggingUp110DpCancels() {
-        machine.hold(180, 320f, 4, 0)
+        machine.hold(180, 320f, 4)
         machine.move(220f, -50f)
         assertTrue(machine.selection?.canceled == true)
         assertNull(machine.release(300))
@@ -56,19 +76,19 @@ class ActionRailGestureStateMachineTest {
 
     @Test
     fun draggingDown60DpKeepsTheChoiceAndCommits() {
-        machine.hold(180, 320f, 4, 0)
+        machine.hold(180, 320f, 4)
         machine.move(220f, 120f)
-        assertEquals(ActionRailGestureStateMachine.Selection(2), machine.selection)
+        assertEquals(SwipeRailStateMachine.Selection(2), machine.selection)
         assertEquals(Release.Commit(2), machine.release(300))
     }
 
     @Test
     fun draggingBackToThe96DpBoundaryRecoversTheCurrentSlot() {
-        machine.hold(180, 320f, 4, 0)
+        machine.hold(180, 320f, 4)
         machine.move(220f, -50f)
         assertTrue(machine.selection?.canceled == true)
         machine.move(255f, -36f)
-        assertEquals(ActionRailGestureStateMachine.Selection(3), machine.selection)
+        assertEquals(SwipeRailStateMachine.Selection(3), machine.selection)
         assertEquals(Release.Commit(3), machine.release(340))
     }
 

@@ -1,22 +1,30 @@
 [CmdletBinding()]
-param([switch]$Quick)
+param([switch]$Quick, [switch]$AllowDirty)
 $ErrorActionPreference='Stop'
 $r=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$originalPath=$env:PATH
 Push-Location $r
 try {
     $dirty=git status --porcelain -uall
-    if ($LASTEXITCODE -ne 0 -or $dirty) {throw '工作树或暂存区不干净'}
+    if ($LASTEXITCODE -ne 0 -or ($dirty -and !$AllowDirty)) {throw '工作树或暂存区不干净'}
     $files=@(git -c core.quotepath=false ls-files)
     if ($LASTEXITCODE -ne 0) {throw 'Git 文件清单失败'}
-    $bad=$files | Where-Object {$_ -match '(^|/)baseline/|\.apk$|\.(jks|keystore|pem|pfx|key)$|(^|/)(keystore\.properties|\.cardback_token|\.env)$|^tools/(rewrite-service/data|cardback-editor/(published|\.cardback_tls))/'}
+    $bad=$files | Where-Object {$_ -match '(^|/)baseline/|\.apk$|\.db-(wal|shm)$|(^|/)sync\.json[^/]*$|\.(jks|keystore|pem|pfx|key)$|(^|/)(keystore\.properties|\.cardback_token|\.env)$|^tools/(rewrite-service/data|cardback-editor/(published|\.cardback_tls))/'}
     if ($bad) {throw "禁止跟踪：$($bad -join ', ')"}
     $pattern='BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|sk-[A-Za-z0-9_-]{24,}|Bearer [A-Za-z0-9_.-]{32,}|(api_key|access_token|storePassword|keyPassword)[[:space:]]*[:=][[:space:]]*["''][A-Za-z0-9+/_.-]{20,}["'']'
     $hits=git grep --cached -I -i -l -E $pattern --
     if ($LASTEXITCODE -eq 0) {throw "敏感内容命中：$($hits -join ', ')"}
     if ($LASTEXITCODE -ne 1) {throw '扫描失败'}
+    $limits=@{}
+    foreach ($entry in Get-Content (Join-Path $r 'scripts/line_limit_baseline.txt')) {
+        if ($entry -notmatch '^(\d+) (.+)$') {throw "无效基线：$entry"}
+        $limits.Add($matches[2],[int]$matches[1])
+    }
     $count=0
     foreach ($file in $files | Where-Object {$_ -match '\.(kt|py)$'}) {
         $lines=[IO.File]::ReadAllLines((Join-Path $r $file)).Length
+        $limit=if ($limits.ContainsKey($file)) {$limits[$file]} else {450}
+        if ($lines -gt $limit) {throw "行数超限：$file $lines > $limit"}
         if ($lines -gt 450) {Write-Output "$lines $file"; $count++}
     }
     Write-Output "超过450行：$count"
@@ -31,6 +39,18 @@ try {
         if ($LASTEXITCODE -ne 0 -or (($cert -join ' ') -replace ':','') -notmatch '963533138ed73e92e9a2859f80fdf18becb4ee5a83132c55634b965d7164ba1c') {throw '签名材料校验失败'}
     } finally {$env:WORDHELPER_STORE_PASS=$saved}
     if ($Quick) {Write-Output 'Quick PASS'; return}
+    if (!(Get-Command openssl -CommandType Application -ErrorAction SilentlyContinue)) {
+        $gitRoot=Split-Path (Split-Path (Get-Command git).Source)
+        foreach ($root in @($gitRoot, "$env:ProgramFiles/Git")) {
+            foreach ($sub in 'usr/bin','mingw64/bin') {
+                $dir=Join-Path $root $sub
+                if (Test-Path -LiteralPath "$dir/openssl.exe") {$env:PATH="$dir;$env:PATH"; break}
+            }
+            if (Get-Command openssl -CommandType Application -ErrorAction SilentlyContinue) {break}
+        }
+    }
+    $python=Join-Path $r 'venv-anki/Scripts/python.exe'
+    if (!(Test-Path -LiteralPath $python)) {$python=(Get-Command python -CommandType Application).Source}
     if (!(Get-Command openssl -CommandType Application -ErrorAction SilentlyContinue)) {
         throw '完整模式需要 openssl，以运行 TLS 指纹交叉验证。请将 CLI 加入本次进程 PATH。'
     }
@@ -69,7 +89,7 @@ try {
         Push-Location $iso
         try {
             foreach ($suite in 'tools/rewrite-service/tests','tools/word-audit/tests') {
-                python -B -X utf8 -m unittest discover -s $suite -p 'test*.py'
+                & $python -B -X utf8 -m unittest discover -s $suite -p 'test*.py'
                 if ($LASTEXITCODE -ne 0) {throw "后端单测失败 $suite"}
             }
             $scripts = @('tools/rewrite-service/test_unverified.py') + @(
@@ -77,7 +97,7 @@ try {
             )
             foreach ($script in $scripts) {
                 Write-Output ("Backend " + (Split-Path $script -Leaf))
-                python -B -X utf8 $script
+                & $python -B -X utf8 $script
                 if ($LASTEXITCODE -ne 0) {throw "后端验收失败：$(Split-Path $script -Leaf)"}
             }
         } finally {Pop-Location}
@@ -89,4 +109,4 @@ try {
         if ((Split-Path (Resolve-Path -LiteralPath $tmp).Path) -ne $r -or (Split-Path $tmp -Leaf) -notmatch '^\.preflight-[a-f0-9]{32}$') {throw '临时目录边界异常'}
         Remove-Item -LiteralPath $tmp -Recurse -Force
     }
-} finally {Pop-Location}
+} finally {$env:PATH=$originalPath; Pop-Location}

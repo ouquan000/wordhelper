@@ -42,7 +42,6 @@ object LanDiscovery {
     private const val DISCOVERY_PORT = 8767
     private const val WAIT_MS = 900
     private const val HTTP_TIMEOUT_MS = 1500
-    private const val CACHE_MS = 30_000L
 
     /** 与 CardbackAuth.HEADER 一致；network 层不反向依赖 repository，故在这里再声明一次。 */
     private const val TOKEN_HEADER = "X-Cardback-Token"
@@ -52,14 +51,7 @@ object LanDiscovery {
     /** 从受信任的 HTTPS 配置地址拿到的局域网 TLS 锚点。 */
     data class TlsAnchor(val pin: String, val port: Int, val instanceId: String)
 
-    @Volatile
-    private var cachedAt = 0L
-
-    @Volatile
-    private var cachedKey = ""
-
-    @Volatile
-    private var cached: Found? = null
+    private val cache = LanProbeCache<Found>()
 
     private val anchorClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -89,14 +81,14 @@ object LanDiscovery {
         val pin = TlsPinned.normalizePin(tlsPin) ?: return@withContext null
         if (token.isBlank() || expectedInstanceId.isBlank()) return@withContext null
         val fallbackPort = tlsPort.takeIf { it in 1..65535 } ?: 8443
-        val now = System.currentTimeMillis()
+        val now = android.os.SystemClock.elapsedRealtime()
         val cacheKey =
             "$expectedInstanceId|${token.hashCode()}|$pin|$fallbackPort|${networkKey(context)}"
-        if (now - cachedAt < CACHE_MS && cachedKey == cacheKey) return@withContext cached
+        cache.lookup(cacheKey, now)?.let { return@withContext it.value }
 
         val targets = broadcastTargets(context)
         if (targets.isEmpty()) {
-            cache(null, cacheKey, now)
+            cache.record(cacheKey, null, now)
             return@withContext null
         }
 
@@ -150,11 +142,11 @@ object LanDiscovery {
             val instanceId = TlsPinned.verifyIdentity(origin, expectedInstanceId, token, pin)
                 ?: continue
             val found = Found(origin, instanceId)
-            cache(found, cacheKey, System.currentTimeMillis())
+            cache.record(cacheKey, found, android.os.SystemClock.elapsedRealtime())
             Log.i(TAG, "found $origin instance=$instanceId")
             return@withContext found
         }
-        cache(null, cacheKey, System.currentTimeMillis())
+        cache.record(cacheKey, null, android.os.SystemClock.elapsedRealtime())
         null
     }
 
@@ -200,12 +192,6 @@ object LanDiscovery {
         return runCatching { element.asInt }.getOrNull()
     }
 
-    private fun cache(found: Found?, key: String, at: Long) {
-        cachedAt = at
-        cachedKey = key
-        cached = found
-    }
-
     private fun networkKey(context: Context): String {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return "none"
         return cm.activeNetwork?.toString().orEmpty().ifBlank { "none" }
@@ -214,10 +200,9 @@ object LanDiscovery {
     private fun broadcastTargets(context: Context): List<Inet4Address> {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return emptyList()
         val active = cm.activeNetwork ?: return emptyList()
-        val props = cm.getLinkProperties(active) ?: return emptyList()
-        val hasWifi = props.interfaceName?.startsWith("wlan") == true ||
-            props.interfaceName?.startsWith("ap") == true
-        if (!hasWifi) return emptyList()
+        val wifi = cm.getNetworkCapabilities(active)
+            ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+        if (!wifi) return emptyList()
         val result = LinkedHashSet<Inet4Address>()
         runCatching {
             NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()

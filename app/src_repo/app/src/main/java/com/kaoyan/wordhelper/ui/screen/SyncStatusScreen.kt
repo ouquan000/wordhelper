@@ -268,31 +268,6 @@ private fun SyncInfoCard(
     }
 }
 
-@Composable
-private fun InfoRow(
-    label: String,
-    value: String,
-    valueColor: Color? = null
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            color = valueColor ?: MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
-
 // ---- 失败原因 ----
 
 @Composable

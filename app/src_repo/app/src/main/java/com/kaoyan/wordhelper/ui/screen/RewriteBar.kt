@@ -93,7 +93,7 @@ import com.kaoyan.wordhelper.data.model.RewriteModels
 import com.kaoyan.wordhelper.ui.component.LocalHoloCardPalette
 import com.kaoyan.wordhelper.ui.theme.LocalAppDarkTheme
 import com.kaoyan.wordhelper.ui.viewmodel.RewriteProgressUi
-import com.kaoyan.wordhelper.util.ActionRailGestureStateMachine
+import com.kaoyan.wordhelper.util.SwipeRailStateMachine
 import com.kaoyan.wordhelper.util.RailFeedback
 
 private enum class RailControl(val tag: String, val tint: Color) {
@@ -107,7 +107,7 @@ private data class RailOption(val label: String, val submit: () -> Unit)
 private data class OpenRail(
     val control: RailControl,
     val options: List<RailOption>,
-    val selection: ActionRailGestureStateMachine.Selection
+    val selection: SwipeRailStateMachine.Selection
 )
 internal data class RewriteInstructionRequest(val placeholder: String, val submit: (String) -> Unit)
 
@@ -222,7 +222,6 @@ internal fun RewriteBar(
                         label = "${shortNameOf(RewriteModels.nameOf(models, selectedModelId))}",
                         enabled = enabled && models.isNotEmpty(),
                         options = modelOptions,
-                        defaultIndex = models.indexOfFirst { it.id == selectedModelId }.coerceAtLeast(0),
                         onTap = ::nextModel,
                         areaCoordinates = { areaCoordinates },
                         onRail = publishRail,
@@ -297,7 +296,6 @@ private fun ActionPill(
     areaCoordinates: () -> LayoutCoordinates?,
     onRail: (OpenRail?) -> Unit,
     modifier: Modifier,
-    defaultIndex: Int = 0,
     selected: Boolean = false,
     fill: Float? = null
 ) {
@@ -332,7 +330,6 @@ private fun ActionPill(
     val tap by rememberUpdatedState(onTap)
     val publish by rememberUpdatedState(onRail)
     val currentOptions by rememberUpdatedState(options)
-    val currentDefault by rememberUpdatedState(defaultIndex)
     val getAreaCoordinates by rememberUpdatedState(areaCoordinates)
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val progress by animateFloatAsState(fill ?: 0f, tween(240), label = "rewriteFill")
@@ -345,21 +342,19 @@ private fun ActionPill(
                     val button = coordinates?.takeIf { it.isAttached } ?: return@awaitEachGesture
                     fun inArea(position: Offset): Offset = area.localPositionOf(button, position) / density
                     val origin = inArea(down.position)
-                    val machine = ActionRailGestureStateMachine(origin.x, origin.y)
+                    val machine = SwipeRailStateMachine(origin.x, origin.y)
                     var lockedOptions: List<RailOption>? = null
 
                     fun lock(elapsed: Long) {
-                        val available = currentOptions
-                        if (machine.hold(elapsed, area.size.width / density, available.size, currentDefault)) {
+                        val available = SwipeRailStateMachine.displayOrder(currentOptions, control == RailControl.Down || control == RailControl.Rewrite)
+                        if (machine.hold(elapsed, area.size.width / density, available.size)) {
                             lockedOptions = available
                             currentHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             publish(OpenRail(control, available, checkNotNull(machine.selection)))
                         }
                     }
 
-                    // Child buttons see Main before scroll and drawer ancestors. Observe Final while
-                    // waiting so an ancestor that already owns the drag can keep it.
-                    val deadline = SystemClock.uptimeMillis() + ActionRailGestureStateMachine.HOLD_MILLIS
+                    val deadline = SystemClock.uptimeMillis() + SwipeRailStateMachine.HOLD_MILLIS
                     while (true) {
                         val event = if (lockedOptions == null) {
                             val remaining = (deadline - SystemClock.uptimeMillis()).coerceAtLeast(1)
@@ -368,7 +363,7 @@ private fun ActionPill(
                             awaitPointerEvent(PointerEventPass.Main)
                         }
                         if (event == null) {
-                            lock(ActionRailGestureStateMachine.HOLD_MILLIS)
+                            lock(SwipeRailStateMachine.HOLD_MILLIS)
                             if (lockedOptions == null) break
                             continue
                         }
@@ -386,10 +381,12 @@ private fun ActionPill(
                             break
                         }
                         val elapsed = change.uptimeMillis - down.uptimeMillis
-                        if (elapsed >= ActionRailGestureStateMachine.HOLD_MILLIS && lockedOptions == null) {
+                        val point = inArea(change.position)
+                        if (elapsed >= SwipeRailStateMachine.HOLD_MILLIS && lockedOptions == null) {
+                            machine.move(point.x, point.y)
+                            if (machine.yielded) break
                             lock(elapsed)
                         }
-                        val point = inArea(change.position)
                         val before = machine.selection
                         machine.move(point.x, point.y)
                         if (machine.yielded) break
@@ -409,8 +406,8 @@ private fun ActionPill(
                             if (release != null) change.consume()
                             publish(null)
                             when (release) {
-                                ActionRailGestureStateMachine.Release.Tap -> tap()
-                                is ActionRailGestureStateMachine.Release.Commit -> choices?.get(release.index)?.submit?.invoke()
+                                SwipeRailStateMachine.Release.Tap -> tap()
+                                is SwipeRailStateMachine.Release.Commit -> choices?.get(release.index)?.submit?.invoke()
                                 null -> Unit
                             }
                             break
