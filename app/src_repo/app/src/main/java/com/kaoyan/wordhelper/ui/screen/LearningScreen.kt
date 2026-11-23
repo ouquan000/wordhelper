@@ -73,10 +73,13 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -1592,15 +1595,9 @@ private fun CardBackBlocks(
 ) {
     val palette = LocalHoloCardPalette.current
     val blocks = config.renderableBlocks
-    // 1.5.3v2：上下两端平滑透明渐隐，消除文字被卡片边缘拦腰截断。
-    val fadeTop = Brush.verticalGradient(
-        0f to palette.frontTop,
-        1f to palette.frontTop.copy(alpha = 0f)
-    )
-    val fadeBottom = Brush.verticalGradient(
-        0f to palette.frontBottom.copy(alpha = 0f),
-        1f to palette.frontBottom
-    )
+    // 1.5.3v2：上下两端真实透明渐隐——Offscreen 离屏合成后用 DstIn 做 alpha 通道淡出，
+    // 适配所有全息/珠光材质，无发白接缝（不能再用 palette.frontTop/frontBottom 纯色叠加）。
+    val fadePx = with(LocalDensity.current) { 22.dp.toPx() }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1613,6 +1610,30 @@ private fun CardBackBlocks(
                 .padding(horizontal = 4.dp, vertical = 8.dp)
                 .verticalScroll(scrollState, enabled = interactive)
                 .padding(horizontal = 16.dp, vertical = 14.dp)
+                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                .drawWithContent {
+                    drawContent()
+                    // 顶部淡出：0 → 22dp 内 alpha 从 0 到 1
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            1f to Color.Black,
+                            startY = 0f,
+                            endY = fadePx
+                        ),
+                        blendMode = BlendMode.DstIn
+                    )
+                    // 底部淡出：末 22dp 内 alpha 从 1 到 0
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to Color.Black,
+                            1f to Color.Transparent,
+                            startY = size.height - fadePx,
+                            endY = size.height
+                        ),
+                        blendMode = BlendMode.DstIn
+                    )
+                }
         ) {
             blocks.forEachIndexed { index, block ->
                 if (index > 0) {
@@ -1653,21 +1674,6 @@ private fun CardBackBlocks(
                 }
             }
         }
-        // 渐隐遮罩：盖在滚动内容最上/最下，只淡出 22dp，不挡中间正文。
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(22.dp)
-                .align(Alignment.TopCenter)
-                .background(fadeTop)
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(22.dp)
-                .align(Alignment.BottomCenter)
-                .background(fadeBottom)
-        )
     }
 }
 

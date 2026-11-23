@@ -22,14 +22,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -308,7 +304,7 @@ private fun Modifier.gestureArea(
 }
 
 /* ------------------------------------------------------------------ */
-/* 模型滑动胶囊：短按展开轻量列表兜底；左右横滑切档（每档震动）。 */
+/* 模型滑动胶囊：短按顺切下一档；左右横滑切档（每档震动）。 */
 
 @Composable
 private fun ModelPicker(
@@ -318,7 +314,6 @@ private fun ModelPicker(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var open by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(20.dp)
     val colors = MaterialTheme.colorScheme
 
@@ -346,7 +341,7 @@ private fun ModelPicker(
                     enabled = enabled,
                     onEvent = { event ->
                         when (event) {
-                            is GestureEvent.Tap -> open = true
+                            is GestureEvent.Tap -> switchModel(SwipeDirection.LEFT)
                             is GestureEvent.SwipeSelect -> switchModel(event.direction)
                             else -> Unit
                         }
@@ -363,42 +358,6 @@ private fun ModelPicker(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false)
             )
-            Spacer(modifier = Modifier.width(2.dp))
-            Icon(
-                imageVector = Icons.Rounded.KeyboardArrowDown,
-                contentDescription = "切换模型",
-                tint = colors.onSurfaceVariant,
-                modifier = Modifier.width(14.dp).height(14.dp)
-            )
-        }
-        // 卡背的 HoloCardTheme 把 surface 改成 35% 白，菜单沿用默认色会透出正文。
-        val menuSurface = if (LocalAppDarkTheme.current) Color(0xFF1C1F26) else Color.White
-        MaterialTheme(
-            colorScheme = MaterialTheme.colorScheme.copy(
-                surface = menuSurface,
-                surfaceContainerLowest = menuSurface,
-                surfaceContainerLow = menuSurface,
-                surfaceContainer = menuSurface,
-                surfaceContainerHigh = menuSurface,
-                surfaceContainerHighest = menuSurface,
-                surfaceTint = menuSurface
-            )
-        ) {
-            DropdownMenu(
-                expanded = open,
-                onDismissRequest = { open = false },
-                modifier = Modifier.testTag("rewrite_model_menu")
-            ) {
-                models.forEach { model ->
-                    DropdownMenuItem(
-                        text = { Text(text = model.name, style = MaterialTheme.typography.bodyMedium) },
-                        onClick = {
-                            onSelectModel(model.id)
-                            open = false
-                        }
-                    )
-                }
-            }
         }
     }
 }
@@ -632,7 +591,10 @@ private fun MenuPopup(
     highlightedIndex: Int
 ) {
     val colors = MaterialTheme.colorScheme
-    val menuSurface = if (LocalAppDarkTheme.current) Color(0xF01C1F26) else Color(0xF5FFFFFF)
+    val dark = LocalAppDarkTheme.current
+    // 深底显式亮白字、亮底显式深色字，严禁混用外层 HoloCardTheme 的文字色（否则暗色模式下黑底黑字）。
+    val menuSurface = if (dark) Color(0xF21C1F26) else Color(0xF8FFFFFF)
+    val menuText = if (dark) Color(0xFFF1F5F9) else Color(0xFF1E293B)
     Popup(alignment = alignment, properties = PopupProperties(focusable = false)) {
         Column(
             modifier = Modifier
@@ -666,7 +628,7 @@ private fun MenuPopup(
                     Text(
                         text = item,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (highlighted) colors.primary else colors.onSurface,
+                        color = menuText,
                         maxLines = 1
                     )
                 }
@@ -686,7 +648,10 @@ private fun InstructionInputBar(
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val colors = MaterialTheme.colorScheme
-    val surface = if (LocalAppDarkTheme.current) Color(0xFF1C1F26) else Color.White
+    val dark = LocalAppDarkTheme.current
+    // 深底 #F21C1F26 亮白字、亮底 #F8FFFFFF 深色字：显式指定，不混用外层 HoloCardTheme 文字色。
+    val surface = if (dark) Color(0xF21C1F26) else Color(0xF8FFFFFF)
+    val fieldText = if (dark) Color(0xFFF1F5F9) else Color(0xFF1E293B)
 
     LaunchedEffect(Unit) {
         runCatching { focusRequester.requestFocus() }
@@ -715,8 +680,19 @@ private fun InstructionInputBar(
                     .weight(1f)
                     .focusRequester(focusRequester)
                     .testTag("rewrite_instruction_field"),
-                placeholder = { Text(placeholder, style = MaterialTheme.typography.bodySmall) },
-                textStyle = MaterialTheme.typography.bodySmall,
+                placeholder = {
+                    Text(placeholder, style = MaterialTheme.typography.bodySmall, color = fieldText.copy(alpha = 0.6f))
+                },
+                textStyle = MaterialTheme.typography.bodySmall.copy(color = fieldText),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = fieldText,
+                    unfocusedTextColor = fieldText,
+                    cursorColor = fieldText,
+                    focusedPlaceholderColor = fieldText.copy(alpha = 0.6f),
+                    unfocusedPlaceholderColor = fieldText.copy(alpha = 0.6f),
+                    focusedBorderColor = colors.primary,
+                    unfocusedBorderColor = colors.outlineVariant.copy(alpha = 0.6f)
+                ),
                 maxLines = 3,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = {
