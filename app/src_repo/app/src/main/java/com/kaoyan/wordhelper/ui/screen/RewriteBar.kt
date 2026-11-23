@@ -1,57 +1,84 @@
 package com.kaoyan.wordhelper.ui.screen
 
-import androidx.compose.animation.core.Animatable
+import android.os.SystemClock
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import com.kaoyan.wordhelper.data.entity.RewriteFeedbackRating
 import com.kaoyan.wordhelper.data.entity.RewriteQueueItem
 import com.kaoyan.wordhelper.data.entity.RewriteStatus
@@ -59,25 +86,30 @@ import com.kaoyan.wordhelper.data.model.RewriteModel
 import com.kaoyan.wordhelper.data.model.RewriteModels
 import com.kaoyan.wordhelper.ui.theme.LocalAppDarkTheme
 import com.kaoyan.wordhelper.ui.viewmodel.RewriteProgressUi
-import com.kaoyan.wordhelper.util.FeedbackGestureStateMachine
-import com.kaoyan.wordhelper.util.GestureContract
-import com.kaoyan.wordhelper.util.GestureDecision
-import com.kaoyan.wordhelper.util.GestureEvent
-import com.kaoyan.wordhelper.util.SwipeDirection
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.math.roundToInt
+import com.kaoyan.wordhelper.util.ActionRailGestureStateMachine
+import com.kaoyan.wordhelper.util.RailFeedback
 
-/**
- * 1.5.3v2：卡背操作区收口两排 + 全员一维直滑手势。
- *
- * 第 1 排 [⇄模型滑动胶囊] + [✨再重写一次]；第 2 排 [👍有帮助] + [👎没帮助]。
- * 「哪里有问题？点开补充」输入框、「这条思路」文字、「撤销」胶囊都已移除：
- * 指令改为下滑「写要求重写」输入条；撤销移进「编辑思路」弹窗里的「恢复上一版」。
- *
- * 触摸逻辑全部交给 [FeedbackGestureStateMachine]（纯 Kotlin），这里只把
- * [GestureEvent] 映射成业务回调；浮层用独立 [Popup] 盖在卡片上方，不被卡片圆角裁剪。
- */
+private enum class RailControl(val tag: String, val tint: Color) {
+    Model("rewrite_model_pill", Color(0xFF96A7FA)),
+    Rewrite("rewrite_action_pill", Color(0xFFBE9AF3)),
+    Up("rewrite_feedback_up", Color(0xFF55C5B2)),
+    Down("rewrite_feedback_down", Color(0xFFF184A4))
+}
+
+private data class RailOption(val label: String, val submit: () -> Unit)
+private data class OpenRail(
+    val control: RailControl,
+    val options: List<RailOption>,
+    val selection: ActionRailGestureStateMachine.Selection
+)
+internal data class RewriteInstructionRequest(val placeholder: String, val submit: (String) -> Unit)
+
+private enum class Instruction(val placeholder: String) {
+    Rewrite("写要求重写"),
+    Up("哪里帮上了？"),
+    Down("哪里没帮上？")
+}
+
 @Composable
 internal fun RewriteBar(
     wordId: Long,
@@ -87,699 +119,526 @@ internal fun RewriteBar(
     onSelectModel: (String) -> Unit,
     onRewrite: (String) -> Unit,
     onCancel: () -> Unit,
+    onInstruction: (RewriteInstructionRequest) -> Unit,
     onFeedbackUp: (count: Int, reasons: List<String>, comment: String) -> Unit,
     onFeedbackDown: (count: Int, reasons: List<String>, comment: String) -> Unit,
     feedback: String?,
     likeCount: Int,
     enabled: Boolean,
     progress: RewriteProgressUi?,
-    justUpdated: Boolean,
     modifier: Modifier = Modifier
 ) {
-    // 跑完别把 100% 钉在那儿：收掉进度条。
-    var keepProgress by remember(wordId, mark?.status) { mutableStateOf(true) }
-    LaunchedEffect(wordId, mark?.status) {
-        if (mark?.status == RewriteStatus.DONE) {
-            delay(1500)
-            keepProgress = false
-        } else {
-            keepProgress = true
-        }
+    val currentModels by rememberUpdatedState(models)
+    val currentModelId by rememberUpdatedState(selectedModelId)
+    val currentMark by rememberUpdatedState(mark)
+    val selectModel by rememberUpdatedState(onSelectModel)
+    val rewrite by rememberUpdatedState(onRewrite)
+    val cancel by rememberUpdatedState(onCancel)
+    val feedbackUp by rememberUpdatedState(onFeedbackUp)
+    val feedbackDown by rememberUpdatedState(onFeedbackDown)
+    val haptic = LocalHapticFeedback.current
+    val colors = MaterialTheme.colorScheme
+    val dark = LocalAppDarkTheme.current
+    val presentation = rewriteBarPresentation(mark, progress)
+    val showInstruction by rememberUpdatedState(onInstruction)
+    var rail by remember(wordId) { mutableStateOf<OpenRail?>(null) }
+    var railVisible by remember(wordId) { mutableStateOf(false) }
+    var areaCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
+    fun select(id: String) {
+        if (currentModels.any { it.id == id }) selectModel(id)
     }
 
-    val presentation = rewriteBarPresentation(
-        mark = mark,
-        hasProgress = progress != null,
-        justUpdated = justUpdated
+    fun nextModel() {
+        val available = currentModels
+        if (available.size < 2) return
+        val index = available.indexOfFirst { it.id == currentModelId }
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        select(available[(index + 1) % available.size].id)
+    }
+
+    fun submitFeedback(rating: RailFeedback, reason: String? = null, comment: String = "") {
+        rating.submit(reason, comment, feedbackUp, feedbackDown, rewrite)
+    }
+
+    fun openInstruction(editor: Instruction) {
+        showInstruction(RewriteInstructionRequest(editor.placeholder) { text ->
+            when (editor) {
+                Instruction.Rewrite -> rewrite(text)
+                Instruction.Up -> if (text.isNotBlank()) submitFeedback(RailFeedback.Up, comment = text)
+                Instruction.Down -> if (text.isNotBlank()) submitFeedback(RailFeedback.Down, comment = text)
+            }
+        })
+    }
+
+    fun feedbackOptions(rating: RailFeedback, reasons: List<String>, editor: Instruction) =
+        reasons.map { reason -> RailOption(reason) { submitFeedback(rating, reason) } } +
+            RailOption("✎ 写一句") { openInstruction(editor) }
+
+    val modelOptions = models.map { model ->
+        RailOption(shortNameOf(model.name)) { select(model.id) }
+    }
+    val rewriteOptions = if (presentation.fill != null) {
+        listOf(RailOption("再点重发") { rewrite("") }, RailOption("✕ 取消排队") { cancel() })
+    } else {
+        listOf(RailOption("直接重写") { rewrite("") }, RailOption("✎ 写要求重写") {
+            openInstruction(Instruction.Rewrite)
+        })
+    }
+    val upOptions = feedbackOptions(RailFeedback.Up, listOf("一秒记住", "画面很稳", "谐音绝了"), Instruction.Up)
+    val downOptions = feedbackOptions(
+        RailFeedback.Down, listOf("不像人话", "没有逻辑", "太烂了"), Instruction.Down
     )
+    val rowAlpha by animateFloatAsState(
+        if (railVisible) 0.15f else 1f, tween(150), label = "rewriteActionsAlpha"
+    )
+    val publishRail: (OpenRail?) -> Unit = { next ->
+        if (next != null) rail = next
+        railVisible = next != null
+    }
 
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        // 第 1 排：模型滑动胶囊（42%）+ ✨再重写一次（58%），40.dp 一行。
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+    Column(modifier.fillMaxWidth()) {
+        Box(
+            Modifier.fillMaxWidth()
+                .onGloballyPositioned { areaCoordinates = it }
+                .testTag("rewrite_action_area"),
+            contentAlignment = Alignment.Center
         ) {
-            ModelPicker(
-                models = models,
-                selectedModelId = selectedModelId,
-                onSelectModel = onSelectModel,
-                enabled = enabled,
-                modifier = Modifier
-                    .weight(0.42f)
-                    .fillMaxSize()
-            )
-            RewriteActionPill(
-                label = "✨ ${buttonLabel(mark)}",
-                enabled = enabled,
-                onClick = {
-                    // 主操作短按：PENDING 再点=取消；其余状态=直接重写（带空指令）。
-                    if (mark?.status == RewriteStatus.PENDING) onCancel() else onRewrite("")
-                },
-                onSwipeDownInstruction = onRewrite,
-                modifier = Modifier
-                    .weight(0.58f)
-                    .fillMaxSize()
-            )
+            Column(
+                Modifier.fillMaxWidth().graphicsLayer { alpha = rowAlpha },
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ActionPill(
+                        wordId = wordId,
+                        control = RailControl.Model,
+                        label = "⇄ ${shortNameOf(RewriteModels.nameOf(models, selectedModelId))}",
+                        enabled = enabled && models.isNotEmpty(),
+                        options = modelOptions,
+                        defaultIndex = models.indexOfFirst { it.id == selectedModelId }.coerceAtLeast(0),
+                        onTap = ::nextModel,
+                        areaCoordinates = { areaCoordinates },
+                        onRail = publishRail,
+                        modifier = Modifier.weight(0.42f).fillMaxHeight()
+                    )
+                    ActionPill(
+                        wordId = wordId,
+                        control = RailControl.Rewrite,
+                        label = "✨ ${presentation.label}",
+                        enabled = enabled,
+                        options = rewriteOptions,
+                        onTap = {
+                            if (currentMark?.status == RewriteStatus.PENDING) cancel() else rewrite("")
+                        },
+                        areaCoordinates = { areaCoordinates },
+                        onRail = publishRail,
+                        modifier = Modifier.weight(0.58f).fillMaxHeight(),
+                        fill = presentation.fill
+                    )
+                }
+                Row(Modifier.fillMaxWidth().height(36.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ActionPill(
+                        wordId = wordId,
+                        control = RailControl.Up,
+                        label = if (likeCount > 0) "👍 有帮助 $likeCount" else "👍 有帮助",
+                        enabled = enabled,
+                        options = upOptions,
+                        onTap = { submitFeedback(RailFeedback.Up) },
+                        areaCoordinates = { areaCoordinates },
+                        onRail = publishRail,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        selected = feedback == RewriteFeedbackRating.UP
+                    )
+                    ActionPill(
+                        wordId = wordId,
+                        control = RailControl.Down,
+                        label = "👎 没帮助",
+                        enabled = enabled,
+                        options = downOptions,
+                        onTap = { submitFeedback(RailFeedback.Down) },
+                        areaCoordinates = { areaCoordinates },
+                        onRail = publishRail,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        selected = feedback == RewriteFeedbackRating.DOWN
+                    )
+                }
+            }
+            ActionRailOverlay(railVisible, rail, dark)
         }
-
-        // 进度条：C2 修复后 QUEUED&&hasProgress 时 presentation.showProgress=true，这里活代码。
-        if (keepProgress && presentation.showProgress && progress != null) {
-            ProgressRow(progress, queued = mark?.status == RewriteStatus.QUEUED)
-        }
-
-        // 单一状态行：PENDING / QUEUED(无进度条) / FAILED / 刚更新 都渲染；
-        // DONE 的「上次重写时间」留给卡顶信息栏，不在这里重复。
-        val showStatusLine = presentation.statusLine.isNotBlank() && when {
-            justUpdated -> true
-            mark == null -> false
-            mark.status == RewriteStatus.PENDING -> true
-            mark.status == RewriteStatus.QUEUED && !presentation.showProgress -> true
-            mark.status == RewriteStatus.FAILED -> true
-            else -> false
-        }
-        if (showStatusLine) {
+        presentation.error?.let {
             Text(
-                text = presentation.statusLine,
+                it,
+                color = colors.error,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (mark?.status == RewriteStatus.FAILED) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-
-        // 第 2 排：👍有帮助 + 👎没帮助。
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 32.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            FeedbackPill(
-                contract = GestureContract.THUMB_UP,
-                label = if (likeCount > 0) "👍 有帮助 $likeCount" else "👍 有帮助",
-                selected = feedback == RewriteFeedbackRating.UP,
-                enabled = enabled,
-                tag = "rewrite_feedback_up",
-                upOptions = listOf("一秒记住", "画面很稳", "谐音绝了"),
-                downPlaceholder = "哪里帮上了？",
-                onTap = { onFeedbackUp(1, emptyList(), "") },
-                onLongPressCommit = { count -> onFeedbackUp(count, emptyList(), "") },
-                onSwipeUpItem = { reason -> onFeedbackUp(1, listOf(reason), "") },
-                onSwipeDownComment = { comment -> onFeedbackUp(1, emptyList(), comment) },
-                modifier = Modifier.weight(1f)
-            )
-            FeedbackPill(
-                contract = GestureContract.THUMB_DOWN,
-                label = if (feedback == RewriteFeedbackRating.DOWN) "👎 没帮助 · 已记" else "👎 没帮助",
-                selected = feedback == RewriteFeedbackRating.DOWN,
-                enabled = enabled,
-                tag = "rewrite_feedback_down",
-                upOptions = listOf("不像人话", "没有逻辑", "太烂了"),
-                downPlaceholder = "哪里没帮上？",
-                onTap = { onFeedbackDown(1, emptyList(), "") },
-                onLongPressCommit = { count -> onFeedbackDown(count, emptyList(), "") },
-                onSwipeUpItem = { reason -> onFeedbackDown(1, listOf(reason), "") },
-                onSwipeDownComment = { comment -> onFeedbackDown(1, emptyList(), comment) },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.padding(top = 4.dp).testTag("rewrite_error")
             )
         }
     }
+
 }
 
-/* ------------------------------------------------------------------ */
-/* 手势接线：把状态机的 GestureDecision 转成 Compose 事件 + 浮层拖拽。 */
-
 @Composable
-private fun Modifier.gestureArea(
-    contract: GestureContract,
+private fun ActionPill(
+    wordId: Long,
+    control: RailControl,
+    label: String,
     enabled: Boolean,
-    onEvent: (GestureEvent) -> Unit,
-    onMenuDrag: (Float, Float) -> Unit = { _, _ -> }
-): Modifier {
-    val machine = remember(contract) { FeedbackGestureStateMachine(contract) }
-    val haptic = LocalHapticFeedback.current
-    var menuActive by remember(contract) { mutableStateOf(false) }
-    if (!enabled) return this
-    return pointerInput(enabled, contract) {
-        // 状态机阈值是 dp，但 down/change.position 是像素 px：高密度屏上先转成 dp 再喂。
-        val scale = density
-        fun dpOf(v: Float): Float = v / scale
-
-        fun emit(decision: GestureDecision) {
-            if (decision.haptic) {
-                val type = if (decision.event is GestureEvent.LongPressTick) {
-                    HapticFeedbackType.LongPress
-                } else {
-                    HapticFeedbackType.TextHandleMove
-                }
-                haptic.performHapticFeedback(type)
-            }
-            when (val e = decision.event) {
-                is GestureEvent.SwipeSelect -> {
-                    menuActive = true
-                    onEvent(e)
-                }
-                is GestureEvent.SwipeCommit, is GestureEvent.SwipeCancel -> {
-                    menuActive = false
-                    onEvent(e)
-                }
-                null -> Unit
-                else -> onEvent(e)
-            }
-        }
-
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            val downX = dpOf(down.position.x)
-            val downY = dpOf(down.position.y)
-            var lastX = downX
-            var lastY = downY
-            var lastEventTime = down.uptimeMillis
-            var decision = machine.onDown(downX, downY, lastEventTime)
-            if (decision.consume) down.consume()
-            emit(decision)
-
-            var finished = false
-            while (!finished) {
-                val event = withTimeoutOrNull(16) { awaitPointerEvent() }
-                if (event == null) {
-                    // ticker 超时：没有新指针事件，用虚拟时间推进长按连发（测试时钟可控）。
-                    lastEventTime += 16L
-                    emit(machine.onTick(lastEventTime))
-                    continue
-                }
-                val change = event.changes.firstOrNull()
-                if (change == null) {
-                    finished = true
-                    break
-                }
-                lastX = dpOf(change.position.x)
-                lastY = dpOf(change.position.y)
-                lastEventTime = change.uptimeMillis
-                decision = machine.onMove(lastX, lastY, lastEventTime)
-                if (decision.consume) change.consume()
-                emit(decision)
-                if (menuActive) {
-                    onMenuDrag(lastX - downX, lastY - downY)
-                }
-                if (event.changes.none { it.pressed }) finished = true
-            }
-
-            emit(machine.onUp(lastX, lastY, lastEventTime))
-            menuActive = false
-        }
-    }
-}
-
-/* ------------------------------------------------------------------ */
-/* 模型滑动胶囊：短按顺切下一档；左右横滑切档（每档震动）。 */
-
-@Composable
-private fun ModelPicker(
-    models: List<RewriteModel>,
-    selectedModelId: String,
-    onSelectModel: (String) -> Unit,
-    enabled: Boolean,
-    modifier: Modifier = Modifier
+    options: List<RailOption>,
+    onTap: () -> Unit,
+    areaCoordinates: () -> LayoutCoordinates?,
+    onRail: (OpenRail?) -> Unit,
+    modifier: Modifier,
+    defaultIndex: Int = 0,
+    selected: Boolean = false,
+    fill: Float? = null
 ) {
-    val shape = RoundedCornerShape(20.dp)
     val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(20.dp)
+    val primary = control == RailControl.Rewrite
+    val chargeColor = Color(0xFF5D49B8)
+    val haptic = LocalHapticFeedback.current
+    val currentHaptic by rememberUpdatedState(haptic)
+    val tap by rememberUpdatedState(onTap)
+    val publish by rememberUpdatedState(onRail)
+    val currentOptions by rememberUpdatedState(options)
+    val currentDefault by rememberUpdatedState(defaultIndex)
+    val getAreaCoordinates by rememberUpdatedState(areaCoordinates)
+    var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val progress by animateFloatAsState(fill ?: 0f, tween(240), label = "rewriteFill")
+    val gesture = if (enabled) {
+        Modifier.pointerInput(wordId, control) {
+            try {
+                awaitEachGesture {
+                    val down = awaitFirstDown(pass = PointerEventPass.Main)
+                    val area = getAreaCoordinates()?.takeIf { it.isAttached } ?: return@awaitEachGesture
+                    val button = coordinates?.takeIf { it.isAttached } ?: return@awaitEachGesture
+                    fun inArea(position: Offset): Offset = area.localPositionOf(button, position) / density
+                    val origin = inArea(down.position)
+                    val machine = ActionRailGestureStateMachine(origin.x, origin.y)
+                    var lockedOptions: List<RailOption>? = null
 
-    fun switchModel(direction: SwipeDirection) {
-        if (models.size < 2) return
-        val idx = models.indexOfFirst { it.id == selectedModelId }.coerceAtLeast(0)
-        val next = when (direction) {
-            SwipeDirection.LEFT -> (idx + 1) % models.size
-            SwipeDirection.RIGHT -> (idx - 1 + models.size) % models.size
-            else -> return
-        }
-        onSelectModel(models[next].id)
-    }
-
-    Box(modifier = modifier) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(shape)
-                .background(colors.surfaceVariant.copy(alpha = 0.55f))
-                .border(1.dp, colors.outlineVariant.copy(alpha = 0.55f), shape)
-                .testTag("rewrite_model_pill")
-                .gestureArea(
-                    contract = GestureContract.MODEL_SWITCH,
-                    enabled = enabled,
-                    onEvent = { event ->
-                        when (event) {
-                            is GestureEvent.Tap -> switchModel(SwipeDirection.LEFT)
-                            is GestureEvent.SwipeSelect -> switchModel(event.direction)
-                            else -> Unit
+                    fun lock(elapsed: Long) {
+                        val available = currentOptions
+                        if (machine.hold(elapsed, area.size.width / density, available.size, currentDefault)) {
+                            lockedOptions = available
+                            currentHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            publish(OpenRail(control, available, checkNotNull(machine.selection)))
                         }
                     }
-                )
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+
+                    // Child buttons see Main before scroll and drawer ancestors. Observe Final while
+                    // waiting so an ancestor that already owns the drag can keep it.
+                    val deadline = SystemClock.uptimeMillis() + ActionRailGestureStateMachine.HOLD_MILLIS
+                    while (true) {
+                        val event = if (lockedOptions == null) {
+                            val remaining = (deadline - SystemClock.uptimeMillis()).coerceAtLeast(1)
+                            withTimeoutOrNull(remaining) { awaitPointerEvent(PointerEventPass.Main) }
+                        } else {
+                            awaitPointerEvent(PointerEventPass.Main)
+                        }
+                        if (event == null) {
+                            lock(ActionRailGestureStateMachine.HOLD_MILLIS)
+                            if (lockedOptions == null) break
+                            continue
+                        }
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (change.isConsumed || event.changes.any { it.id != down.id && it.pressed }) {
+                            if (lockedOptions != null) {
+                                publish(null)
+                                var remaining = checkNotNull(event)
+                                while (true) {
+                                    remaining.changes.forEach { it.consume() }
+                                    if (remaining.changes.none { it.pressed }) break
+                                    remaining = awaitPointerEvent(PointerEventPass.Main)
+                                }
+                            }
+                            break
+                        }
+                        val elapsed = change.uptimeMillis - down.uptimeMillis
+                        if (elapsed >= ActionRailGestureStateMachine.HOLD_MILLIS && lockedOptions == null) {
+                            lock(elapsed)
+                        }
+                        val point = inArea(change.position)
+                        val before = machine.selection
+                        machine.move(point.x, point.y)
+                        if (machine.yielded) break
+                        val choices = lockedOptions
+                        if (choices != null) {
+                            event.changes.forEach { it.consume() }
+                            val after = checkNotNull(machine.selection)
+                            if (after != before) {
+                                if (after.canceled != before?.canceled || !after.canceled) {
+                                    currentHaptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
+                                publish(OpenRail(control, choices, after))
+                            }
+                        }
+                        if (!change.pressed) {
+                            val release = machine.release(elapsed)
+                            if (release != null) change.consume()
+                            publish(null)
+                            when (release) {
+                                ActionRailGestureStateMachine.Release.Tap -> tap()
+                                is ActionRailGestureStateMachine.Release.Commit -> choices?.get(release.index)?.submit?.invoke()
+                                null -> Unit
+                            }
+                            break
+                        }
+                        if (choices == null) {
+                            val final = awaitPointerEvent(PointerEventPass.Final)
+                            if (final.changes.any { it.id == down.id && it.isConsumed }) {
+                                machine.yield()
+                                break
+                            }
+                        }
+                    }
+                    publish(null)
+                }
+            } finally {
+                publish(null)
+            }
+        }
+    } else {
+        Modifier
+    }
+
+    Box(
+        modifier.clip(shape)
+            .background(
+                when {
+                    !enabled -> colors.surfaceVariant.copy(alpha = 0.36f)
+                    fill != null -> chargeColor.copy(alpha = 0.15f)
+                    primary -> colors.primary
+                    selected -> colors.primaryContainer
+                    else -> colors.surfaceVariant.copy(alpha = 0.52f)
+                }
+            )
+            .border(1.dp, colors.outlineVariant.copy(alpha = 0.48f), shape)
+            .testTag(control.tag)
+            .onGloballyPositioned { coordinates = it }
+            .then(gesture)
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                if (enabled) {
+                    onClick { onTap(); true }
+                    customActions = options.map { option ->
+                        CustomAccessibilityAction(option.label) { option.submit(); true }
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        if (fill != null && enabled) {
+            Box(
+                Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(progress)
+                    .background(Brush.horizontalGradient(listOf(chargeColor, Color(0xFF6E57C9))))
+            )
+        }
+        val labelModifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp)
+        val style = if (primary) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelSmall
+        val ink = when {
+            fill != null -> colors.onSurface
+            primary && enabled -> colors.onPrimary
+            selected -> colors.onPrimaryContainer
+            else -> colors.onSurfaceVariant
+        }
+        Text(label, modifier = labelModifier, style = style, color = ink, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (fill != null && enabled) {
+            // Use the button's on-primary ink precisely where the charging fill crosses the label.
             Text(
-                text = shortNameOf(RewriteModels.nameOf(models, selectedModelId)),
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceVariant,
+                label,
+                modifier = Modifier.fillMaxWidth().clearAndSetSemantics { }
+                    .drawWithContent {
+                        clipRect(right = size.width * progress) { this@drawWithContent.drawContent() }
+                    }
+                    .padding(horizontal = 5.dp),
+                textAlign = TextAlign.Center,
+                style = style,
+                color = Color.White,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
 }
 
-/** 模型胶囊内的精简短名：映射为紧凑可辨短名，避免 DeepSeek 系列全截成 "DeepSeek"。 */
 private fun shortNameOf(name: String): String {
-    val n = name.lowercase()
+    val lower = name.lowercase()
     return when {
-        "deepseek" in n && "flash" in n -> "DS 4.1F"
-        "deepseek" in n && "pro" in n -> "DS 4 Pro"
-        "glm" in n -> "GLM 5.3"
-        "minimax" in n -> "MiniMax"
+        "deepseek" in lower && "flash" in lower -> "DS 4.1F"
+        "deepseek" in lower && "pro" in lower -> "DS 4 Pro"
+        "glm" in lower -> "GLM 5.3"
+        "minimax" in lower -> "MiniMax"
         else -> name.substringBefore(" ").ifBlank { name }
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* ✨再重写一次：短按直接重写；下滑（1 项「写要求重写」）拉输入条。 */
+@Composable
+private fun ActionRailOverlay(visible: Boolean, rail: OpenRail?, dark: Boolean) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(130)) + scaleIn(spring(dampingRatio = 0.78f, stiffness = 520f), 0.94f),
+        exit = fadeOut(tween(120)) + scaleOut(tween(120), 0.94f)
+    ) {
+        if (rail != null) ActionRail(rail, dark)
+    }
+}
 
 @Composable
-private fun RewriteActionPill(
-    label: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    onSwipeDownInstruction: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val shape = RoundedCornerShape(20.dp)
-    val colors = MaterialTheme.colorScheme
-    var showHint by remember { mutableStateOf(false) }
-    var showInput by remember { mutableStateOf(false) }
-
-    Box(modifier = modifier) {
+private fun ActionRail(rail: OpenRail, dark: Boolean) {
+    val foreground = if (dark) Color(0xFFF1F5F9) else Color(0xFF1E293B)
+    val shell = if (dark) Color(0xEB151822) else Color(0xF2FFFFFF)
+    val neutral = if (dark) Color(0xEB222631) else Color(0xF2E9EDF2)
+    val shape = RoundedCornerShape(24.dp)
+    val thumbShape = RoundedCornerShape(19.dp)
+    val canceled = rail.selection.canceled
+    val thumb by animateFloatAsState(
+        rail.selection.index.toFloat(), spring(dampingRatio = 0.78f, stiffness = 520f), label = "actionRailThumb"
+    )
+    val scale by animateFloatAsState(
+        if (canceled) 0.96f else 1f, spring(dampingRatio = 0.78f, stiffness = 520f), label = "actionRailScale"
+    )
+    val tint by animateFloatAsState(if (canceled) 0f else 1f, tween(140), label = "actionRailTint")
+    val wash = rail.control.tint
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().height(56.dp).testTag("rewrite_action_rail")
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .shadow(12.dp, shape)
+            .clip(shape)
+            .background(lerp(neutral, shell, tint))
+            .background(
+                Brush.horizontalGradient(listOf(wash.copy(alpha = tint * 0.20f), Color.Transparent, wash.copy(alpha = tint * 0.12f)))
+            )
+            .border(
+                1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.08f))), shape
+            )
+            .drawBehind {
+                val step = size.width / rail.options.size
+                repeat(rail.options.size - 1) { i ->
+                    val x = step * (i + 1)
+                    drawLine(
+                        (if (dark) Color.White else Color.Black).copy(alpha = 0.08f * tint),
+                        Offset(x, 14.dp.toPx()), Offset(x, size.height - 14.dp.toPx()), strokeWidth = 1.dp.toPx()
+                    )
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        val segment = maxWidth / rail.options.size
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(shape)
-                .then(
-                    if (enabled) {
-                        Modifier.background(
-                            Brush.horizontalGradient(
-                                listOf(colors.primary, colors.primary.copy(alpha = 0.86f))
-                            )
-                        )
-                    } else {
-                        Modifier.background(colors.onSurface.copy(alpha = 0.10f))
-                    }
-                )
-                .gestureArea(
-                    contract = GestureContract.REWRITE_AGAIN,
-                    enabled = enabled,
-                    onEvent = { event ->
-                        when (event) {
-                            is GestureEvent.Tap -> onClick()
-                            is GestureEvent.SwipeSelect -> showHint = true
-                            is GestureEvent.SwipeCommit -> {
-                                showHint = false
-                                if (event.direction == SwipeDirection.DOWN) showInput = true
-                            }
-                            is GestureEvent.SwipeCancel -> showHint = false
-                            else -> Unit
-                        }
-                    }
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (enabled) colors.onPrimary else colors.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 10.dp)
-            )
-        }
-
-        if (showHint) {
-            MenuPopup(alignment = Alignment.TopCenter, items = listOf("写要求重写"), highlightedIndex = 0)
-        }
-        if (showInput) {
-            InstructionInputBar(
-                placeholder = "写要求重写（留空＝整段重写）",
-                onSubmit = { text ->
-                    showInput = false
-                    onSwipeDownInstruction(text)
-                },
-                onDismiss = { showInput = false }
-            )
-        }
-    }
-}
-
-/* ------------------------------------------------------------------ */
-/* 👍/👎：短按/长按连发/上滑 3 项/下滑写原因。 */
-
-@Composable
-private fun FeedbackPill(
-    contract: GestureContract,
-    label: String,
-    selected: Boolean,
-    enabled: Boolean,
-    tag: String,
-    upOptions: List<String>,
-    downPlaceholder: String,
-    onTap: () -> Unit,
-    onLongPressCommit: (Int) -> Unit,
-    onSwipeUpItem: (String) -> Unit,
-    onSwipeDownComment: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val shape = RoundedCornerShape(16.dp)
-    val colors = MaterialTheme.colorScheme
-    val scale = remember { Animatable(1f) }
-    var menuVisible by remember { mutableStateOf(false) }
-    var menuDirection by remember { mutableStateOf(SwipeDirection.UP) }
-    var highlightIndex by remember { mutableStateOf(0) }
-    var showInput by remember { mutableStateOf(false) }
-    var longPressCount by remember { mutableStateOf(0) }
-
-    LaunchedEffect(selected) {
-        if (!selected) return@LaunchedEffect
-        scale.animateTo(1.1f, animationSpec = tween(90))
-        scale.animateTo(1f, animationSpec = tween(120))
-    }
-
-    Box(modifier = modifier.testTag(tag)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(32.dp)
-                .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
-                .clip(shape)
+            Modifier.align(Alignment.CenterStart).offset(x = segment * thumb + 4.dp)
+                .width((segment - 8.dp).coerceAtLeast(1.dp)).height(46.dp)
+                .graphicsLayer { alpha = tint }
+                .shadow(5.dp, thumbShape, clip = false, ambientColor = wash, spotColor = wash)
+                .clip(thumbShape)
                 .background(
-                    if (selected) colors.primaryContainer else colors.surfaceVariant.copy(alpha = 0.42f)
+                    Brush.verticalGradient(
+                        if (dark) listOf(
+                            lerp(Color(0xFF30344B), wash, 0.27f),
+                            lerp(Color(0xFF262A40), wash, 0.10f)
+                        ) else listOf(Color.White, lerp(Color(0xFFE7EDF9), wash, 0.25f))
+                    )
                 )
-                .border(
-                    width = 1.dp,
-                    color = if (selected) {
-                        colors.primary.copy(alpha = 0.45f)
-                    } else {
-                        colors.outlineVariant.copy(alpha = 0.55f)
-                    },
-                    shape = shape
-                )
-                .gestureArea(
-                    contract = contract,
-                    enabled = enabled,
-                    onEvent = { event ->
-                        when (event) {
-                            is GestureEvent.Tap -> {
-                                longPressCount = 0
-                                onTap()
-                            }
-                            is GestureEvent.LongPressTick -> longPressCount = event.count
-                            is GestureEvent.LongPressCommit -> {
-                                onLongPressCommit(event.count)
-                                longPressCount = 0
-                            }
-                            is GestureEvent.SwipeSelect -> {
-                                longPressCount = 0
-                                menuDirection = event.direction
-                                highlightIndex = 0
-                                menuVisible = true
-                            }
-                            is GestureEvent.SwipeCommit -> {
-                                longPressCount = 0
-                                menuVisible = false
-                                when (event.direction) {
-                                    SwipeDirection.UP -> upOptions
-                                        .getOrNull(highlightIndex)
-                                        ?.let(onSwipeUpItem)
-                                    SwipeDirection.DOWN -> showInput = true
-                                    else -> Unit
-                                }
-                            }
-                            is GestureEvent.SwipeCancel -> {
-                                longPressCount = 0
-                                menuVisible = false
-                            }
-                            else -> Unit
-                        }
-                    },
-                    onMenuDrag = { dx, dy ->
-                        if (!menuVisible) return@gestureArea
-                        if (menuDirection == SwipeDirection.UP) {
-                            // 超过触发阈值后，每多滑 ~40dp 高亮下一项。
-                            val extra = -dy - 18f
-                            highlightIndex = (extra / 40f).toInt().coerceIn(0, upOptions.lastIndex)
-                        }
-                    }
-                )
-                .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = if (longPressCount > 1) "$label ×$longPressCount" else label,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant,
-                maxLines = 1
-            )
-        }
-
-        if (menuVisible) {
-            MenuPopup(
-                alignment = Alignment.TopCenter,
-                items = if (menuDirection == SwipeDirection.UP) upOptions else listOf(downPlaceholder),
-                highlightedIndex = highlightIndex
-            )
-        }
-        if (showInput) {
-            InstructionInputBar(
-                placeholder = downPlaceholder,
-                onSubmit = { text ->
-                    showInput = false
-                    onSwipeDownComment(text)
-                },
-                onDismiss = { showInput = false }
-            )
-        }
-    }
-}
-
-/* ------------------------------------------------------------------ */
-/* 浮层：独立 Popup 盖在卡片上方，纵向胶囊。 */
-
-@Composable
-private fun MenuPopup(
-    alignment: Alignment,
-    items: List<String>,
-    highlightedIndex: Int
-) {
-    val colors = MaterialTheme.colorScheme
-    val dark = LocalAppDarkTheme.current
-    // 深底显式亮白字、亮底显式深色字，严禁混用外层 HoloCardTheme 的文字色（否则暗色模式下黑底黑字）。
-    val menuSurface = if (dark) Color(0xF21C1F26) else Color(0xF8FFFFFF)
-    val menuText = if (dark) Color(0xFFF1F5F9) else Color(0xFF1E293B)
-    Popup(alignment = alignment, properties = PopupProperties(focusable = false)) {
-        Column(
-            modifier = Modifier
-                .padding(8.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(menuSurface)
-                .border(
-                    1.dp,
-                    colors.outlineVariant.copy(alpha = 0.6f),
-                    RoundedCornerShape(16.dp)
-                )
-                .padding(6.dp)
-                .testTag("rewrite_feedback_menu"),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            items.forEachIndexed { index, item ->
-                val highlighted = index == highlightedIndex
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (highlighted) {
-                                colors.primary.copy(alpha = 0.22f)
-                            } else {
-                                Color.Transparent
-                            }
-                        )
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                .border(0.8.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.75f), Color.White.copy(alpha = 0.15f))), thumbShape)
+        )
+        Row(Modifier.fillMaxSize().graphicsLayer { alpha = tint }) {
+            rail.options.forEachIndexed { index, option ->
+                val active = rail.selection.index == index
+                Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = item,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = menuText,
-                        maxLines = 1
+                        option.label,
+                        color = foreground.copy(alpha = if (active) 1f else 0.62f),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                            .graphicsLayer { scaleX = if (active) 1.04f else 1f; scaleY = scaleX }
+                            .testTag("rewrite_rail_option_$index")
                     )
                 }
             }
         }
+        if (canceled) {
+            Text(
+                "松手取消",
+                color = foreground,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.testTag("rewrite_rail_canceled")
+            )
+        }
     }
 }
 
-/** 下滑拉起的极简输入条：贴合软键盘上沿（imePadding），回车/点击提交即走。 */
 @Composable
-private fun InstructionInputBar(
+internal fun InstructionInputBar(
     placeholder: String,
     onSubmit: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    var text by remember { mutableStateOf("") }
-    val focusRequester = remember { FocusRequester() }
-    val keyboard = LocalSoftwareKeyboardController.current
-    val colors = MaterialTheme.colorScheme
     val dark = LocalAppDarkTheme.current
-    // 深底 #F21C1F26 亮白字、亮底 #F8FFFFFF 深色字：显式指定，不混用外层 HoloCardTheme 文字色。
-    val surface = if (dark) Color(0xF21C1F26) else Color(0xF8FFFFFF)
-    val fieldText = if (dark) Color(0xFFF1F5F9) else Color(0xFF1E293B)
+    val surface = if (dark) Color(0xFF1C1F26) else Color(0xFFFFFFFF)
+    val foreground = if (dark) Color(0xFFF1F5F9) else Color(0xFF1E293B)
+    val accent = if (dark) Color(0xFFA5B4FC) else Color(0xFF4338CA)
+    val border = foreground.copy(alpha = 0.24f)
 
-    LaunchedEffect(Unit) {
-        runCatching { focusRequester.requestFocus() }
+    var text by remember { mutableStateOf("") }
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    fun submit() {
+        keyboard?.hide()
+        onSubmit(text.trim())
     }
-
-    Popup(
-        alignment = Alignment.BottomCenter,
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true)
+    fun dismiss() {
+        keyboard?.hide()
+        onDismissRequest()
+    }
+    BackHandler(onBack = ::dismiss)
+    LaunchedEffect(Unit) {
+        focus.requestFocus()
+        keyboard?.show()
+    }
+    Box(
+        modifier.navigationBarsPadding().imePadding(),
+        contentAlignment = Alignment.BottomCenter
     ) {
+        Box(
+            Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.44f)).clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClickLabel = "关闭输入",
+                onClick = ::dismiss
+            )
+        )
+        val shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(surface)
-                .border(1.dp, colors.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().clip(shape).background(surface).border(1.dp, border, shape)
+                .padding(horizontal = 12.dp, vertical = 8.dp).testTag("rewrite_instruction_bar"),
             verticalAlignment = Alignment.CenterVertically
         ) {
             OutlinedTextField(
                 value = text,
                 onValueChange = { if (it.length <= 200) text = it },
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(focusRequester)
-                    .testTag("rewrite_instruction_field"),
+                modifier = Modifier.weight(1f).focusRequester(focus).testTag("rewrite_instruction_field"),
                 placeholder = {
-                    Text(placeholder, style = MaterialTheme.typography.bodySmall, color = fieldText.copy(alpha = 0.6f))
+                    Text(placeholder, color = foreground.copy(alpha = 0.70f), style = MaterialTheme.typography.bodySmall)
                 },
-                textStyle = MaterialTheme.typography.bodySmall.copy(color = fieldText),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = foreground),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = fieldText,
-                    unfocusedTextColor = fieldText,
-                    cursorColor = fieldText,
-                    focusedPlaceholderColor = fieldText.copy(alpha = 0.6f),
-                    unfocusedPlaceholderColor = fieldText.copy(alpha = 0.6f),
-                    focusedBorderColor = colors.primary,
-                    unfocusedBorderColor = colors.outlineVariant.copy(alpha = 0.6f)
+                    focusedTextColor = foreground, unfocusedTextColor = foreground,
+                    cursorColor = accent, focusedBorderColor = accent, unfocusedBorderColor = border
                 ),
                 maxLines = 3,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = {
-                    keyboard?.hide()
-                    onSubmit(text.trim())
-                }),
+                keyboardActions = KeyboardActions(onDone = { submit() }),
                 shape = RoundedCornerShape(12.dp)
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "提交",
-                style = MaterialTheme.typography.labelLarge,
-                color = colors.primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable {
-                        keyboard?.hide()
-                        onSubmit(text.trim())
-                    }
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
-            )
+            TextButton(onClick = { submit() }) { Text("提交", color = accent) }
         }
     }
-}
-
-/* ------------------------------------------------------------------ */
-/* 进度条（与旧版一致）。 */
-
-@Composable
-private fun ProgressRow(progress: RewriteProgressUi?, queued: Boolean = false) {
-    val failed = progress?.failed == true
-    val offline = progress?.offline == true
-    val fraction = progress?.fraction
-    val color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(modifier = Modifier.weight(1f)) {
-            if (fraction == null) {
-                LinearProgressIndicator(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp),
-                    color = color,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    strokeCap = StrokeCap.Round
-                )
-            } else {
-                LinearProgressIndicator(
-                    progress = { fraction.coerceIn(0f, 1f) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp),
-                    color = color,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    strokeCap = StrokeCap.Round
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = progressLabel(fraction, failed, offline, queued),
-            style = MaterialTheme.typography.labelSmall,
-            color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1
-        )
-    }
-}
-
-private fun progressLabel(
-    fraction: Float?,
-    failed: Boolean,
-    offline: Boolean,
-    queued: Boolean = false
-): String = when {
-    offline -> "已记下，等电脑上线后自动重写"
-    failed -> "重写失败"
-    fraction == null && queued -> "排队中"
-    fraction == null -> "生成中…"
-    else -> "${(fraction * 100).roundToInt()}%"
-}
-
-private fun buttonLabel(mark: RewriteQueueItem?): String = when (mark?.status) {
-    RewriteStatus.PENDING -> "再点取消"
-    RewriteStatus.QUEUED -> "再点重发"
-    RewriteStatus.DONE -> "再重写一次"
-    RewriteStatus.FAILED -> "重试重写"
-    else -> "重写思路"
 }

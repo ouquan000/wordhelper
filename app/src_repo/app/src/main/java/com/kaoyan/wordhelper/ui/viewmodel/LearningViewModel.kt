@@ -757,9 +757,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             sessionSkippedWordIds.remove(word.id)
             // 1.5.2：先记「本轮开始」，旧 DONE 行在这几毫秒里不能把跳过置灰。
             _activeRewriteRequestIds.update { it + (word.id to "") }
-            // 1.5.3：不在点击时再弹「已标记/已送电脑」Toast。队列行本身会立刻
-            // 变成 PENDING/QUEUED，RewriteBar 的单一状态行就是唯一反馈；只有
-            // 真的离线排队或鉴权失败时才提示一句。
+            // 排队与进度由重写按钮直接反馈。
             val sent = rewriteRepository.enqueueAndSync(
                 word.id,
                 word.word,
@@ -778,7 +776,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 val hasToken = runCatching {
                     CardbackAuth.headerValue(settingsRepository.settingsFlow.first().cardBackToken) != null
                 }.getOrDefault(false)
-                _message.value = RewriteMarkPolicy.result(
+                if (authFailed && hasToken) _message.value = RewriteMarkPolicy.result(
                     sent = false,
                     authFailed = authFailed,
                     hasToken = hasToken,
@@ -792,7 +790,9 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         val word = _currentWord.value ?: return
         val bookId = activeBook.value?.id ?: 0L
         viewModelScope.launch {
-            rewriteRepository.cancel(word.id, bookId)
+            if (!rewriteRepository.cancel(word.id, bookId) && currentRewriteMark.value?.status == RewriteStatus.QUEUED) {
+                _message.value = "未能取消排队"
+            }
         }
     }
 
@@ -813,7 +813,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
 
     /**
      * 1.4.6：卡背上的 👍/👎。
-     * 只记「这条思路有没有帮上」，👎 不会自动重写；同一条评价重复点不会重复入库。
+     * 保存反馈。重写由卡背操作单独提交。
      * 写入永远成功（离线也存本地），联网补发交给 RewriteRepository.sync。
      */
     fun submitRewriteFeedback(
@@ -826,7 +826,7 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         val word = _currentWord.value ?: return
         val bookId = activeBook.value?.id ?: 0L
         viewModelScope.launch {
-            val accepted = runCatching {
+            runCatching {
                 // 以点击这一刻库里的版本为准，别让 StateFlow 的旧值把评价挂到上一版。
                 val approachRev = rewriteRepository.approachRevOf(word.id, bookId)
                 rewriteRepository.submitFeedback(
@@ -843,13 +843,6 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                     reasons = reasons,
                     comment = comment
                 )
-            }.getOrDefault(false)
-            if (accepted) {
-                _message.value = if (rating == RewriteFeedbackRating.UP) {
-                    "已记录：这条思路有帮助"
-                } else {
-                    "已记录：这条思路没帮上（不会自动重写）"
-                }
             }
         }
     }

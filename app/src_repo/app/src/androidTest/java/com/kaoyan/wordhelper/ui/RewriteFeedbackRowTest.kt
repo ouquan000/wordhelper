@@ -39,13 +39,13 @@ class RewriteFeedbackRowTest {
                     onSelectModel = {},
                     onRewrite = {},
                     onCancel = {},
+                    onInstruction = {},
                     onFeedbackUp = onUp,
                     onFeedbackDown = onDown,
                     feedback = null,
                     likeCount = 0,
                     enabled = true,
                     progress = null,
-                    justUpdated = false,
                 )
             }
         }

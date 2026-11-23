@@ -18,10 +18,9 @@ object RewriteModels {
 
     val DEFAULT: List<RewriteModel> = listOf(
         RewriteModel(id = "ds-v41-flash", name = "DeepSeek V4.1 Flash", provider = "wb", reasoning = "max"),
-        RewriteModel(id = "step5", name = "Step 5", provider = "wb", reasoning = "high"),
+        RewriteModel(id = "ds-v4-pro", name = "DeepSeek V4 Pro", provider = "wb", reasoning = "high"),
         RewriteModel(id = "glm53", name = "GLM 5.3", provider = "wb", reasoning = "high"),
-        RewriteModel(id = "portdan-gpt", name = "GPT-6.1 Sol", provider = "portdan-gpt", reasoning = "high"),
-        RewriteModel(id = "portdan-grok", name = "Grok 4.7", provider = "portdan-grok", reasoning = "high")
+        RewriteModel(id = "minimax-m31-flash", name = "MiniMax M3.1 Flash", provider = "wb", reasoning = "high")
     )
 
     fun nameOf(models: List<RewriteModel>, id: String): String {

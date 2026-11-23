@@ -2,128 +2,128 @@ package com.kaoyan.wordhelper.ui.screen
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeLeft
-import com.kaoyan.wordhelper.data.model.RewriteModel
+import androidx.compose.ui.unit.dp
+import com.kaoyan.wordhelper.data.model.RewriteModels
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/**
- * 1.5.3v2 第二层验证（Instrumented）：RewriteBar 手势在真实 Compose 树里的行为。
- *
- * 四项验收（开工令）：
- * ① 长按连发不弹浮层（连发 count ≥ 3，且从不出现纵向选项浮层）。
- * ② 上滑呼出 3 项胶囊，且外层 verticalScroll 纹丝不动（scrollState == 0）。
- * ③ 滑回原点松手 = 取消，零提交。
- * ④ 模型胶囊左右搓切：左滑切到下一档。
- */
 class RewriteBarGestureTest {
-
     @get:Rule
     val rule = createComposeRule()
 
-    private val models = listOf(
-        RewriteModel(id = "ds-v41-flash", name = "DeepSeek V4.1 Flash"),
-        RewriteModel(id = "glm53", name = "GLM 5.3"),
-        RewriteModel(id = "ds-v4-pro", name = "DeepSeek V4 Pro"),
-    )
-
-    private val selectedModel = mutableStateOf("ds-v41-flash")
+    private val models = RewriteModels.DEFAULT
+    private val selectedModel = mutableStateOf(models.first().id)
+    private val modelSelections = mutableListOf<String>()
     private var upCommits = 0
-    private var downCommits = 0
-    private var lastUpCount = 0
-    private var lastUpReasons: List<String> = emptyList()
+    private val downReasons = mutableListOf<List<String>>()
+    private val rewrites = mutableListOf<String>()
     private val scrollState = ScrollState(0)
 
     private fun launch() {
         rule.setContent {
             Column(Modifier.fillMaxSize().verticalScroll(scrollState)) {
+                Spacer(Modifier.height(100.dp))
                 RewriteBar(
                     wordId = 1L,
                     mark = null,
                     models = models,
                     selectedModelId = selectedModel.value,
-                    onSelectModel = { selectedModel.value = it },
-                    onRewrite = {},
+                    onSelectModel = { modelSelections.add(it); selectedModel.value = it },
+                    onRewrite = { rewrites.add(it) },
                     onCancel = {},
-                    onFeedbackUp = { count, reasons, _ ->
-                        upCommits += 1
-                        lastUpCount = count
-                        lastUpReasons = reasons
-                    },
-                    onFeedbackDown = { _, _, _ -> downCommits += 1 },
+                    onInstruction = {},
+                    onFeedbackUp = { count, _, _ -> upCommits += count },
+                    onFeedbackDown = { _, reasons, _ -> downReasons.add(reasons) },
                     feedback = null,
                     likeCount = 0,
                     enabled = true,
-                    progress = null,
-                    justUpdated = false,
+                    progress = null
                 )
+                Spacer(Modifier.height(1500.dp))
             }
         }
     }
 
-    @Test
-    fun longPressBurst_ticksWithoutOpeningMenu() {
-        launch()
-        rule.onNodeWithTag("rewrite_feedback_up").performTouchInput {
-            down(center)
-            advanceEventTime(600)
-            up()
-        }
-        rule.waitForIdle()
-        assertEquals("长按松手应恰好提交一次", 1, upCommits)
-        assertTrue("600ms 长按应连发 >= 3 次，实际 $lastUpCount", lastUpCount >= 3)
-        rule.onNodeWithTag("rewrite_feedback_menu").assertDoesNotExist()
+    private fun holdOn(tag: String): SemanticsNodeInteraction {
+        val button = rule.onNodeWithTag(tag)
+        button.performTouchInput { down(center) }
+        rule.waitUntil(2_500) { rule.onAllNodesWithTag("rewrite_action_rail").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("rewrite_action_rail").assertIsDisplayed()
+        return button
     }
 
     @Test
-    fun swipeUp_revealsThreeItems_andOuterScrollStaysStill() {
+    fun swipeStartingOnLikeScrollsTheParentWithoutFeedback() {
         launch()
         rule.onNodeWithTag("rewrite_feedback_up").performTouchInput {
             down(center)
-            // 状态机阈值是 dp；模拟器 density 440dpi（2.75x），18dp≈50px。
-            // 滑 -55px（20dp）：刚过触发阈值，浮层呼出时高亮第 0 项「一秒记住」。
-            moveBy(Offset(0f, -55f), 120)
+            moveBy(Offset(0f, -25.dp.toPx()), delayMillis = 48)
+            moveBy(Offset(0f, -55.dp.toPx()), delayMillis = 48)
             up()
         }
-        rule.waitForIdle()
-        assertEquals("上滑松手应恰好提交一次", 1, upCommits)
-        assertEquals("默认高亮第 0 项「一秒记住」", listOf("一秒记住"), lastUpReasons)
-        assertEquals("外层 verticalScroll 不得被手势抢占", 0, scrollState.value)
+        rule.runOnIdle {
+            assertTrue("Outer ScrollState must move", scrollState.value > 0)
+            assertEquals(0, upCommits)
+        }
     }
 
     @Test
-    fun swipeBackToOrigin_cancelsWithoutCommit() {
+    fun holdDislikeAndSlideToThirdChoiceCommitsAndKeepsScrollStill() {
         launch()
-        rule.onNodeWithTag("rewrite_feedback_up").performTouchInput {
-            down(center)
-            moveBy(Offset(0f, -80f), 120)
-            moveBy(Offset(0f, 80f), 120)
+        val button = holdOn("rewrite_feedback_down")
+        val targetX = rule.onNodeWithTag("rewrite_rail_option_2").fetchSemanticsNode().boundsInRoot.center.x
+        val buttonX = button.fetchSemanticsNode().boundsInRoot.center.x
+        button.performTouchInput {
+            advanceEventTime(250)
+            moveBy(Offset(targetX - buttonX, 0f))
             up()
         }
-        rule.waitForIdle()
-        assertEquals("滑回原点应零提交", 0, upCommits)
-        assertEquals("滑回原点不得触发差评", 0, downCommits)
-        rule.onNodeWithTag("rewrite_feedback_menu").assertDoesNotExist()
+        rule.runOnIdle {
+            assertEquals(listOf(listOf("太烂了")), downReasons)
+            assertEquals(listOf("太烂了"), rewrites)
+            assertEquals(0, scrollState.value)
+        }
     }
 
     @Test
-    fun modelPill_swipeLeft_switchesToNextModel() {
+    fun holdingLikeAndDraggingUp60DpCancelsWithoutCommit() {
         launch()
-        assertEquals("ds-v41-flash", selectedModel.value)
-        rule.onNodeWithTag("rewrite_model_pill").performTouchInput {
-            swipeLeft()
+        val button = holdOn("rewrite_feedback_up")
+        button.performTouchInput {
+            advanceEventTime(250)
+            moveBy(Offset(0f, -60.dp.toPx()))
         }
-        rule.waitForIdle()
-        assertEquals("左滑应切到下一档 glm53", "glm53", selectedModel.value)
+        rule.onNodeWithTag("rewrite_rail_canceled").assertIsDisplayed()
+        button.performTouchInput { up() }
+        rule.runOnIdle {
+            assertEquals(0, upCommits)
+            assertTrue(rewrites.isEmpty())
+            assertEquals(0, scrollState.value)
+        }
+    }
+
+    @Test
+    fun fourShortTapsCycleThroughEveryModel() {
+        launch()
+        repeat(4) { rule.onNodeWithTag("rewrite_model_pill").performTouchInput { click() } }
+        rule.runOnIdle {
+            assertEquals(models.drop(1).map { it.id } + models.first().id, modelSelections)
+        }
     }
 }

@@ -607,11 +607,27 @@ class RewriteRepository(
 
     private fun autoKey(wordId: Long, bookId: Long) = "auto_${wordId}_${bookId}"
 
-    /** 已投递或还欠作答的任务不能通过取消删掉。 */
+    /** 取消当前请求。已跳过且仍欠一次作答的任务继续按原流程回收。 */
     suspend fun cancel(wordId: Long, bookId: Long = 0L): Boolean = syncMutex.withLock {
         queueWriteMutex.withLock write@{
             val existing = queueDao.getVisibleForBook(wordId, bookId) ?: return@write false
-            if (existing.status != RewriteStatus.PENDING || existing.needsReinsert) return@write false
+            if (existing.needsReinsert) return@write false
+            when (existing.status) {
+                RewriteStatus.PENDING -> Unit
+                RewriteStatus.QUEUED -> {
+                    val clientId = rewriteClientId(existing)
+                    val stopped = send(
+                        path = "/rewrite/stop",
+                        payload = gson.toJson(mapOf("clientId" to clientId)),
+                        attempts = 1,
+                        report = false
+                    )
+                    if (stopped.kind != RetryPolicy.Kind.OK) return@write false
+                    val receipt = runCatching { gson.fromJson(stopped.body, StopReceipt::class.java) }.getOrNull()
+                    if (receipt?.clientId != clientId || receipt.stopped <= 0) return@write false
+                }
+                else -> return@write false
+            }
             queueDao.delete(wordId, existing.bookId)
             true
         }
@@ -624,6 +640,8 @@ class RewriteRepository(
     suspend fun stopRewrite(word: String? = null): Boolean = syncMutex.withLock {
         stopRewriteLocked(word)
     }
+
+    private data class StopReceipt(val clientId: String?, val stopped: Int)
 
     /** 锁内版本：stopAllRewrites 要「停远端 + 结清本地」整段原子，不能再抢一次锁。 */
     private suspend fun stopRewriteLocked(word: String?): Boolean {
@@ -1092,7 +1110,7 @@ class RewriteRepository(
         return null
     }
 
-    /** 电脑端模型列表；连不上就用内置 5 个兜底。成功一次后缓存到进程结束。 */
+    /** 电脑端模型列表；连不上就用内置模型兜底。成功一次后缓存到进程结束。 */
     suspend fun models(): List<RewriteModel> {
         cachedModels?.let { return it }
         // 后台小请求：只问一次、失败静默（内置兜底模型永远可用，不该为它弹任何提示）。
