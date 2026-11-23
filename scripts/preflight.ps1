@@ -46,7 +46,7 @@ try {
     } finally {$env:WORDHELPER_STORE_PASS=$saved}
     if ($Quick) {Write-Output 'Quick PASS'; return}
     if (!(Get-Command openssl -CommandType Application -ErrorAction SilentlyContinue)) {
-        $gitRoot=Split-Path (Split-Path (Get-Command git).Source)
+        $gitRoot=Split-Path (Split-Path (Get-Command git -CommandType Application | Select-Object -First 1).Source)
         foreach ($root in @($gitRoot, "$env:ProgramFiles/Git")) {
             foreach ($sub in 'usr/bin','mingw64/bin') {
                 $dir=Join-Path $root $sub
@@ -56,7 +56,7 @@ try {
         }
     }
     $python=Join-Path $r 'venv-anki/Scripts/python.exe'
-    if (!(Test-Path -LiteralPath $python)) {$python=(Get-Command python -CommandType Application).Source}
+    if (!(Test-Path -LiteralPath $python)) {$python=(Get-Command python -CommandType Application | Select-Object -First 1).Source}
     if (!(Get-Command openssl -CommandType Application -ErrorAction SilentlyContinue)) {
         throw '完整模式需要 openssl，以运行 TLS 指纹交叉验证。请将 CLI 加入本次进程 PATH。'
     }
