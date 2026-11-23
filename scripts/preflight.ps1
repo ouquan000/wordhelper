@@ -31,6 +31,9 @@ try {
         if ($LASTEXITCODE -ne 0 -or (($cert -join ' ') -replace ':','') -notmatch '963533138ed73e92e9a2859f80fdf18becb4ee5a83132c55634b965d7164ba1c') {throw '签名材料校验失败'}
     } finally {$env:WORDHELPER_STORE_PASS=$saved}
     if ($Quick) {Write-Output 'Quick PASS'; return}
+    if (!(Get-Command openssl -CommandType Application -ErrorAction SilentlyContinue)) {
+        throw '完整模式需要 openssl，以运行 TLS 指纹交叉验证。请将 CLI 加入本次进程 PATH。'
+    }
     $tmp=Join-Path $r ('.preflight-'+[guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $tmp | Out-Null
     $oldGradle=$env:GRADLE_USER_HOME

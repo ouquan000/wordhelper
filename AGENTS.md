@@ -77,7 +77,7 @@
 ## 测试与门禁
 
 - 在仓库根运行 pwsh -File scripts/preflight.ps1 -Quick 做卫生检查。
-- 完整验收运行 pwsh -File scripts/preflight.ps1。
+- 完整验收将 OpenSSL CLI 加入本次进程 PATH，再运行 pwsh -File scripts/preflight.ps1。
 - 记录门禁退出码、超标明细和两种 flavor 的实际测试数。
 - Android 命令从 app/src_repo/ 运行，Gradle 使用 JDK 17。
 - 离线运行 gradlew.bat :app:testProdDebugUnitTest :app:testDevDebugUnitTest --offline。
