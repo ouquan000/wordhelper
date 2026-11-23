@@ -96,3 +96,6 @@ artifacts/
 # 本地服务日志
 *.err
 
+
+# ── 基线定妆照只保留在云盘交付包，不进 Git ──
+baseline/

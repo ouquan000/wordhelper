@@ -157,12 +157,25 @@ internal fun RewriteBar(
             ProgressRow(progress, queued = mark?.status == RewriteStatus.QUEUED)
         }
 
-        // 失败原因单行（上次重写时间已移到卡顶信息栏，这里只保留失败原因）。
-        if (mark != null && mark.status == RewriteStatus.FAILED && presentation.statusLine.isNotBlank()) {
+        // 单一状态行：PENDING / QUEUED(无进度条) / FAILED / 刚更新 都渲染；
+        // DONE 的「上次重写时间」留给卡顶信息栏，不在这里重复。
+        val showStatusLine = presentation.statusLine.isNotBlank() && when {
+            justUpdated -> true
+            mark == null -> false
+            mark.status == RewriteStatus.PENDING -> true
+            mark.status == RewriteStatus.QUEUED && !presentation.showProgress -> true
+            mark.status == RewriteStatus.FAILED -> true
+            else -> false
+        }
+        if (showStatusLine) {
             Text(
                 text = presentation.statusLine,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.error,
+                color = if (mark?.status == RewriteStatus.FAILED) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth()
@@ -224,6 +237,10 @@ private fun Modifier.gestureArea(
     var menuActive by remember(contract) { mutableStateOf(false) }
     if (!enabled) return this
     return pointerInput(enabled, contract) {
+        // 状态机阈值是 dp，但 down/change.position 是像素 px：高密度屏上先转成 dp 再喂。
+        val scale = density
+        fun dpOf(v: Float): Float = v / scale
+
         fun emit(decision: GestureDecision) {
             if (decision.haptic) {
                 val type = if (decision.event is GestureEvent.LongPressTick) {
@@ -249,8 +266,8 @@ private fun Modifier.gestureArea(
 
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            val downX = down.position.x
-            val downY = down.position.y
+            val downX = dpOf(down.position.x)
+            val downY = dpOf(down.position.y)
             var lastX = downX
             var lastY = downY
             var lastEventTime = down.uptimeMillis
@@ -272,8 +289,8 @@ private fun Modifier.gestureArea(
                     finished = true
                     break
                 }
-                lastX = change.position.x
-                lastY = change.position.y
+                lastX = dpOf(change.position.x)
+                lastY = dpOf(change.position.y)
                 lastEventTime = change.uptimeMillis
                 decision = machine.onMove(lastX, lastY, lastEventTime)
                 if (decision.consume) change.consume()
@@ -386,8 +403,17 @@ private fun ModelPicker(
     }
 }
 
-/** 模型胶囊内的精简短名：只留第一个词，避免截断成 "DeepSeek..."。 */
-private fun shortNameOf(name: String): String = name.substringBefore(" ").ifBlank { name }
+/** 模型胶囊内的精简短名：映射为紧凑可辨短名，避免 DeepSeek 系列全截成 "DeepSeek"。 */
+private fun shortNameOf(name: String): String {
+    val n = name.lowercase()
+    return when {
+        "deepseek" in n && "flash" in n -> "DS 4.1F"
+        "deepseek" in n && "pro" in n -> "DS 4 Pro"
+        "glm" in n -> "GLM 5.3"
+        "minimax" in n -> "MiniMax"
+        else -> name.substringBefore(" ").ifBlank { name }
+    }
+}
 
 /* ------------------------------------------------------------------ */
 /* ✨再重写一次：短按直接重写；下滑（1 项「写要求重写」）拉输入条。 */
@@ -490,6 +516,7 @@ private fun FeedbackPill(
     var menuDirection by remember { mutableStateOf(SwipeDirection.UP) }
     var highlightIndex by remember { mutableStateOf(0) }
     var showInput by remember { mutableStateOf(false) }
+    var longPressCount by remember { mutableStateOf(0) }
 
     LaunchedEffect(selected) {
         if (!selected) return@LaunchedEffect
@@ -521,14 +548,23 @@ private fun FeedbackPill(
                     enabled = enabled,
                     onEvent = { event ->
                         when (event) {
-                            is GestureEvent.Tap -> onTap()
-                            is GestureEvent.LongPressCommit -> onLongPressCommit(event.count)
+                            is GestureEvent.Tap -> {
+                                longPressCount = 0
+                                onTap()
+                            }
+                            is GestureEvent.LongPressTick -> longPressCount = event.count
+                            is GestureEvent.LongPressCommit -> {
+                                onLongPressCommit(event.count)
+                                longPressCount = 0
+                            }
                             is GestureEvent.SwipeSelect -> {
+                                longPressCount = 0
                                 menuDirection = event.direction
                                 highlightIndex = 0
                                 menuVisible = true
                             }
                             is GestureEvent.SwipeCommit -> {
+                                longPressCount = 0
                                 menuVisible = false
                                 when (event.direction) {
                                     SwipeDirection.UP -> upOptions
@@ -538,7 +574,10 @@ private fun FeedbackPill(
                                     else -> Unit
                                 }
                             }
-                            is GestureEvent.SwipeCancel -> menuVisible = false
+                            is GestureEvent.SwipeCancel -> {
+                                longPressCount = 0
+                                menuVisible = false
+                            }
                             else -> Unit
                         }
                     },
@@ -556,7 +595,7 @@ private fun FeedbackPill(
             horizontalArrangement = Arrangement.Center
         ) {
             Text(
-                text = label,
+                text = if (longPressCount > 1) "$label ×$longPressCount" else label,
                 style = MaterialTheme.typography.labelSmall,
                 color = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant,
                 maxLines = 1
@@ -655,6 +694,7 @@ private fun InstructionInputBar(
 
     Popup(
         alignment = Alignment.BottomCenter,
+        onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = true)
     ) {
         Row(

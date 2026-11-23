@@ -90,8 +90,9 @@ class RewriteBarGestureTest {
         launch()
         rule.onNodeWithTag("rewrite_feedback_up").performTouchInput {
             down(center)
-            // 只滑到刚过 18dp 触发阈值：浮层刚呼出时高亮第 0 项「一秒记住」。
-            moveBy(Offset(0f, -30f), 120)
+            // 状态机阈值是 dp；模拟器 density 440dpi（2.75x），18dp≈50px。
+            // 滑 -55px（20dp）：刚过触发阈值，浮层呼出时高亮第 0 项「一秒记住」。
+            moveBy(Offset(0f, -55f), 120)
             up()
         }
         rule.waitForIdle()

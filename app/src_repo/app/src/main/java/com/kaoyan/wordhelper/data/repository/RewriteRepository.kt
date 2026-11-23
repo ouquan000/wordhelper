@@ -993,7 +993,7 @@ class RewriteRepository(
         val commentText = comment.trim().take(MAX_FEEDBACK_CHARS)
 
         // 👍 是累加：同一版思路只保留一行，连击加进 count。
-        // 👎 仍然是一次表态，重复点不重复入库（唯一索引兜底），但允许补原因。
+        // 👎 1.5.3v2 起同样累加连踩次数（1..50，只记差评不重写），重复点不重复入库。
         if (rating == RewriteFeedbackRating.UP) {
             val existing = feedbackDao.find(wordId, bookId, rating, safeRev)
             if (existing != null) {
@@ -1009,6 +1009,11 @@ class RewriteRepository(
         } else {
             val existing = feedbackDao.find(wordId, bookId, rating, safeRev)
             if (existing != null) {
+                val nextCount = (existing.count + safeCount).coerceAtMost(MAX_FEEDBACK_BURST)
+                val added = nextCount - existing.count
+                if (added > 0) {
+                    feedbackDao.addCount(existing.id, added, now)
+                }
                 feedbackDao.updateReasons(existing.id, reasonsText, commentText, now)
                 runCatching { pushFeedback(feedbackDao.getUnsynced(FEEDBACK_BATCH)) }
                 return true
@@ -1027,7 +1032,7 @@ class RewriteRepository(
                 instruction = instruction.take(MAX_FEEDBACK_CHARS),
                 approachRev = safeRev,
                 createdAt = now,
-                count = if (rating == RewriteFeedbackRating.UP) safeCount else 1,
+                count = safeCount,
                 reasons = reasonsText,
                 comment = commentText
             )
