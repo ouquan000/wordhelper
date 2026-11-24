@@ -1,7 +1,6 @@
 518 app/src_repo/app/src/androidTest/java/com/kaoyan/wordhelper/M12AcceptanceTest.kt
 1179 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/data/database/AppDatabase.kt
 634 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/data/repository/SettingsRepository.kt
-1375 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/data/repository/WordRepository.kt
 671 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/data/repository/WordbookUpdateRepository.kt
 588 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/component/AppDrawer.kt
 835 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/component/FlowBurnProgressBar.kt

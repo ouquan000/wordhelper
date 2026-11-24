@@ -57,31 +57,7 @@ interface WordDao {
     )
     suspend fun getWordsByBookList(bookId: Long): List<Word>
 
-    @Query(
-        """SELECT w.id AS id,
-                  w.word AS word,
-                  w.phonetic AS phonetic,
-                  IFNULL(c.meaning, '') AS meaning,
-                  IFNULL(c.example, '') AS example,
-                  IFNULL(c.phrases, '') AS phrases,
-                  IFNULL(c.synonyms, '') AS synonyms,
-                  IFNULL(c.rel_words, '') AS relWords,
-                  IFNULL(m.approach, '') AS approach,
-                  IFNULL(m.collocations, '') AS collocations,
-                  IFNULL(m.method, '') AS method,
-                  IFNULL(c.book_id, 0) AS bookId
-           FROM tb_word w
-           LEFT JOIN tb_word_memory m ON m.word_id = w.id
-           LEFT JOIN tb_book_word_content c ON c.id = (
-               SELECT id
-               FROM tb_book_word_content
-               WHERE word_id = w.id
-               ORDER BY book_id ASC
-               LIMIT 1
-           )
-           WHERE w.id = :wordId
-           LIMIT 1"""
-    )
+    @Query(WORD_BY_ID_QUERY)
     suspend fun getWordById(wordId: Long): Word?
 
     @Query(
@@ -296,3 +272,29 @@ interface WordDao {
     )
     suspend fun getNextNewWord(bookId: Long): Word?
 }
+
+internal const val WORD_BY_ID_QUERY =
+    """SELECT w.id AS id,
+                  w.word AS word,
+                  w.phonetic AS phonetic,
+                  IFNULL(c.meaning, '') AS meaning,
+                  IFNULL(c.example, '') AS example,
+                  IFNULL(c.phrases, '') AS phrases,
+                  IFNULL(c.synonyms, '') AS synonyms,
+                  IFNULL(c.rel_words, '') AS relWords,
+                  COALESCE(NULLIF(bm.approach, ''), m.approach, '') AS approach,
+                  COALESCE(NULLIF(bm.collocations, ''), m.collocations, '') AS collocations,
+                  COALESCE(NULLIF(bm.method, ''), m.method, '') AS method,
+                  IFNULL(c.book_id, 0) AS bookId
+           FROM tb_word w
+           LEFT JOIN tb_word_memory m ON m.word_id = w.id
+           LEFT JOIN tb_book_word_content c ON c.id = (
+               SELECT id
+               FROM tb_book_word_content
+               WHERE word_id = w.id
+               ORDER BY book_id ASC
+               LIMIT 1
+           )
+           LEFT JOIN tb_book_memory bm ON bm.word_id = w.id AND bm.book_id = c.book_id
+           WHERE w.id = :wordId
+           LIMIT 1"""

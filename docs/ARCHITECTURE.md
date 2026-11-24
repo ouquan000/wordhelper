@@ -106,6 +106,21 @@ providers.py 适配模型，WB 经 8788。测试使用假供应商。AppDatabase
 | RewriteStatusReader.kt | 进度匹配、历史终态过滤与模型缓存 |
 | RewriteReplayContractTest.kt | 回放阈值、跨书请求认领与重投边界的 JVM 契约测试 |
 
+## WordRepository 内部模块
+
+| 文件 | 职责 |
+|---|---|
+| WordRepository.kt | 公开入口、默认参数和协作者装配 |
+| WordBookStore.kt | 词书切换、删除、导入、种子刷新与预设书恢复 |
+| WordContentStore.kt | 词条查询、检索、导出、键归一、去重与草稿落库 |
+| WordProgressStore.kt | 按书进度、分批读取、复习压力、重置和本地同步入队 |
+| WordStudyWriter.kt | 识别与拼写评分、FSRS/SM-2 调度、进度写入；事务成功提交后按词和书入队 |
+| WordStudyQueue.kt | 新词、到期复习与提前复习的选择和排序 |
+| WordNotebookStore.kt | 生词本引用、计数与手势加入 |
+| WordStudyStats.kt | 学习日、打卡、学习日志、拼写计数及全局和按书统计 |
+| WordByIdMemoryContractTest.kt | 用内存 SQLite 执行 Room 单词查询，核对同书覆盖、逐字段回退及无内容行 |
+| WordRepositoryContractTest.kt | 搜索与导出分流、导入去重、提交顺序与失败时的入队行为 |
+
 ## 学习记录同步
 
 | 文件 | 职责 |
@@ -152,5 +167,5 @@ Store 的各组方法共用同一实例及条件锁，通过实例的模块引�
 | 4 | RewriteRepository.kt | 296 | 已拆分，双 flavor JVM 契约覆盖结果回放与队列认领边界 |
 | 5 | pipeline.py | 294 | 已拆分，固定输入覆盖阶段调度与入口替换 |
 | 6 | SyncRepository.kt | 202 | 已拆分，双 flavor JVM 契约覆盖网络回退、限流、游标与 LWW 重放 |
-| 7 | WordRepository.kt | 1375 | 分离词库查询与学习写入，保留事务边界 |
+| 7 | WordRepository.kt | 317 | 已拆分，双 flavor JVM 契约覆盖书内记忆优先、导入去重和事务后入队 |
 | 8 | store.py | 420 | 已拆分，队列回放覆盖质量重试封顶与存量记录 |
