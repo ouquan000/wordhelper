@@ -87,6 +87,25 @@ providers.py 适配模型，WB 经 8788。测试使用假供应商。AppDatabase
 | LearningSessionActions.kt | 重载订阅、切书、生词本、压力分散与打卡 |
 | LearningSessionContractTest.kt | 队列、重试、恢复、呈现、降档与压力阈值 JVM 回放 |
 
+## RewriteRepository 内部模块
+
+| 文件 | 职责 |
+|---|---|
+| RewriteRepository.kt | 公开门面、协作者装配、网络恢复订阅与既有反馈 DTO |
+| RewriteContracts.kt | 状态快照、同步结果和共享协议常量、请求键与时间编码 |
+| RewriteEndpointResolver.kt | 候选地址、配对、LAN 身份与 pin、客户端选择和成功地址回写 |
+| RewriteTransport.kt | 请求、重试、429 冷却、401 锁存、健康探测与状态发布 |
+| RewriteQueueStore.kt | 本地入队、欠卡置位与清零、取消、停止和撤销 |
+| RewriteMemoryReader.kt | 按书与全局记忆的查询和 Flow 回退 |
+| RewriteRequestRules.kt | 请求合并、旧请求认领与旧结果流回放条件 |
+| RewriteSyncEngine.kt | 整轮同步互斥、补发顺序、结果分页与游标持久化 |
+| RewriteMarkUpload.kt | 组装标记、按书取上下文与解析接收回执 |
+| RewriteResultMerger.kt | 结果认领、按书落库、未认领结果补拉 |
+| RewriteFeedbackStore.kt | 版本反馈累计与回执、锁词推送 |
+| RewriteMemorySignals.kt | FSRS 信号去重、遗忘换招冷却与入队 |
+| RewriteStatusReader.kt | 进度匹配、历史终态过滤与模型缓存 |
+| RewriteReplayContractTest.kt | 回放阈值、跨书请求认领与重投边界的 JVM 契约测试 |
+
 ## 拆分优先级
 
 按 2026-11-23 体检的物理行数排序分批。当前明细由门禁输出。
@@ -96,7 +115,7 @@ providers.py 适配模型，WB 经 8788。测试使用假供应商。AppDatabase
 | 1 | LearningScreen.kt | 432 | 已完成瘦身；评分与抽屉状态机由双 flavor JVM 回放覆盖 |
 | 2 | LearningViewModel.kt | 207 | 已拆分，双 flavor JVM 回放覆盖会话推进、评分重试与恢复 |
 | 3 | cardback-editor/server.py | 436 | 已完成瘦身，入口保留路由与兼容状态；模块边界测试覆盖同源转发、健康与导入 |
-| 4 | RewriteRepository.kt | 2066 | 隔离提交、取消与轮询，验证已有任务恢复 |
+| 4 | RewriteRepository.kt | 296 | 已拆分，双 flavor JVM 契约覆盖结果回放与队列认领边界 |
 | 5 | pipeline.py | 1575 | 拆分生成与结构校验，以固定输入回放 |
 | 6 | SyncRepository.kt | 1451 | 用状态机覆盖网络回退、冲突与重试 |
 | 7 | WordRepository.kt | 1375 | 分离词库查询与学习写入，保留事务边界 |
