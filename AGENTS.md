@@ -80,7 +80,7 @@
 - 完整验收将 OpenSSL CLI 加入本次进程 PATH，再运行 pwsh -File scripts/preflight.ps1。
 - 记录门禁退出码、超标明细和两种 flavor 的实际测试数。
 - 离线构建必须设置 GRADLE_USER_HOME=<仓库根>/_toolchain/gradle-home。
-- D 盘已备 AVD mf（emulator-5554），严禁重新下载。adb 固定使用 D:\Android\Sdk\platform-tools\adb.exe。
+- AVD mf 注册在 C:\Users\ouquan\.android\avd\mf.ini，可写磁盘在同目录 mf.avd\；系统镜像位于 D:\Android\Sdk\system-images\android-34\google_apis\x86_64\。严禁重新下载。adb 固定使用 D:\Android\Sdk\platform-tools\adb.exe。
 - 避让 D:\deepseek harness\work4\_build、真机 iQOO 13 及运行中的 cloudflared 隧道。
 - Android 命令从 app/src_repo/ 运行，Gradle 使用 JDK 17。
 - 离线运行 gradlew.bat :app:testProdDebugUnitTest :app:testDevDebugUnitTest --offline。

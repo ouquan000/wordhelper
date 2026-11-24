@@ -11,6 +11,20 @@
 | docs/ | 架构、兼容约定、测试夹具及设计和运维资料 |
 | _toolchain/、venv-anki | 本机工具、签名及外部环境联接；保持路径稳定 |
 
+## CardBack 内部模块
+
+server.py 保留启动入口、GET/POST 路由、兼容符号与运行态。它将同一份上下文传给处理器和辅助函数，各模块均可独立导入。
+
+| 模块 | 职责 |
+|---|---|
+| cardback_security.py | 口令与身份、可信来源、限流预算与入站检查 |
+| cardback_config.py | 配置校验、版本历史、发布与回滚 |
+| cardback_api.py | 编辑器、词卡包、同步、健康与身份接口 |
+| cardback_http.py | HTTP 请求体与响应、静态文件和缺页提示 |
+| cardback_rewrite.py | 重写模块查找与缓存、能力探测、同源转发和启动 |
+| cardback_network.py | 网卡探测、TLS 监听生命周期、UDP 发现 |
+| cardback_startup.py | 命令行解析、启动顺序与退出清理 |
+
 ## 请求与数据流
 
 ```mermaid
@@ -40,7 +54,7 @@ providers.py 适配模型，WB 经 8788。测试使用假供应商。AppDatabase
 |---|---|---:|---|
 | 1 | LearningScreen.kt | 2610 | 提取纯手势状态机，覆盖移动、取消与提交 |
 | 2 | LearningViewModel.kt | 2426 | 分离学习会话转换，回放评分、跳过与恢复 |
-| 3 | cardback-editor/server.py | 2154 | 分离同源重写路由，保留鉴权、错误码及健康检查 |
+| 3 | cardback-editor/server.py | 436 | 已完成瘦身，入口保留路由与兼容状态；模块边界测试覆盖同源转发、健康与导入 |
 | 4 | RewriteRepository.kt | 2066 | 隔离提交、取消与轮询，验证已有任务恢复 |
 | 5 | pipeline.py | 1575 | 拆分生成与结构校验，以固定输入回放 |
 | 6 | SyncRepository.kt | 1451 | 用状态机覆盖网络回退、冲突与重试 |

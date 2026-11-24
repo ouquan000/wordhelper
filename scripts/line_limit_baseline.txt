@@ -24,7 +24,6 @@
 472 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/viewmodel/SearchViewModel.kt
 728 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/viewmodel/StatsViewModel.kt
 574 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/util/WordFileParser.kt
-2154 tools/cardback-editor/server.py
 477 tools/cardback-editor/sync_store.py
 494 tools/rewrite-service/batch_pipeline.py
 479 tools/rewrite-service/exemplars.py
