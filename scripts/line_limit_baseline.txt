@@ -22,10 +22,8 @@
 477 tools/cardback-editor/sync_store.py
 494 tools/rewrite-service/batch_pipeline.py
 479 tools/rewrite-service/exemplars.py
-827 tools/rewrite-service/service.py
 790 tools/rewrite-service/tests/canary_20.py
 670 tools/rewrite-service/tests/test_feedback.py
 590 tools/rewrite-service/wb_gate.py
-689 tools/rewrite-service/worker.py
 504 tools/word-audit/review.py
 1211 tools/word-audit/scan.py

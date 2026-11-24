@@ -139,6 +139,13 @@ providers.py 适配模型，WB 经 8788。测试使用假供应商。AppDatabase
 
 | 文件 | 职责 |
 |---|---|
+| service.py | 保留 respond、路由分发、生命周期、共享状态与手动队列的兼容入口 |
+| service_execution.py | 手动队列的领取、历史复用、单条与批量执行 |
+| service_handlers.py | 重写请求的校验、反馈、锁词、状态和闲时开关处理 |
+| worker.py | 保留闲时线程生命周期、共享状态与配置、选词和执行入口 |
+| worker_state.py | 闲时配置的读取、路径选择、运行态恢复与保存 |
+| worker_candidates.py | 汇总按书反馈，补全词条并按锁、冷却和方法优先级选择候选 |
+| worker_run.py | 闲时单轮调度、配额和锁复查、调用流水线及记账 |
 | pipeline.py | 保留原有函数签名、配置与依赖入口，调用时将本模块传给实现函数 |
 | pipeline_generation.py | 提示词与指令指纹、生成、润色与样例组装 |
 | pipeline_text.py | JSON 提取、步骤格式化与用户禁令匹配 |
