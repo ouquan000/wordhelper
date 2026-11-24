@@ -106,6 +106,26 @@ providers.py 适配模型，WB 经 8788。测试使用假供应商。AppDatabase
 | RewriteStatusReader.kt | 进度匹配、历史终态过滤与模型缓存 |
 | RewriteReplayContractTest.kt | 回放阈值、跨书请求认领与重投边界的 JVM 契约测试 |
 
+## Rewrite Service 内部模块
+
+| 文件 | 职责 |
+|---|---|
+| pipeline.py | 保留原有函数签名、配置与依赖入口，调用时将本模块传给实现函数 |
+| pipeline_generation.py | 提示词与指令指纹、生成、润色与样例组装 |
+| pipeline_text.py | JSON 提取、步骤格式化与用户禁令匹配 |
+| pipeline_intent.py | 换方法指令识别、否定与转述消歧 |
+| pipeline_judge.py | 评分协议、评委调用、合格线与候选排序 |
+| pipeline_style.py | 风格配置、红黑榜与扣分 |
+| pipeline_run.py | 阶段调度、断点续跑与单次领取内的候选选择 |
+| store.py | Store 兼容入口、同步原语、原子写、加载恢复与序号持久化 |
+| store_queue.py | 入队、领取、退避唤醒、停止与手动重试 |
+| store_completion.py | 代次与覆盖检查、质量拒绝、终态落盘 |
+| store_results.py | 队列视图、历史分页、结果复用与闲时结果 |
+| store_feedback.py | 反馈幂等、记忆信号与按书锁词 |
+| quality_retry_policy.py | 按队列领取次数或累计失败次数判定五轮上限，检查候选有效性 |
+
+Store 的各组方法共用同一实例及条件锁，通过实例的模块引用读取可替换依赖。质量未过的前四轮沿用退避，到顶有候选时写入带原因的未复核结果，无候选时写入失败终态。传输错误仍由独立的退避路径处理。
+
 ## 拆分优先级
 
 按 2026-11-23 体检的物理行数排序分批。当前明细由门禁输出。
@@ -116,7 +136,7 @@ providers.py 适配模型，WB 经 8788。测试使用假供应商。AppDatabase
 | 2 | LearningViewModel.kt | 207 | 已拆分，双 flavor JVM 回放覆盖会话推进、评分重试与恢复 |
 | 3 | cardback-editor/server.py | 436 | 已完成瘦身，入口保留路由与兼容状态；模块边界测试覆盖同源转发、健康与导入 |
 | 4 | RewriteRepository.kt | 296 | 已拆分，双 flavor JVM 契约覆盖结果回放与队列认领边界 |
-| 5 | pipeline.py | 1575 | 拆分生成与结构校验，以固定输入回放 |
+| 5 | pipeline.py | 294 | 已拆分，固定输入覆盖阶段调度与入口替换 |
 | 6 | SyncRepository.kt | 1451 | 用状态机覆盖网络回退、冲突与重试 |
 | 7 | WordRepository.kt | 1375 | 分离词库查询与学习写入，保留事务边界 |
-| 8 | store.py | 1281 | 区分队列与持久化，验证崩溃恢复及旧数据兼容 |
+| 8 | store.py | 420 | 已拆分，队列回放覆盖质量重试封顶与存量记录 |
