@@ -106,6 +106,20 @@ providers.py 适配模型，WB 经 8788。测试使用假供应商。AppDatabase
 | RewriteStatusReader.kt | 进度匹配、历史终态过滤与模型缓存 |
 | RewriteReplayContractTest.kt | 回放阈值、跨书请求认领与重投边界的 JVM 契约测试 |
 
+## 学习记录同步
+
+| 文件 | 职责 |
+|---|---|
+| SyncRepository.kt | 公开入口、同步互斥、恢复订阅、协作者装配和既有 WireOp 入口与协议装配 |
+| SyncContracts.kt | 同步协议常量、JSON 媒体类型、出站操作编号与共享类型 |
+| SyncOutbox.kt | 本地入队、首次历史补发、批量推送与逐类回执 |
+| SyncPullMerger.kt | 增量分页、换代重拉、按词书合入进度和 FSRS 可选字段 |
+| SyncLocalState.kt | 初始化设备身份、显式换端点时归零游标 |
+| SyncEndpointResolver.kt | 候选次序、配对与发现、健康与身份核验、成功地址缓存 |
+| SyncHttpTransport.kt | HTTP 客户端、TLS pin 选路、逐地址重试与冷却、状态发布 |
+| SyncRules.kt | 公网与 LAN 判定、回退终止条件、游标及两级时间戳裁决 |
+| SyncRulesContractTest.kt | 双 flavor JVM 覆盖限流、换代、分页和相同时间戳重放 |
+
 ## Rewrite Service 内部模块
 
 | 文件 | 职责 |
@@ -137,6 +151,6 @@ Store 的各组方法共用同一实例及条件锁，通过实例的模块引�
 | 3 | cardback-editor/server.py | 436 | 已完成瘦身，入口保留路由与兼容状态；模块边界测试覆盖同源转发、健康与导入 |
 | 4 | RewriteRepository.kt | 296 | 已拆分，双 flavor JVM 契约覆盖结果回放与队列认领边界 |
 | 5 | pipeline.py | 294 | 已拆分，固定输入覆盖阶段调度与入口替换 |
-| 6 | SyncRepository.kt | 1451 | 用状态机覆盖网络回退、冲突与重试 |
+| 6 | SyncRepository.kt | 202 | 已拆分，双 flavor JVM 契约覆盖网络回退、限流、游标与 LWW 重放 |
 | 7 | WordRepository.kt | 1375 | 分离词库查询与学习写入，保留事务边界 |
 | 8 | store.py | 420 | 已拆分，队列回放覆盖质量重试封顶与存量记录 |
