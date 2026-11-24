@@ -67,6 +67,26 @@ providers.py 适配模型，WB 经 8788。测试使用假供应商。AppDatabase
 | LearningGestureState.kt | 纯 Kotlin 评分与抽屉手势判定，输入使用 px |
 | LearningGestureStateTest.kt | 评分/抽屉移动、取消、提交、密度与异常边界 JVM 回放 |
 
+## LearningViewModel 内部模块
+
+| 文件 | 职责 |
+|---|---|
+| LearningViewModel.kt | 同包协作者装配、原有 UI 方法和状态流、viewModelScope 及启动顺序 |
+| LearningSessionState.kt | 当前卡与进度、节奏、即时重试、等待集合和稳定插回 |
+| LearningSessionRules.kt | 呈现代数、进度位置、恢复下标、评分降档与压力阈值的纯函数 |
+| LearningSubmissionGate.kt | 共用提交闸、重入提示与 finally 复位 |
+| LearningStudyFlows.kt | 书籍、设置、学习日欠卡、进度、复习压力与打卡订阅 |
+| LearningCheckIn.kt | 打卡状态、连续天数与学习日欠卡计数 |
+| LearningRewriteFlows.kt | 本轮请求、跳过资格、版本反馈、锁词与卡背订阅 |
+| LearningQueueCoordinator.kt | 队列快照加载、欠卡恢复、逐词监听、等待轮询与同步后刷新 |
+| LearningRewritePolling.kt | 卡背进度轮询、换词复位、翻面节流与终态同步 |
+| LearningRewriteActions.kt | 打标、取消、撤销、跳过落库确认、停止与队列重载 |
+| LearningMemoryFeedback.kt | 版本反馈、点赞累计与冲刷、记忆编辑恢复和锁词 |
+| LearningAnswers.kt | 识别与拼写提交、学习进度写入、ML 特征与 FSRS 旁路 |
+| LearningAiCoordinator.kt | AI 配置、缓存、例句与助记请求 |
+| LearningSessionActions.kt | 重载订阅、切书、生词本、压力分散与打卡 |
+| LearningSessionContractTest.kt | 队列、重试、恢复、呈现、降档与压力阈值 JVM 回放 |
+
 ## 拆分优先级
 
 按 2026-11-23 体检的物理行数排序分批。当前明细由门禁输出。
@@ -74,7 +94,7 @@ providers.py 适配模型，WB 经 8788。测试使用假供应商。AppDatabase
 | 顺序 | 文件 | 行数 | 首个边界与验证 |
 |---|---|---:|---|
 | 1 | LearningScreen.kt | 432 | 已完成瘦身；评分与抽屉状态机由双 flavor JVM 回放覆盖 |
-| 2 | LearningViewModel.kt | 2426 | 分离学习会话转换，回放评分、跳过与恢复 |
+| 2 | LearningViewModel.kt | 207 | 已拆分，双 flavor JVM 回放覆盖会话推进、评分重试与恢复 |
 | 3 | cardback-editor/server.py | 436 | 已完成瘦身，入口保留路由与兼容状态；模块边界测试覆盖同源转发、健康与导入 |
 | 4 | RewriteRepository.kt | 2066 | 隔离提交、取消与轮询，验证已有任务恢复 |
 | 5 | pipeline.py | 1575 | 拆分生成与结构校验，以固定输入回放 |

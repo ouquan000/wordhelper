@@ -18,7 +18,6 @@
 669 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/screen/SpellingScreen.kt
 657 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/screen/StatsScreen.kt
 628 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/screen/UiDemoScreen.kt
-2426 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/viewmodel/LearningViewModel.kt
 668 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/viewmodel/ProfileViewModel.kt
 472 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/viewmodel/SearchViewModel.kt
 728 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/viewmodel/StatsViewModel.kt
