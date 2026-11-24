@@ -133,7 +133,7 @@ def style_block(api, method="", judge=False):
     few = api.style_rules().get("few_shot") or {}
     lines = []
     weights = api.method_weights()
-    if api.judge:
+    if judge:
         lines.append("【风格规则·黑榜（v1.5.3）】")
         for row in api.black_rules():
             lines.append("- %s（%s）：%s" % (
