@@ -12,7 +12,6 @@
 634 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/screen/AILabScreen.kt
 771 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/screen/BookManageScreen.kt
 492 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/screen/LearningAiPanel.kt
-2610 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/screen/LearningScreen.kt
 1054 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/screen/ProfileScreen.kt
 675 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/screen/RewriteBar.kt
 690 app/src_repo/app/src/main/java/com/kaoyan/wordhelper/ui/screen/SearchScreen.kt

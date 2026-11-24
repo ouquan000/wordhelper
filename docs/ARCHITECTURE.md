@@ -46,13 +46,34 @@ service.py 初始化 Store 与工作线程。REWRITE_DATA_DIR 可指定隔离目
 worker.py 以仓库根下的 content/seed/cet6_cards.json 与 tools/cardback-editor/published/cards/cet6_cards.json 补全词条。迁移模块须验证两处相对路径。
 providers.py 适配模型，WB 经 8788。测试使用假供应商。AppDatabase.kt 注册 Room 历史迁移；UI 或同步重构须保留学习进度与记忆状态的兼容性。
 
+## LearningScreen 内部模块
+
+同包内保留页面订阅与副作用，指针适配器将像素输入交给纯 Kotlin 判定。
+
+| 文件 | 职责 |
+|---|---|
+| LearningScreen.kt | 页面入口、订阅、可保存状态、生命周期与事件连线 |
+| LearningStudyLayout.kt | 背景、菜单、双抽屉缩放、识别/拼写布局、进度与叠层顺序 |
+| LearningSessionStatus.kt | 等待、完成打卡与复习压力提示 |
+| LearningDialogs.kt | 移出、AI 引导、编辑思路与复习时间对话框 |
+| LearningAssistance.kt | AI 替换页、发音播放与卡背重写回调 |
+| LearningWordCard.kt | 卡面布局、翻书动画、交互门控与卡背滚动状态 |
+| LearningCardDetails.kt | 自适应词头、卡面图标、复习时间及方法标签 |
+| LearningCardBackBlocks.kt | 块顺序、间距、滚动渐隐、语义色与字号覆盖 |
+| LearningMemoryContent.kt | 记忆正文、行内词性标记、未复核原因展开 |
+| LearningMeaningContent.kt | 释义、词性颜色、双语例句及扩展词条 |
+| LearningRecognitionActions.kt | 三段评分轨的绘制、触感、语义点击与跳过操作 |
+| LearningScreenMotion.kt | 材质抽屉指针适配与系统动画开关 |
+| LearningGestureState.kt | 纯 Kotlin 评分与抽屉手势判定，输入使用 px |
+| LearningGestureStateTest.kt | 评分/抽屉移动、取消、提交、密度与异常边界 JVM 回放 |
+
 ## 拆分优先级
 
 按 2026-11-23 体检的物理行数排序分批。当前明细由门禁输出。
 
 | 顺序 | 文件 | 行数 | 首个边界与验证 |
 |---|---|---:|---|
-| 1 | LearningScreen.kt | 2610 | 提取纯手势状态机，覆盖移动、取消与提交 |
+| 1 | LearningScreen.kt | 432 | 已完成瘦身；评分与抽屉状态机由双 flavor JVM 回放覆盖 |
 | 2 | LearningViewModel.kt | 2426 | 分离学习会话转换，回放评分、跳过与恢复 |
 | 3 | cardback-editor/server.py | 436 | 已完成瘦身，入口保留路由与兼容状态；模块边界测试覆盖同源转发、健康与导入 |
 | 4 | RewriteRepository.kt | 2066 | 隔离提交、取消与轮询，验证已有任务恢复 |
