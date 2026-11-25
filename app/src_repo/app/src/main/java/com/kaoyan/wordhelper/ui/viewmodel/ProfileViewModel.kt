@@ -11,10 +11,8 @@ import com.kaoyan.wordhelper.data.model.DailyStatsAggregate
 import com.kaoyan.wordhelper.data.model.AIPresets
 import com.kaoyan.wordhelper.data.model.MethodCount
 import com.kaoyan.wordhelper.data.repository.DarkMode
-import com.kaoyan.wordhelper.data.repository.SyncStatusStore
 import com.kaoyan.wordhelper.data.repository.UserSettings
 import com.kaoyan.wordhelper.data.repository.WordbookUpdateState
-import com.kaoyan.wordhelper.sync.BackgroundSync
 import com.kaoyan.wordhelper.util.DatabaseBackupManager
 import com.kaoyan.wordhelper.util.DateUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -31,11 +29,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import kotlin.math.roundToInt
 
 /** 学习统计卡片的两种口径。 */
 enum class StatsScope {
@@ -110,16 +104,12 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     // ---- 学习记录同步（1.4.4）：手机本地排队，用户点一下才和电脑对一次。
     private val syncRepository = (application as KaoyanWordApp).syncRepository
 
-    private val _syncPending = MutableStateFlow(0)
+    private val syncActions = ProfileSyncActions(application, viewModelScope, syncRepository, settingsRepository)
 
     /** 还没发出去的进度条数；0 = 手机就是最新的。 */
-    val syncPending: StateFlow<Int> = _syncPending.asStateFlow()
-
-    private val _syncing = MutableStateFlow(false)
-    val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
-
-    private val _syncMessage = MutableStateFlow<String?>(null)
-    val syncMessage: StateFlow<String?> = _syncMessage.asStateFlow()
+    val syncPending: StateFlow<Int> = syncActions.syncPending
+    val syncing: StateFlow<Boolean> = syncActions.syncing
+    val syncMessage: StateFlow<String?> = syncActions.syncMessage
 
     // ---- 词卡热更（1.5.0）：局域网优先，连不上自动切公网；只改词义/例句/非手改助记。
     private val wordbookUpdateRepository = (application as KaoyanWordApp).wordbookUpdateRepository
@@ -139,23 +129,9 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun refreshSyncPending() {
-        viewModelScope.launch {
-            _syncPending.value = runCatching { syncRepository.pendingCount() }.getOrDefault(0)
-        }
-    }
+    fun refreshSyncPending() = syncActions.refreshSyncPending()
 
-    /** 手动同步一次：先拉后推再拉；冲突按最后复习时间判，不弹窗。 */
-    fun syncLearningRecords() {
-        if (_syncing.value) return
-        _syncing.value = true
-        viewModelScope.launch {
-            val result = syncRepository.syncOnce()
-            _syncMessage.value = result.getOrElse { it.message ?: "同步失败，稍后再试" }
-            _syncPending.value = runCatching { syncRepository.pendingCount() }.getOrDefault(0)
-            _syncing.value = false
-        }
-    }
+    fun syncLearningRecords() = syncActions.syncLearningRecords()
 
     private val weekRange = DateUtils.learningDateRange(days = 7)
 
@@ -191,7 +167,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         if (book == null) {
             flowOf(BookStats())
         } else {
-            val (dayStart, dayEnd) = learningDayRange()
+            val (dayStart, dayEnd) = ProfileChartRules.learningDayRange()
             combine(
                 repository.getLearnedCount(book.id),
                 repository.getMasteredCount(book.id),
@@ -205,7 +181,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                     learnedCount = learned,
                     masteredCount = mastered,
                     dueCount = due,
-                    accuracyPercent = accuracy?.let { percentOf(it) },
+                    accuracyPercent = accuracy?.let { ProfileChartRules.percentOf(it) },
                     todayTouchedCount = todayTouched
                 )
             }
@@ -239,7 +215,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 if (book == null) flowOf(emptyList())
                 else flow {
                     val rows = repository.getBookDailyStats(book.id, weekRange.first.toString())
-                    emit(buildBookLineData(rows))
+                    emit(ProfileChartRules.buildBookLineData(weekRange, rows))
                 }
             }
         }
@@ -343,36 +319,11 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    /** 卡背结构地址（1.4.2）；留空就只用手机本地结构。 */
-    fun updateCardBackUrl(url: String) {
-        viewModelScope.launch {
-            settingsRepository.updateCardBackUrl(url)
-            // 换地址后旧地址的状态不该再挂在状态页上。
-            SyncStatusStore.reset()
-            // 1.4.7 验收 B2：立刻清游标，别等下一次同步（进程随后被杀也不会漏）。
-            runCatching { syncRepository.resetCursorForEndpointChange() }
-            // 1.4.7.2 W4：保存地址后立刻注册/撤销后台任务，不用等下次冷启动。
-            runCatching { BackgroundSync.ensure(getApplication()) }
-        }
-    }
+    fun updateCardBackUrl(url: String) = syncActions.updateCardBackUrl(url)
 
-    /** 电脑端口令（1.4.4 安全收口）；空 = 不带头，电脑本机访问才够用。 */
-    fun updateCardBackToken(token: String) {
-        viewModelScope.launch {
-            settingsRepository.updateCardBackToken(token)
-            SyncStatusStore.reset()
-            runCatching { syncRepository.resetCursorForEndpointChange() }
-            runCatching { BackgroundSync.ensure(getApplication()) }
-        }
-    }
+    fun updateCardBackToken(token: String) = syncActions.updateCardBackToken(token)
 
-    /** 1.4.7.2 W4-B：同 WiFi 自动直连开关；开启后下一轮同步才会重新发现。 */
-    fun updateCardBackLanAuto(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.updateCardBackLanAuto(enabled)
-            runCatching { syncRepository.resetCursorForEndpointChange() }
-        }
-    }
+    fun updateCardBackLanAuto(enabled: Boolean) = syncActions.updateCardBackLanAuto(enabled)
 
     fun exportDatabase(uri: Uri?) {
         if (uri == null) return
@@ -426,20 +377,20 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         heatmapAggregates: List<DailyStatsAggregate>
     ): ProfileStats {
         val today = DateUtils.currentLearningDate()
-        val weekLineData = buildLineData(weekRange.first, weekRange.second, weekAggregates)
-        val todayAggregate = weekAggregates.firstOrNull { parseDate(it.date) == today }
-        val todayStudyCount = todayAggregate?.let { activityCount(it) } ?: 0
+        val weekLineData = ProfileChartRules.buildLineData(weekRange.first, weekRange.second, weekAggregates)
+        val todayAggregate = weekAggregates.firstOrNull { ProfileChartRules.parseDate(it.date) == today }
+        val todayStudyCount = todayAggregate?.let { ProfileChartRules.activityCount(it) } ?: 0
         val todaySpellCount = todayAggregate?.spellPracticeCount ?: 0
-        val weekStudyCount = weekAggregates.sumOf { activityCount(it) }
+        val weekStudyCount = weekAggregates.sumOf { ProfileChartRules.activityCount(it) }
         val weekSpellCount = weekAggregates.sumOf { it.spellPracticeCount }
-        val heatmap = buildHeatmap(heatmapRange.first, heatmapRange.second, heatmapAggregates)
-        val checkInDates = heatmapAggregates.filter { isCheckedIn(it) }
-            .mapNotNull { parseDate(it.date) }
+        val heatmap = ProfileChartRules.buildHeatmap(heatmapRange.first, heatmapRange.second, heatmapAggregates)
+        val checkInDates = heatmapAggregates.filter { ProfileChartRules.isCheckedIn(it) }
+            .mapNotNull { ProfileChartRules.parseDate(it.date) }
             .toSet()
-        val streakDays = computeStreak(today, checkInDates)
-        val todayCheckedIn = todayAggregate?.let { isCheckedIn(it) } ?: false
+        val streakDays = ProfileChartRules.computeStreak(today, checkInDates)
+        val todayCheckedIn = todayAggregate?.let { ProfileChartRules.isCheckedIn(it) } ?: false
         val todayManualCheckedIn = (todayAggregate?.checkInCount ?: 0) > 0
-        val weekCheckInDays = weekAggregates.count { isCheckedIn(it) }
+        val weekCheckInDays = weekAggregates.count { ProfileChartRules.isCheckedIn(it) }
         val todayCheckInTimeText = if (todayManualCheckedIn && (todayAggregate?.lastCheckInTime ?: 0L) > 0L) {
             DateUtils.formatDateTime(todayAggregate?.lastCheckInTime ?: 0L)
         } else {
@@ -460,131 +411,6 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
-    private fun buildLineData(
-        startDate: LocalDate,
-        endDate: LocalDate,
-        aggregates: List<DailyStatsAggregate>
-    ): List<LineChartEntry> {
-        val map = aggregates.mapNotNull { aggregate ->
-            parseDate(aggregate.date)?.let { it to aggregate }
-        }.toMap()
-        val result = mutableListOf<LineChartEntry>()
-        var cursor = startDate
-        while (!cursor.isAfter(endDate)) {
-            val aggregate = map[cursor]
-            result.add(
-                LineChartEntry(
-                    date = cursor,
-                    newCount = aggregate?.newWordsCount ?: 0,
-                    reviewCount = aggregate?.reviewWordsCount ?: 0
-                )
-            )
-            cursor = cursor.plusDays(1)
-        }
-        return result
-    }
-
-    private fun buildBookLineData(rows: List<BookDailyStats>): List<LineChartEntry> {
-        val map = rows.mapNotNull { row -> parseDate(row.date)?.let { it to row } }.toMap()
-        val result = mutableListOf<LineChartEntry>()
-        var cursor = weekRange.first
-        while (!cursor.isAfter(weekRange.second)) {
-            val row = map[cursor]
-            result.add(
-                LineChartEntry(
-                    date = cursor,
-                    newCount = row?.newCount ?: 0,
-                    reviewCount = row?.reviewCount ?: 0
-                )
-            )
-            cursor = cursor.plusDays(1)
-        }
-        return result
-    }
-
-    private fun buildHeatmap(
-        startDate: LocalDate,
-        endDate: LocalDate,
-        aggregates: List<DailyStatsAggregate>
-    ): List<HeatmapCell> {
-        val map = aggregates.mapNotNull { aggregate ->
-            parseDate(aggregate.date)?.let { it to aggregate }
-        }.toMap()
-        val maxCount = aggregates.maxOfOrNull { aggregate -> activityCount(aggregate) } ?: 0
-        val displayEnd = endDate.with(DayOfWeek.SUNDAY)
-        val result = mutableListOf<HeatmapCell>()
-        var cursor = startDate
-        while (!cursor.isAfter(displayEnd)) {
-            val inRange = !cursor.isAfter(endDate)
-            val aggregate = if (inRange) map[cursor] else null
-            val count = aggregate?.let { activityCount(it) } ?: 0
-            val level = if (inRange) computeLevel(count, maxCount) else 0
-            result.add(
-                HeatmapCell(
-                    date = cursor,
-                    count = count,
-                    level = level,
-                    inRange = inRange
-                )
-            )
-            cursor = cursor.plusDays(1)
-        }
-        return result
-    }
-
-    private fun computeLevel(count: Int, maxCount: Int): Int {
-        if (count <= 0 || maxCount <= 0) return 0
-        val ratio = count.toFloat() / maxCount.toFloat()
-        return when {
-            ratio <= 0.25f -> 1
-            ratio <= 0.5f -> 2
-            ratio <= 0.75f -> 3
-            else -> 4
-        }
-    }
-
-    private fun computeStreak(today: LocalDate, studyDates: Set<LocalDate>): Int {
-        var streak = 0
-        var cursor = today
-        while (studyDates.contains(cursor)) {
-            streak += 1
-            cursor = cursor.minusDays(1)
-        }
-        return streak
-    }
-
-    private fun activityCount(aggregate: DailyStatsAggregate): Int {
-        return aggregate.newWordsCount + aggregate.reviewWordsCount + aggregate.spellPracticeCount
-    }
-
-    private fun isCheckedIn(aggregate: DailyStatsAggregate): Boolean {
-        return aggregate.checkInCount > 0
-    }
-
-    private fun parseDate(raw: String): LocalDate? {
-        return runCatching { LocalDate.parse(raw, DATE_FORMATTER) }.getOrNull()
-    }
-
-    /** 0f..1f 的正确率 → 0..100 的整数百分比；先夹范围，避免异常数据出现负值或超过 100%。 */
-    private fun percentOf(ratio: Float): Int {
-        return (ratio.coerceIn(0f, 1f) * 100f).roundToInt()
-    }
-
-    /**
-     * 当前学习日的毫秒区间 [起, 止)。
-     * 学习日以 04:00 为界（与 DateUtils 的 DAY_REFRESH_HOUR 同一口径）；DateUtils 没有对外暴露
-     * 这个换算，所以在这里补一个——改刷新小时时两处要一起改。
-     */
-    private fun learningDayRange(): Pair<Long, Long> {
-        val zone = ZoneId.systemDefault()
-        val start = DateUtils.currentLearningDate(zoneId = zone)
-            .atTime(LEARNING_DAY_REFRESH_HOUR, 0)
-            .atZone(zone)
-            .toInstant()
-            .toEpochMilli()
-        return start to (start + ONE_DAY_MILLIS)
-    }
-
     private fun emptyStats(): ProfileStats {
         return ProfileStats(
             streakDays = 0,
@@ -601,14 +427,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
-    companion object {
-        private val DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE
-
-        /** 学习日刷新小时，必须与 DateUtils 的 DAY_REFRESH_HOUR 保持一致。 */
-        private const val LEARNING_DAY_REFRESH_HOUR = 4
-
-        private const val ONE_DAY_MILLIS = 24L * 60 * 60 * 1000
-    }
+    companion object
 }
 
 /**
@@ -623,46 +442,4 @@ internal fun buildBookHeatmap(
     startDate: LocalDate,
     endDate: LocalDate,
     rows: List<BookDailyStats>
-): List<HeatmapCell> {
-    val byDate = rows.mapNotNull { row ->
-        runCatching { LocalDate.parse(row.date) }.getOrNull()
-            ?.takeIf { !it.isBefore(startDate) && !it.isAfter(endDate) }
-            ?.let { date -> date to row }
-    }.toMap()
-    // 分档只看窗口内的量：窗口外的历史行画不出来，不该把当前这张图压暗。
-    val maxCount = byDate.values.maxOfOrNull { it.newCount + it.reviewCount + it.spellCount } ?: 0
-    // 和全局热力图一致：多画到本周日，让周一~周日按列对齐；超出 endDate 的格子标记 inRange=false。
-    val displayEnd = endDate.with(DayOfWeek.SUNDAY)
-    val result = mutableListOf<HeatmapCell>()
-    var cursor = startDate
-    while (!cursor.isAfter(displayEnd)) {
-        val inRange = !cursor.isAfter(endDate)
-        val count = if (inRange) {
-            byDate[cursor]?.let { row -> row.newCount + row.reviewCount + row.spellCount } ?: 0
-        } else {
-            0
-        }
-        result.add(
-            HeatmapCell(
-                date = cursor,
-                count = count,
-                level = if (inRange) heatmapLevel(count, maxCount) else 0,
-                inRange = inRange
-            )
-        )
-        cursor = cursor.plusDays(1)
-    }
-    return result
-}
-
-/** 与全局热力图同一分档：0 / 25% / 50% / 75% 四档。 */
-private fun heatmapLevel(count: Int, maxCount: Int): Int {
-    if (count <= 0 || maxCount <= 0) return 0
-    val ratio = count.toFloat() / maxCount.toFloat()
-    return when {
-        ratio <= 0.25f -> 1
-        ratio <= 0.5f -> 2
-        ratio <= 0.75f -> 3
-        else -> 4
-    }
-}
+): List<HeatmapCell> = ProfileChartRules.bookHeatmap(startDate, endDate, rows)

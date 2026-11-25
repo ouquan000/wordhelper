@@ -191,3 +191,17 @@ Store 的各组方法共用同一实例及条件锁，通过实例的模块引�
 | RewriteActionRail.kt | 滑轨选项与选择快照、模型短名、滑轨叠层及取消提示 |
 | RewriteRailGesture.kt | 指针坐标换算、长按锁定、选项滑动、取消与松手提交 |
 | RewriteRailLabelTest.kt | 模型短名优先级、大小写、未知名称和空白输入契约 |
+
+## ProfileScreen 与 ProfileViewModel
+
+| 文件 | 职责 |
+|---|---|
+| ProfileScreen.kt | 订阅页面状态，持有轮询、入场动画、文档选择器与恢复确认；装配各卡片，按全局或当前词书展示统计 |
+| ProfilePageLayout.kt | 页面背景、页头、单一懒列表、动效沙盒入口、实验室入口及版本信息 |
+| ProfileStatItems.kt | 统计指标、空态与按记忆方法归组的词数及标签 |
+| ProfileDataCard.kt | 备份、恢复、学习记录同步及词卡更新入口，格式化备份和更新状态 |
+| ProfileSettingsCard.kt | 设置选项、输入框状态、保存条件与测试标签 |
+| ProfileViewModel.kt | 保留状态模型、状态流、动作入口和按书订阅，持有协程作用域，装配统计、设置、备份与同步逻辑 |
+| ProfileChartRules.kt | 生成全局与按书的趋势、热力图，计算打卡连续天数、正确率和学习日区间 |
+| ProfileSyncActions.kt | 手动同步和待发送计数，调用设置仓库保存配对信息，清理旧端点游标并更新后台任务 |
+| ProfileChartRulesTest.kt | 回放断签、正确率边界、重复或缺失的日期、拼写计数及热力图补齐 |
