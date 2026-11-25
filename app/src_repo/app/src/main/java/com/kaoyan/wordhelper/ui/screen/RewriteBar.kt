@@ -1,24 +1,14 @@
 package com.kaoyan.wordhelper.ui.screen
 
-import android.os.SystemClock
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -27,10 +17,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -57,18 +45,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -82,7 +65,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kaoyan.wordhelper.data.entity.RewriteFeedbackRating
@@ -93,22 +75,8 @@ import com.kaoyan.wordhelper.data.model.RewriteModels
 import com.kaoyan.wordhelper.ui.component.LocalHoloCardPalette
 import com.kaoyan.wordhelper.ui.theme.LocalAppDarkTheme
 import com.kaoyan.wordhelper.ui.viewmodel.RewriteProgressUi
-import com.kaoyan.wordhelper.util.SwipeRailStateMachine
 import com.kaoyan.wordhelper.util.RailFeedback
 
-private enum class RailControl(val tag: String, val tint: Color) {
-    Model("rewrite_model_pill", Color(0xFF96A7FA)),
-    Rewrite("rewrite_action_pill", Color(0xFFBE9AF3)),
-    Up("rewrite_feedback_up", Color(0xFF55C5B2)),
-    Down("rewrite_feedback_down", Color(0xFFF184A4))
-}
-
-private data class RailOption(val label: String, val submit: () -> Unit)
-private data class OpenRail(
-    val control: RailControl,
-    val options: List<RailOption>,
-    val selection: SwipeRailStateMachine.Selection
-)
 internal data class RewriteInstructionRequest(val placeholder: String, val submit: (String) -> Unit)
 
 private enum class Instruction(val placeholder: String) {
@@ -334,98 +302,10 @@ private fun ActionPill(
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val progress by animateFloatAsState(fill ?: 0f, tween(240), label = "rewriteFill")
     val gesture = if (enabled) {
-        Modifier.pointerInput(wordId, control) {
-            try {
-                awaitEachGesture {
-                    val down = awaitFirstDown(pass = PointerEventPass.Main)
-                    val area = getAreaCoordinates()?.takeIf { it.isAttached } ?: return@awaitEachGesture
-                    val button = coordinates?.takeIf { it.isAttached } ?: return@awaitEachGesture
-                    fun inArea(position: Offset): Offset = area.localPositionOf(button, position) / density
-                    val origin = inArea(down.position)
-                    val machine = SwipeRailStateMachine(origin.x, origin.y)
-                    var fingerX = origin.x
-                    var lockedOptions: List<RailOption>? = null
-
-                    fun lock(elapsed: Long, fingerX: Float) {
-                        val available = SwipeRailStateMachine.displayOrder(currentOptions, control == RailControl.Down || control == RailControl.Rewrite)
-                        if (machine.hold(elapsed, area.size.width / density, available.size, fingerX)) {
-                            lockedOptions = available
-                            currentHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            publish(OpenRail(control, available, checkNotNull(machine.selection)))
-                        }
-                    }
-
-                    val deadline = SystemClock.uptimeMillis() + SwipeRailStateMachine.HOLD_MILLIS
-                    while (true) {
-                        val event = if (lockedOptions == null) {
-                            val remaining = (deadline - SystemClock.uptimeMillis()).coerceAtLeast(1)
-                            withTimeoutOrNull(remaining) { awaitPointerEvent(PointerEventPass.Main) }
-                        } else {
-                            awaitPointerEvent(PointerEventPass.Main)
-                        }
-                        if (event == null) {
-                            lock(SwipeRailStateMachine.HOLD_MILLIS, fingerX)
-                            if (lockedOptions == null) break
-                            continue
-                        }
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (change.isConsumed || event.changes.any { it.id != down.id && it.pressed }) {
-                            if (lockedOptions != null) {
-                                publish(null)
-                                var remaining = checkNotNull(event)
-                                while (true) {
-                                    remaining.changes.forEach { it.consume() }
-                                    if (remaining.changes.none { it.pressed }) break
-                                    remaining = awaitPointerEvent(PointerEventPass.Main)
-                                }
-                            }
-                            break
-                        }
-                        val elapsed = change.uptimeMillis - down.uptimeMillis
-                        val point = inArea(change.position)
-                        fingerX = point.x
-                        if (elapsed >= SwipeRailStateMachine.HOLD_MILLIS && lockedOptions == null) {
-                            lock(elapsed, fingerX)
-                        }
-                        val before = machine.selection
-                        machine.move(point.x, point.y)
-                        if (machine.yielded) break
-                        val choices = lockedOptions
-                        if (choices != null) {
-                            event.changes.forEach { it.consume() }
-                            val after = checkNotNull(machine.selection)
-                            if (after != before) {
-                                if (after.canceled != before?.canceled || !after.canceled) {
-                                    currentHaptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                }
-                                publish(OpenRail(control, choices, after))
-                            }
-                        }
-                        if (!change.pressed) {
-                            val release = machine.release(elapsed)
-                            if (release != null) change.consume()
-                            publish(null)
-                            when (release) {
-                                SwipeRailStateMachine.Release.Tap -> tap()
-                                is SwipeRailStateMachine.Release.Commit -> choices?.get(release.index)?.submit?.invoke()
-                                null -> Unit
-                            }
-                            break
-                        }
-                        if (choices == null) {
-                            val final = awaitPointerEvent(PointerEventPass.Final)
-                            if (final.changes.any { it.id == down.id && it.isConsumed }) {
-                                machine.yield()
-                                break
-                            }
-                        }
-                    }
-                    publish(null)
-                }
-            } finally {
-                publish(null)
-            }
-        }
+        railGesture(
+            wordId, control, { getAreaCoordinates() }, { coordinates }, { currentOptions },
+            { currentHaptic }, { tap() }, { publish(it) }
+        )
     } else {
         Modifier
     }
@@ -490,116 +370,6 @@ private fun ActionPill(
                 fontWeight = if (primary || selected) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-private fun shortNameOf(name: String): String {
-    val lower = name.lowercase()
-    return when {
-        "deepseek" in lower && "flash" in lower -> "DS 4.1F"
-        "deepseek" in lower && "pro" in lower -> "DS 4 Pro"
-        "glm" in lower -> "GLM 5.3"
-        "minimax" in lower -> "MiniMax"
-        else -> name.substringBefore(" ").ifBlank { name }
-    }
-}
-
-@Composable
-private fun ActionRailOverlay(visible: Boolean, rail: OpenRail?, dark: Boolean) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(130)) + scaleIn(spring(dampingRatio = 0.78f, stiffness = 520f), 0.94f),
-        exit = fadeOut(tween(120)) + scaleOut(tween(120), 0.94f)
-    ) {
-        if (rail != null) ActionRail(rail, dark)
-    }
-}
-
-@Composable
-private fun ActionRail(rail: OpenRail, dark: Boolean) {
-    val foreground = if (dark) Color(0xFFF1F5F9) else Color(0xFF1E293B)
-    val shell = if (dark) Color(0xEB151822) else Color(0xF2FFFFFF)
-    val neutral = if (dark) Color(0xEB222631) else Color(0xF2E9EDF2)
-    val shape = RoundedCornerShape(24.dp)
-    val thumbShape = RoundedCornerShape(19.dp)
-    val canceled = rail.selection.canceled
-    val thumb by animateFloatAsState(
-        rail.selection.index.toFloat(), spring(dampingRatio = 0.78f, stiffness = 520f), label = "actionRailThumb"
-    )
-    val scale by animateFloatAsState(
-        if (canceled) 0.96f else 1f, spring(dampingRatio = 0.78f, stiffness = 520f), label = "actionRailScale"
-    )
-    val tint by animateFloatAsState(if (canceled) 0f else 1f, tween(140), label = "actionRailTint")
-    val wash = rail.control.tint
-    BoxWithConstraints(
-        Modifier.fillMaxWidth().height(56.dp).testTag("rewrite_action_rail")
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(12.dp, shape)
-            .clip(shape)
-            .background(lerp(neutral, shell, tint))
-            .background(
-                Brush.horizontalGradient(listOf(wash.copy(alpha = tint * 0.20f), Color.Transparent, wash.copy(alpha = tint * 0.12f)))
-            )
-            .border(
-                1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.08f))), shape
-            )
-            .drawBehind {
-                val step = size.width / rail.options.size
-                repeat(rail.options.size - 1) { i ->
-                    val x = step * (i + 1)
-                    drawLine(
-                        (if (dark) Color.White else Color.Black).copy(alpha = 0.08f * tint),
-                        Offset(x, 14.dp.toPx()), Offset(x, size.height - 14.dp.toPx()), strokeWidth = 1.dp.toPx()
-                    )
-                }
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        val segment = maxWidth / rail.options.size
-        Box(
-            Modifier.align(Alignment.CenterStart).offset(x = segment * thumb + 4.dp)
-                .width((segment - 8.dp).coerceAtLeast(1.dp)).height(46.dp)
-                .graphicsLayer { alpha = tint }
-                .shadow(5.dp, thumbShape, clip = false, ambientColor = wash, spotColor = wash)
-                .clip(thumbShape)
-                .background(
-                    Brush.verticalGradient(
-                        if (dark) listOf(
-                            lerp(Color(0xFF30344B), wash, 0.27f),
-                            lerp(Color(0xFF262A40), wash, 0.10f)
-                        ) else listOf(Color.White, lerp(Color(0xFFE7EDF9), wash, 0.25f))
-                    )
-                )
-                .border(0.8.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.75f), Color.White.copy(alpha = 0.15f))), thumbShape)
-        )
-        Row(Modifier.fillMaxSize().graphicsLayer { alpha = tint }) {
-            rail.options.forEachIndexed { index, option ->
-                val active = rail.selection.index == index
-                Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                    Text(
-                        option.label,
-                        color = foreground.copy(alpha = if (active) 1f else 0.62f),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                            .graphicsLayer { scaleX = if (active) 1.04f else 1f; scaleY = scaleX }
-                            .testTag("rewrite_rail_option_$index")
-                    )
-                }
-            }
-        }
-        if (canceled) {
-            Text(
-                "松手取消",
-                color = foreground,
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.testTag("rewrite_rail_canceled")
             )
         }
     }

@@ -176,3 +176,18 @@ Store 的各组方法共用同一实例及条件锁，通过实例的模块引�
 | 6 | SyncRepository.kt | 202 | 已拆分，双 flavor JVM 契约覆盖网络回退、限流、游标与 LWW 重放 |
 | 7 | WordRepository.kt | 317 | 已拆分，双 flavor JVM 契约覆盖书内记忆优先、导入去重和事务后入队 |
 | 8 | store.py | 420 | 已拆分，队列回放覆盖质量重试封顶与存量记录 |
+
+## 学习界面的抽屉、卡面与重写栏
+
+| 文件 | 职责 |
+|---|---|
+| AppDrawer.kt | 菜单和页头入口、路由与标签映射、主题切换及学习模式展开状态 |
+| DrawerRows.kt | 按压缩放、学习模式选项与导航行的绘制和点击语义 |
+| HoloCardSurface.kt | 卡面样式、语义色板与主题、帧时钟、随生命周期注册的倾角监听，以及卡面和预览入口 |
+| HoloCardTilt.kt | 传感器采样、归一化、屏幕方向变换、首帧校准与逐轴阻尼 |
+| HoloCardTiltTest.kt | 倾角死区、限幅、阻尼收敛与精确归零 |
+| HoloCardFinish.kt | 按材质缓存渐变、蚀刻、银面遮罩与碎钻颗粒，在绘制阶段读取光照和倾角 |
+| RewriteBar.kt | 控件状态、反馈与重写回调、按词保存滑轨状态、按钮配色与输入焦点 |
+| RewriteActionRail.kt | 滑轨选项与选择快照、模型短名、滑轨叠层及取消提示 |
+| RewriteRailGesture.kt | 指针坐标换算、长按锁定、选项滑动、取消与松手提交 |
+| RewriteRailLabelTest.kt | 模型短名优先级、大小写、未知名称和空白输入契约 |
