@@ -13,6 +13,7 @@
 
 ## 数据兼容
 
+- AppDatabase.kt 集中注册 Room v27 及历史迁移，禁止拆分。
 - 禁止 destructive migration、清库重建或静默降级。
 - 严禁删改任何历史 Migration，包括注册顺序和旧版本测试夹具。
 - 新 schema 必须显式递增版本并追加迁移。
@@ -35,7 +36,7 @@
 
 ## 服务隔离
 
-- 严禁触碰运行中的 CardBack 8765/8443 和 WB 8788。
+- 严禁触碰运行中的 CardBack 8765/8443/8767 和 WB 8788。
 - 禁止为了测试重启、切换 TLS、抢占端口或重建线上状态。
 - 对外服务经 CardBack 同源挂载，依赖路径见架构图。
 - 测试使用临时数据目录、独立端口和假供应商。
@@ -46,6 +47,7 @@
 
 ## 编码与界面
 
+- 450 行为硬棘轮：禁止新增超标文件、既有超标文件增长或抬高 scripts/line_limit_baseline.txt 上限。当前历史基线为 24 项。
 - 对 Git 跟踪的 .kt/.py 按物理行计数。
 - 超过 450 行的文件禁止追加新功能，先按职责拆模块。
 - 先写出拆分边界、调用入口和要保留的行为。
@@ -58,30 +60,29 @@
 - 布局与阈值标明 dp 或 px，在输入边界按当前密度转换。
 - 严禁 dp/px 混算；手势验收覆盖不同密度及暗色系统。
 
-## 多代理与工作树
+## 单工作树与只读协作
 
-- 每项任务开独立分支或临时 worktree。
-- 主控可通过 WB 8788 并行分派低价只读核验与起草任务。
-- 优先 cn:deepseek-v4.1-flash 或 cn:glm-5.3。
-- 禁用 kimi、高价模型及未声明的备用路由。
-- 给每路明确输入、权限、输出格式；只传任务必需材料。
-- 主控复核代理结论，测试数字来自本轮可复查的输出。
-- 删除、卸载联接、移除工作树、分支清理和合并由主控串行执行。
-- 删除前逐棵核查已修改、暂存、未跟踪和忽略的文件。
-- 先备份唯一成果并校验，确认 HEAD 已合入目标分支。
-- 枚举重解析点时禁止递归进入链接目标。
-- 先非递归卸除链接本体，复核链接消失且目标完好。
-- 再移除临时工作树、prune 并删除已合入的分支。
-- 保留全部 release tag；禁止强推与改写已发布历史。
+- 直接在主仓从已核对的基线创建隔离分支。全程只用一棵工作树，严禁 git worktree add，也禁止在外部会话目录遗留临时脚本。
+- 合并、推送、清理分支按本批授权串行执行。删除前核查已修改、暂存、未跟踪及忽略文件，备份唯一成果并校验。删除分支前确认提交已合入。
+- 操作重解析点时禁止递归进入目标。先非递归卸除链接本体，再核对目标完好。保留全部 release tag，禁止强推或改写发布历史。
+- 仅在任务明确授权时使用宿主机 WB 网关 `127.0.0.1:8788` 做只读测绘。只允许低价模型，优先 cn:deepseek-v4.1-flash 或 cn:glm-5.3，严禁 kimi、高价模型和未声明的备用路由。
+- 若托管工具硬编码其他端口（如 10082），禁止探测或转接，回退到本地只读源码审计。任务要求零调用时，全程采用本地审计。
+- 分派时限定输入、权限和输出格式，仅提供必要材料。主控复核结论，从本次可复查的输出取测试数字。
+
+## 重构无损验证
+
+- Kotlin 在相同工具链和 flavor 下分别编译基线与候选版本，用 `javap -public -s` 比较原入口的公开及 internal 成员、JVM 名称和描述符，要求签名零漂移。
+- 对同一生产范围提取字符串集合，分别计算基线减候选、候选减基线，两向差集均为空。对拆分模块列出依赖边，验证严格 DAG 无环。
+- Python 兼容入口用 `_api = sys.modules[__name__]` 持有模块引用，调用时动态读取可替换依赖。用原入口 monkeypatch 后回放拆出的路径，确认替换生效，并用 AST 提取内部导入边检查无环。
 
 ## 测试与门禁
 
 - 在仓库根运行 pwsh -File scripts/preflight.ps1 -Quick 做卫生检查。
-- 完整验收将 OpenSSL CLI 加入本次进程 PATH，再运行 pwsh -File scripts/preflight.ps1。
+- 完整验收将 OpenSSL CLI 加入本次进程 PATH，确认 openssl version 可用并设置下述 GRADLE_USER_HOME，再运行 pwsh -NoProfile -File scripts/preflight.ps1。
 - 记录门禁退出码、超标明细和两种 flavor 的实际测试数。
 - 离线构建必须设置 GRADLE_USER_HOME=<仓库根>/_toolchain/gradle-home。
-- AVD mf 注册在 C:\Users\ouquan\.android\avd\mf.ini，可写磁盘在同目录 mf.avd\；系统镜像位于 D:\Android\Sdk\system-images\android-34\google_apis\x86_64\。严禁重新下载。adb 固定使用 D:\Android\Sdk\platform-tools\adb.exe。
-- 避让 D:\deepseek harness\work4\_build、真机 iQOO 13 及运行中的 cloudflared 隧道。
+- 使用既有 mf AVD、Android 34 Google APIs x86_64 镜像及 SDK 的 platform-tools/adb，禁止重新下载。
+- 避让其他项目的构建目录、真机及运行中的 cloudflared 隧道。模拟器测试使用隔离数据。
 - Android 命令从 app/src_repo/ 运行，Gradle 使用 JDK 17。
 - 离线运行 gradlew.bat :app:testProdDebugUnitTest :app:testDevDebugUnitTest --offline。
 - 检查两组 TEST-*.xml 的 tests、failures、errors、skipped。
@@ -119,8 +120,8 @@
 - 在本任务使用的模拟器上将三个系统动画倍率恢复为 1。
 - 恢复后关闭该模拟器，保留真机与其他任务的设备。
 - 不结束共享服务、其他任务的构建进程或网关。
-- git worktree list 核对临时树已退役。
-- git branch --merged main 核对无遗留任务分支。
+- git worktree list 核对仅有主仓工作树。确认 Gradle Daemon 为 0；如有其他任务的进程，保留现场并报告。
+- 核对分支清单。待终审的提交保留在隔离分支。
 - git status --porcelain 确认工作区及暂存区干净。
-- 核对本地 main、origin/main 与远端 main 的提交。
+- 核对本地 main 与 origin/main。仅在任务允许联网时核对远端。
 - 报告实际测试结果、占用口径、交付目录与未决项。
