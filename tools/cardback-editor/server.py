@@ -391,7 +391,7 @@ class Handler(
         if path == "/api/state":
             return self._api_state()
         if path == "/api/history":
-            return self._send_json({"ok": True, "items": _history_public()})
+            return self._send_json({"ok": True, "items": _history_public()}, compress_large=True)
         if path == "/sync/pull":
             return self._api_sync_pull()
         if path in ("/api/publish", "/api/rollback"):
@@ -402,7 +402,8 @@ class Handler(
             return self._rewrite_passthrough("GET")
         static = self._read_static(path)
         if static is not None:
-            return self._send_bytes(static[0], static[1])
+            data, content_type, headers = static
+            return self._send_bytes(data, content_type, extra_headers=headers)
         return self._fail(404, "没有这个路径：%s" % path)
 
     def _route_post(self, path, body):

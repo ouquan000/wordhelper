@@ -2,13 +2,65 @@
 
 from __future__ import annotations
 
+import gzip
 import html
 import json
 import mimetypes
 import os
+import re
 import traceback
+from collections import OrderedDict
 from datetime import datetime
+from threading import Lock
 from urllib.parse import unquote, urlsplit
+
+
+_JSON_CONTENT_TYPE = "application/json; charset=utf-8"
+_LARGE_JSON_BYTES = 64 * 1024
+_GZIP_CACHE_ENTRIES = 4
+_GZIP_CACHE = OrderedDict()
+_GZIP_CACHE_LOCK = Lock()
+_QVALUE = re.compile(r"(?:0(?:\.[0-9]{0,3})?|1(?:\.0{0,3})?)")
+
+
+def _accepts_gzip(headers):
+    for field in headers.get_all("Accept-Encoding", []):
+        for coding in field.split(","):
+            name, separator, weight = coding.partition(";")
+            if name.strip().lower() != "gzip":
+                continue
+            if not separator:
+                return True
+            name, equals, value = weight.partition("=")
+            value = value.strip()
+            if name.strip().lower() == "q" and equals and _QVALUE.fullmatch(value):
+                if float(value) > 0:
+                    return True
+    return False
+
+
+def _gzip(data):
+    return gzip.compress(data, compresslevel=8, mtime=0)
+
+
+def _file_version(path, stream):
+    stat = os.fstat(stream.fileno())
+    return path, stat.st_mtime_ns, stat.st_size
+
+
+def _gzip_file(path, stream):
+    # Stat the open handle so atomic publishes cannot mix metadata and bytes.
+    with _GZIP_CACHE_LOCK:
+        key = _file_version(path, stream)
+        if key in _GZIP_CACHE:
+            _GZIP_CACHE.move_to_end(key)
+            return _GZIP_CACHE[key]
+        compressed = _gzip(stream.read())
+        if _file_version(path, stream) == key:
+            _GZIP_CACHE[key] = compressed
+            if len(_GZIP_CACHE) > _GZIP_CACHE_ENTRIES:
+                _GZIP_CACHE.popitem(last=False)
+        return compressed
 
 
 def _placeholder_page(ctx, note=""):
@@ -61,7 +113,7 @@ def _content_type(path, ext):
     if ext == ".css":
         return "text/css; charset=utf-8"
     if ext == ".json":
-        return "application/json; charset=utf-8"
+        return _JSON_CONTENT_TYPE
     if ext in (".html", ".htm"):
         return "text/html; charset=utf-8"
     if ext == ".svg":
@@ -139,12 +191,24 @@ class HTTPTransport:
         ext = os.path.splitext(rel)[1].lower()
         if ext not in self.context.STATIC_EXTS:
             return None
+        content_type = self.context._content_type(rel, ext)
         try:
+            if ext == ".json":
+                data, headers = self._read_json_file(full)
+                return data, content_type, headers
             with open(full, "rb") as fh:
                 data = fh.read()
         except OSError:
             return None
-        return data, self.context._content_type(rel, ext)
+        return data, content_type, None
+
+    def _read_json_file(self, path):
+        headers = {"Vary": "Accept-Encoding"}
+        with open(path, "rb") as stream:
+            if _accepts_gzip(self.headers):
+                headers["Content-Encoding"] = "gzip"
+                return _gzip_file(path, stream), headers
+            return stream.read(), headers
 
     def _discard_body(self):
         """把还没读的上行 body 丢掉，好让「拒绝之后关连接」变成正常 FIN 而不是 RST。
@@ -211,9 +275,15 @@ class HTTPTransport:
                 exc.msg,
             )
 
-    def _send_json(self, payload, status=200):
+    def _send_json(self, payload, status=200, *, compress_large=False):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self._send_bytes(body, "application/json; charset=utf-8", status=status)
+        headers = None
+        if compress_large and len(body) >= _LARGE_JSON_BYTES:
+            headers = {"Vary": "Accept-Encoding"}
+            if _accepts_gzip(self.headers):
+                headers["Content-Encoding"] = "gzip"
+                body = _gzip(body)
+        self._send_bytes(body, _JSON_CONTENT_TYPE, status=status, extra_headers=headers)
 
     def _fail(self, status, message):
         self._send_json({"ok": False, "error": message}, status=status)

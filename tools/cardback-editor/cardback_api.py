@@ -159,7 +159,7 @@ class EditorAPI:
             return self._fail(500, "同步库读不出来：%s" % exc)
         payload = {"ok": True}
         payload.update(result)
-        self._send_json(payload)
+        self._send_json(payload, compress_large=True)
 
     def _api_sync_push(self, body):
         data, error = self._parse_json_body(body, "同步")
@@ -251,8 +251,7 @@ class EditorAPI:
                     "先在电脑上跑一次 POST /cards/publish，或重启编辑器" % (what, exc),
                 )
         try:
-            with open(path, "rb") as fh:
-                data = fh.read()
+            data, headers = self._read_json_file(path)
         except FileNotFoundError:
             return self._fail(
                 404, "词卡还没发布（%s 不存在）：先在电脑上跑 POST /cards/publish" % what
@@ -260,7 +259,7 @@ class EditorAPI:
         except OSError as exc:
             return self._fail(500, "读 %s 失败：%s" % (path, exc))
         # 手机按 manifest 的 version/sha256 决定要不要下；任何缓存都会让「发布了没变」变灵异
-        self._send_bytes(data, "application/json; charset=utf-8", cache="no-store")
+        self._send_bytes(data, "application/json; charset=utf-8", extra_headers=headers)
 
     def _api_cards_publish(self):
         """POST /cards/publish：重新合并 results 并发布，返回新 manifest。"""
@@ -272,11 +271,10 @@ class EditorAPI:
 
     def _serve_config(self):
         try:
-            with open(self.context.CONFIG_PATH, "rb") as fh:
-                data = fh.read()
+            data, headers = self._read_json_file(self.context.CONFIG_PATH)
         except FileNotFoundError:
             return self._fail(404, "published/cardback.json 还没生成，重启一下服务")
         except OSError as exc:
             return self._fail(500, "读 published/cardback.json 失败：%s" % exc)
         # 手机每次都该拿到最新的，任何缓存都可能让「发布完没变」变成灵异事件
-        self._send_bytes(data, "application/json; charset=utf-8", cache="no-store")
+        self._send_bytes(data, "application/json; charset=utf-8", extra_headers=headers)
