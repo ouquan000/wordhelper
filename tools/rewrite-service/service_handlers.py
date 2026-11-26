@@ -235,3 +235,38 @@ def _worker_toggle(api, body):
     status = api.worker_mod.toggle(enabled, api.DATA_DIR, store=store)
     api.log("闲时洗词 worker：%s" % ("启用" if enabled else "关闭"))
     return {"ok": True, "enabled": bool(status.get("enabled")), "status": status}
+
+
+def _taste(api):
+    """读取动态审美画像（只读，不改文件）。"""
+    profile = api.taste_profile.load(api.DATA_DIR)
+    return {"ok": True, "profile": profile, "text": api.taste_profile.block(api.DATA_DIR)}
+
+
+def _taste_save(api, body):
+    """界面编辑：rules / lockedRules 可单独改；locked 自动并入 rules 且排最前。"""
+    payload = api._read_body(body)
+    if not isinstance(payload, dict):
+        raise api.ApiError("请求体要是对象")
+    rules = payload.get("rules")
+    locked = payload.get("lockedRules")
+    if rules is not None and not isinstance(rules, list):
+        raise api.ApiError("rules 必须是数组")
+    if locked is not None and not isinstance(locked, list):
+        raise api.ApiError("lockedRules 必须是数组")
+    profile = api.taste_profile.set_rules(api.DATA_DIR, rules, locked)
+    api.log("审美画像更新：%d 条规则，锁定 %d 条" % (len(profile["rules"]), len(profile["lockedRules"])))
+    return {"ok": True, "profile": profile, "text": api.taste_profile.block(api.DATA_DIR)}
+
+
+def _taste_distill(api, body):
+    """触发一次蒸馏（默认 ds-v41-flash）；lockedRules 原样保留。"""
+    payload = api._read_body(body)
+    payload = payload if isinstance(payload, dict) else {}
+    model = str(payload.get("model") or api.taste_profile.DEFAULT_MODEL).strip()
+    if model not in api.providers.MODELS:
+        raise api.ApiError("未知模型：%s" % model)
+    profile = api.taste_profile.distill(api.DATA_DIR, model=model)
+    api.log("审美画像蒸馏完成：%d 条规则（来源 %d 条反馈）" % (
+        len(profile["rules"]), profile["sourceFeedbackCount"]))
+    return {"ok": True, "profile": profile, "text": api.taste_profile.block(api.DATA_DIR)}

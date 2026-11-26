@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+import familiar_anchors
+
 # ------------------------------------------------------------------ 词表
 
 # 报幕 / 教材腔：出现即拦截。正则里用 [^\n] 限制在单行内，避免跨行误吞。
@@ -179,6 +181,25 @@ def _ban_needles(banned_terms, instruction):
     return out
 
 
+def _allowed_anchors(target_word):
+    """该目标词命中的真熟词白名单；锚点坏了不能误杀，异常一律空集。"""
+    if not str(target_word or "").strip():
+        return set()
+    try:
+        return familiar_anchors.whitelist(target_word)
+    except Exception:  # noqa: BLE001 - 旁路增强失败时退回原硬规则
+        return set()
+
+
+def _mask_anchors(text, words):
+    """把白名单里的整词从扫描文本里抹掉（词边界匹配，避免误伤同族词）。"""
+    masked = text
+    for word in sorted(words, key=len, reverse=True):
+        if len(word) >= 4:
+            masked = re.sub(r"(?<![a-z])%s(?![a-z])" % re.escape(word), " ", masked)
+    return masked
+
+
 def _feedback(hits):
     if not hits:
         return ""
@@ -198,6 +219,7 @@ def check(derivation, instruction="", banned_terms=None, elements=None, target_w
     """
     lines = _clean_lines(derivation)
     hits = []
+    allowed = _allowed_anchors(target_word)
 
     def add(hit):
         if hit and hit not in hits:
@@ -237,14 +259,19 @@ def check(derivation, instruction="", banned_terms=None, elements=None, target_w
                     break
 
         body = "\n".join(lines)
-        lowered = body.lower()
+        lowered = _mask_anchors(body.lower(), allowed)
         pool = [str(x).strip().lower() for x in (elements or []) if str(x).strip()]
+        pool = [token for token in (_mask_anchors(x, allowed).strip() for x in pool) if token]
 
-        if any(token.strip() == "dole" for token in pool) and str(target_word or "").strip().casefold() != "dole":
+        if (any(token.strip() == "dole" for token in pool)
+                and str(target_word or "").strip().casefold() != "dole"
+                and "dole" not in allowed):
             add("黑榜②生僻零件：dole，换成熟悉锚点")
 
         # 黑榜②③：生僻零件（用户原话「我怎么知道 hemi 是什么意思」）出现即打回。
         for part, pattern in _OBSCURE_RES:
+            if part in allowed:
+                continue
             if pattern.search(lowered) or any(pattern.search(token) for token in pool):
                 add(
                     "黑榜②③生僻零件：%s（用户不会知道这截是什么意思，换成熟词块或换招）" % part
@@ -254,7 +281,7 @@ def check(derivation, instruction="", banned_terms=None, elements=None, target_w
         claim = ETYMOLOGY_CLAIM.search(body)
         if claim:
             tokens = pool or [word.lower() for word in re.findall(r"[a-zA-Z]{2,}", body)]
-            if not any(token in COMMON_ROOTS for token in tokens):
+            if not any(token in COMMON_ROOTS for token in tokens) and not (allowed & set(tokens)):
                 add(
                     "黑榜③词源硬扯：写了「%s」，但没有一个大众词根或同族词能给它做证"
                     % claim.group(0)

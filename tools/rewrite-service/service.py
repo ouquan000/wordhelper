@@ -27,6 +27,7 @@ import batch_pipeline  # noqa: E402
 import pipeline  # noqa: E402
 import profile  # noqa: E402
 import providers  # noqa: E402
+import taste_profile  # noqa: E402
 import store as store_mod  # noqa: E402
 import wb_gate  # noqa: E402
 import worker as worker_mod  # noqa: E402
@@ -297,6 +298,19 @@ def _worker_toggle(body):
     return service_handlers._worker_toggle(_api, body)
 
 
+# --------------------------------------------------- 动态审美画像（WAE-20261126-002）
+def _taste(body=None):
+    return service_handlers._taste(_api)
+
+
+def _taste_save(body):
+    return service_handlers._taste_save(_api, body)
+
+
+def _taste_distill(body):
+    return service_handlers._taste_distill(_api, body)
+
+
 def _dispatch(method, raw_path, body):
     path, query = _parse(raw_path)
     if method == "GET" and path in ("/models",):
@@ -327,6 +341,8 @@ def _dispatch(method, raw_path, body):
         return _json(_locks(query))
     if method == "GET" and path == "/rewrite/worker/status":
         return _json(_worker_status())
+    if method == "GET" and path == "/rewrite/taste":
+        return _json(_taste())
     if method == "POST" and path == "/rewrite/marks":
         return _json(_marks(body))
     if method == "POST" and path == "/rewrite/lock":
@@ -337,6 +353,10 @@ def _dispatch(method, raw_path, body):
         return _json(_feedback(body))
     if method == "POST" and path == "/rewrite/memory-signal":
         return _json(_memory_signal(body))
+    if method == "POST" and path == "/rewrite/taste":
+        return _json(_taste_save(body))
+    if method == "POST" and path == "/rewrite/taste/distill":
+        return _json(_taste_distill(body))
     if method == "POST" and path == "/rewrite/stop":
         return _json(_stop(body))
     if method == "POST" and path == "/rewrite/gate":

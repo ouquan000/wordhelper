@@ -15,11 +15,22 @@ def timestamp(value):
 
 
 def feedback_rows(directory):
+    """逐行解析；坏行/空行/非对象行跳过，不让一条脏数据崩掉整个调度。"""
+    rows = []
     try:
         with (Path(directory) / "feedback.jsonl").open(encoding="utf-8-sig") as stream:
-            return [json.loads(line) for line in stream if line.strip()]
+            for line in stream:
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(row, dict):
+                    rows.append(row)
     except FileNotFoundError:
         return []
+    return rows
 
 
 def latest_votes(rows):

@@ -1,5 +1,9 @@
 """提示词指纹、输入组装、生成与润色。"""
 
+import familiar_anchors
+import taste_flow
+import taste_profile
+
 def _prompt(api, name):
     with open(api.os.path.join(api.PROMPT_DIR, name + ".txt"), "r", encoding="utf-8-sig") as fh:
         return fh.read()
@@ -51,6 +55,21 @@ def _has_instruction(item):
     return bool(str(item.get("instruction") or "").strip())
 
 
+def _living_blocks(item, judge=False):
+    """真熟词锚点 + 动态审美画像；任一坏了都只是少一段提示，不拖垮生成。"""
+    word = str((item or {}).get("word") or "").strip()
+    anchor = familiar_anchors.judge_block if judge else familiar_anchors.prompt_block
+    rows = []
+    for build, wants_word in ((anchor, True), (taste_profile.block, False)):
+        try:
+            text = build(word) if wants_word else build()
+        except Exception:  # noqa: BLE001 - 旁路增强不能影响主流程
+            text = ""
+        if text:
+            rows.append(text)
+    return rows
+
+
 def _brief(item):
     rows = ["单词：" + item["word"]]
     for label, key in (
@@ -68,6 +87,7 @@ def _brief(item):
         rows.append(
             "【这个词的历史（用户原话与失败路线是硬约束；被点赞的版本要保住）】\n" + history
         )
+    rows.extend(_living_blocks(item))
     return "\n".join(rows)
 
 
@@ -95,6 +115,7 @@ def _judge_brief(item):
             "这是判 same_method 与诉求落实的硬证据；历史里被用户明确否掉过一次的具体路线，"
             "新版仍重复才算没解决，共用方法标签不算重复（只有更晚的明确允许可解除）。\n" + history
         )
+    rows.extend(_living_blocks(item, judge=True))
     return "\n".join(rows)
 
 
@@ -116,6 +137,7 @@ def _exemplar_block(api, method):
     """黄金正例 2 条 + 避雷反例 1 条；检索不到就返回空串，流水线照跑。"""
     try:
         data = api.exemplars.retrieve(method or "")
+        data = taste_flow.refine(data)
     except Exception:  # noqa: BLE001 - 样本库坏了不能拖垮生成
         return ""
     pos = (data or {}).get("pos") or []
