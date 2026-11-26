@@ -1,5 +1,6 @@
 package com.kaoyan.wordhelper.ui.viewmodel
 
+import com.kaoyan.wordhelper.data.repository.dismissPressure
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -190,6 +191,8 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     fun continueAfterSpellingFailure() = answers.continueAfterSpellingFailure()
 
     fun refreshQueue() = actions.refreshQueue()
+
+    fun dismissReviewPressure() { viewModelScope.launch { settingsRepository.dataStore.dismissPressure() } }
 
     fun disperseReviewPressure() = actions.disperseReviewPressure()
 

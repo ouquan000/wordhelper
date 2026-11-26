@@ -50,6 +50,11 @@ def select(api, store, config, runtime, limit, ignore_budget=False):
     upcoming = snapshot.get("upcoming_new_word_ids") or config.get("upcoming_new_word_ids") or []
     if not isinstance(upcoming, list):
         return []
+    if snapshot.get("upcoming_new_book") not in (None, BOOK):
+        upcoming = []
+    keys = snapshot.get("upcoming_new_word_keys") or []
+    device_ids = {key.strip().casefold(): value for key, value in zip(keys, upcoming)
+                  if isinstance(key, str)}
     positions = {str(value).strip().casefold(): index for index, value in enumerate(upcoming)}
     votes = protection.latest_votes(api._feedback_rows(store))
     locked = protection.locked_words(store.locks(), votes)
@@ -62,8 +67,8 @@ def select(api, store, config, runtime, limit, ignore_budget=False):
         if liked or word in locked or entry.get("locked") is True:
             continue
         feedback = vote[1] if vote else {}
-        word_id = entry.get("wordId") or entry.get("id") or feedback.get("wordId") or word
-        book_id = feedback.get("bookId") or 0
+        word_id = device_ids.get(word) or entry.get("wordId") or entry.get("id") or feedback.get("wordId") or word
+        book_id = (snapshot.get("upcoming_new_book_id") if word in device_ids else None) or feedback.get("bookId") or 0
         if str(word_id).casefold() in locked or store.is_locked(word_id, book_id):
             continue
         key = api.store_mod.lock_key(word_id, book_id)
@@ -80,7 +85,9 @@ def select(api, store, config, runtime, limit, ignore_budget=False):
                for e in versions):
             continue
         progress = learned.get(word)
-        position = positions.get(str(word_id).casefold(), positions.get(word))
+        position = positions.get(str(device_ids[word])) if word in device_ids else None
+        if not device_ids:
+            position = positions.get(str(word_id).casefold(), positions.get(word))
         is_new = progress is None
         if is_new:
             if positions and position is None:

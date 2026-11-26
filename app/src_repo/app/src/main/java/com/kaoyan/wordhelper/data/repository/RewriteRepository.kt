@@ -53,7 +53,8 @@ class RewriteRepository(
     /** 1.5.3：免洗金牌本地锁；1.5.3v2 起同步时补发 synced=0 的锁。 */
     memoryLockDao: MemoryLockDao,
     /** 只为把书名带上去：记录页按书筛，可书只在手机库里。 */
-    bookDao: BookDao
+    bookDao: BookDao,
+    resultTransaction: suspend (suspend () -> Long?) -> Long?
 ) {
     private val gson = Gson()
     private val syncMutex = Mutex()
@@ -65,7 +66,7 @@ class RewriteRepository(
         settingsRepository, wordDao, queueDao, feedbackDao, memoryLockDao, skippedDao,
         syncMutex, transport,
         RewriteMarkUpload(wordDao, wordMemoryDao, bookMemoryDao, bookDao, transport, gson),
-        RewriteResultMerger(wordDao, wordMemoryDao, bookMemoryDao, queueDao, memoryLockDao, skippedDao, gson),
+        RewriteResultMerger(wordDao, wordMemoryDao, bookMemoryDao, queueDao, memoryLockDao, skippedDao, gson, resultTransaction),
         feedback, gson
     )
     private val queue = RewriteQueueStore(queueDao, wordMemoryDao, bookMemoryDao, syncMutex, syncEngine, transport, gson)
@@ -150,9 +151,11 @@ class RewriteRepository(
         model: String,
         instruction: String,
         bookId: Long = 0L,
-        priority: Int = 0
+        priority: Int = 0,
+        requestId: String = newRewriteRequestId(wordId, bookId),
+        onPersisted: () -> Unit = {}
     ): Boolean =
-        queue.enqueueAndSync(wordId, word, model, instruction, bookId, priority)
+        queue.enqueueAndSync(wordId, word, model, instruction, bookId, priority, requestId, onPersisted)
 
     suspend fun reportMemorySignal(
         wordId: Long,

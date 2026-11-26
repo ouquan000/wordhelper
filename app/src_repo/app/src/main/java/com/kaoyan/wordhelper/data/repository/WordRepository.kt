@@ -105,6 +105,8 @@ class WordRepository(private val database: AppDatabase) {
     suspend fun getNewWordsList(): List<Word> =
         wordContent.getNewWordsList()
 
+    suspend fun getWordForBook(wordId: Long, bookId: Long): Word? = database.wordDao().getWordForBook(wordId, bookId)
+
     suspend fun getWordById(wordId: Long): Word? =
         wordContent.getWordById(wordId)
 

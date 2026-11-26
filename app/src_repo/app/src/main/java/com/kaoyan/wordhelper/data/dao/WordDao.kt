@@ -57,6 +57,9 @@ interface WordDao {
     )
     suspend fun getWordsByBookList(bookId: Long): List<Word>
 
+    @Query(SCOPED_WORD_BY_ID_QUERY)
+    suspend fun getWordForBook(wordId: Long, bookId: Long): Word?
+
     @Query(WORD_BY_ID_QUERY)
     suspend fun getWordById(wordId: Long): Word?
 
@@ -84,9 +87,9 @@ interface WordDao {
                        WHEN :bookId > 0 THEN IFNULL(c_current.rel_words, '')
                        ELSE IFNULL(c_any.rel_words, '')
                    END AS relWords,
-                   IFNULL(m.approach, '') AS approach,
-                   IFNULL(m.collocations, '') AS collocations,
-                   IFNULL(m.method, '') AS method,
+                   COALESCE(NULLIF(bm.approach, ''), m.approach, '') AS approach,
+                   COALESCE(NULLIF(bm.collocations, ''), m.collocations, '') AS collocations,
+                   COALESCE(NULLIF(bm.method, ''), m.method, '') AS method,
                    CASE
                        WHEN :bookId > 0 THEN :bookId
                        ELSE IFNULL(c_any.book_id, 0)
@@ -102,6 +105,8 @@ interface WordDao {
                ORDER BY bc.book_id ASC
                LIMIT 1
            )
+           LEFT JOIN tb_book_memory bm ON bm.word_id = w.id AND bm.book_id =
+               CASE WHEN :bookId > 0 THEN :bookId ELSE c_any.book_id END
             WHERE (
                    w.word LIKE '%' || :query || '%'
                    OR (
@@ -226,13 +231,15 @@ interface WordDao {
                   IFNULL(c.phrases, '') AS phrases,
                   IFNULL(c.synonyms, '') AS synonyms,
                   IFNULL(c.rel_words, '') AS relWords,
-                  IFNULL(m.approach, '') AS approach,
-                  IFNULL(m.collocations, '') AS collocations,
-                  IFNULL(m.method, '') AS method,
+                  COALESCE(NULLIF(bm.approach, ''), m.approach, '') AS approach,
+                  COALESCE(NULLIF(bm.collocations, ''), m.collocations, '') AS collocations,
+                  COALESCE(NULLIF(bm.method, ''), m.method, '') AS method,
                   IFNULL(c.book_id, 0) AS bookId
            FROM tb_new_word_ref n
            INNER JOIN tb_word w ON w.id = n.word_id
            LEFT JOIN tb_word_memory m ON m.word_id = w.id
+           LEFT JOIN tb_book_memory bm ON bm.word_id = w.id AND bm.book_id =
+               (SELECT id FROM tb_book WHERE type = 2 LIMIT 1)
            LEFT JOIN tb_book_word_content c ON c.id = (
                SELECT id
                FROM tb_book_word_content bc
@@ -296,5 +303,31 @@ internal const val WORD_BY_ID_QUERY =
                LIMIT 1
            )
            LEFT JOIN tb_book_memory bm ON bm.word_id = w.id AND bm.book_id = c.book_id
+           WHERE w.id = :wordId
+           LIMIT 1"""
+
+internal const val SCOPED_WORD_BY_ID_QUERY =
+    """SELECT w.id AS id,
+                  w.word AS word,
+                  w.phonetic AS phonetic,
+                  IFNULL(c.meaning, '') AS meaning,
+                  IFNULL(c.example, '') AS example,
+                  IFNULL(c.phrases, '') AS phrases,
+                  IFNULL(c.synonyms, '') AS synonyms,
+                  IFNULL(c.rel_words, '') AS relWords,
+                  COALESCE(NULLIF(bm.approach, ''), m.approach, '') AS approach,
+                  COALESCE(NULLIF(bm.collocations, ''), m.collocations, '') AS collocations,
+                  COALESCE(NULLIF(bm.method, ''), m.method, '') AS method,
+                  :bookId AS bookId
+           FROM tb_word w
+           LEFT JOIN tb_word_memory m ON m.word_id = w.id
+           LEFT JOIN tb_book_word_content c ON c.id = (
+               SELECT id
+               FROM tb_book_word_content
+               WHERE word_id = w.id
+               ORDER BY (book_id = :bookId) DESC, book_id ASC
+               LIMIT 1
+           )
+           LEFT JOIN tb_book_memory bm ON bm.word_id = w.id AND bm.book_id = :bookId
            WHERE w.id = :wordId
            LIMIT 1"""

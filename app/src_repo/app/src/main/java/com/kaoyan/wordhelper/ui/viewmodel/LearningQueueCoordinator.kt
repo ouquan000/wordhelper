@@ -119,7 +119,7 @@ internal class LearningQueueCoordinator(
         val plan = WaitingRewriteRestore.plan(rows, tracked)
 
         plan.watchWordIds.forEach { wordId ->
-            val wordResult = runCatching { repository.getWordById(wordId) }
+            val wordResult = runCatching { repository.getWordForBook(wordId, bookId) }
             // 读词失败 ≠ 词已删除：整次恢复中止、保留标记。不能只跳过这个词——
             // 它没进 restoredWaitingRewriteWords，就不会被普通队列过滤，旧稿仍会漏出来。
             if (wordResult.isFailure) return false
@@ -130,7 +130,7 @@ internal class LearningQueueCoordinator(
 
         plan.reinsertWordIds.forEach { wordId ->
             if (wordId in reinsertingWordIds) return@forEach
-            val wordResult = runCatching { repository.getWordById(wordId) }
+            val wordResult = runCatching { repository.getWordForBook(wordId, bookId) }
             if (wordResult.isFailure) return false
             val word = wordResult.getOrNull()
             if (word == null) {
@@ -256,7 +256,9 @@ internal class LearningQueueCoordinator(
                 session.forgetPendingReinsert(wordId)
                 return
             }
-            session.rememberPendingReinsert(wordId, word, mark.createdAt)
+            val refreshed = repository.getWordForBook(wordId, bookId) ?: return
+            if (study.activeBook.value?.id != bookId) return
+            session.rememberPendingReinsert(wordId, refreshed, mark.createdAt)
             session.updateQueue(session.applyPendingReinsertPlacements(session.activeQueue))
         } finally {
             reinsertingWordIds.remove(wordId)
@@ -293,6 +295,7 @@ internal class LearningQueueCoordinator(
                 .ifBlank { current.method }
             val approachChanged = fresh != null && fresh != current.approach
             val methodChanged = freshMethod != current.method
+            if (session._currentWord.value != current || study.activeBook.value?.id != bookId) return
             if (approachChanged || methodChanged) {
                 session.publishWord(current.copy(approach = fresh ?: current.approach, method = freshMethod))
                 rewrite._rewriteUpdatedTick.value += 1

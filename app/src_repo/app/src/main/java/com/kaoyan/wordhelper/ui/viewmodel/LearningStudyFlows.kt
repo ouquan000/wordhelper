@@ -10,6 +10,9 @@ import com.kaoyan.wordhelper.data.repository.TodayNewWordsPlan
 import com.kaoyan.wordhelper.data.repository.WordRepository
 import com.kaoyan.wordhelper.util.DateUtils
 import com.kaoyan.wordhelper.util.withoutBuiltinFull
+import com.kaoyan.wordhelper.data.repository.pressureDismissedDay
+import com.kaoyan.wordhelper.data.repository.pressureVisible
+import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -72,8 +75,11 @@ internal class LearningStudyFlows(
      */
     private val learningDateTicker = flow {
         while (true) {
-            emit(Unit)
-            delay(60_000L)
+            val zone = ZoneId.systemDefault()
+            val today = DateUtils.currentLearningDate(zoneId = zone)
+            emit(today)
+            val boundary = today.plusDays(1).atTime(4, 0).atZone(zone).toInstant().toEpochMilli()
+            delay((boundary - System.currentTimeMillis()).coerceIn(1L, 60_000L))
         }
     }
 
@@ -164,6 +170,8 @@ internal class LearningStudyFlows(
         session._dueReviewCount
     ) { book, enabled, cap, dueCount ->
         LearningSessionRules.canRelievePressure(enabled, book != null && book.type != Book.TYPE_NEW_WORDS, cap, dueCount)
+    }.combine(combine(learningDateTicker, settingsRepository.dataStore.pressureDismissedDay, ::pressureVisible)) { eligible, visible ->
+        eligible && visible
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
     val checkInState: StateFlow<LearningCheckInUiState> = combine(
         learningWeekStatsFlow,

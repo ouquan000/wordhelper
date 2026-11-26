@@ -1,5 +1,6 @@
 package com.kaoyan.wordhelper
 
+import androidx.room.withTransaction
 import android.app.Application
 import com.kaoyan.wordhelper.data.database.AppDatabase
 import com.kaoyan.wordhelper.data.model.CardSeedLoader
@@ -65,7 +66,8 @@ class KaoyanWordApp : Application() {
             feedbackDao = database.rewriteFeedbackDao(),
             skippedDao = database.rewriteSkippedDao(),
             memoryLockDao = database.memoryLockDao(),
-            bookDao = database.bookDao()
+            bookDao = database.bookDao(),
+            resultTransaction = { write -> database.withTransaction { write() } }
         )
     }
 

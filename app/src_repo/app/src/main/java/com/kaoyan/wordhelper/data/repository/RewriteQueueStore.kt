@@ -98,7 +98,9 @@ internal class RewriteQueueStore(
         model: String,
         instruction: String,
         bookId: Long = 0L,
-        priority: Int = 0
+        priority: Int = 0,
+        requestId: String = newRewriteRequestId(wordId, bookId),
+        onPersisted: () -> Unit = {}
     ): Boolean {
         // 1.5.1：先落本地队列，再试发网络。
         //
@@ -118,13 +120,14 @@ internal class RewriteQueueStore(
                         instruction = instruction,
                         model = model,
                         now = System.currentTimeMillis(),
-                        newRequestId = newRewriteRequestId(wordId, bookId),
+                        newRequestId = requestId,
                         priority = priority
                     )
                 )
             }
         }.isSuccess
         if (!saved) return false
+        onPersisted()
         syncEngine.sync()
         val status = queueDao.getForBook(wordId, bookId)?.status
         return status == RewriteStatus.QUEUED || status == RewriteStatus.DONE

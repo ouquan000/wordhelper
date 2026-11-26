@@ -13,6 +13,7 @@ sys.path.insert(0, str(SERVICE.parent / "cardback-editor"))
 import batch_pipeline
 import card_publisher
 import pipeline
+import rewrite_protection
 import store
 import worker
 from worker_target import BOOK, learning_window
@@ -100,6 +101,42 @@ class FlywheelTest(unittest.TestCase):
         rows = worker.candidates(self.db, self.config, self.runtime)
         self.assertEqual(rows[0]["word"], "beta")
         self.assertEqual(rows[0]["why"], "upcoming")
+
+    def test_phone_push_reload_and_consume_idless_seed_in_queue_order(self):
+        from cardback_api import EditorAPI
+        from sync_store import SyncStore
+
+        self.config["include_review"] = False
+        for entry in self.index.values():
+            entry.pop("id")
+        self.snapshot.unlink()
+        handler = Mock()
+        def push(body):
+            handler.context.sync_db.return_value = SyncStore(str(self.snapshot))
+            handler._parse_json_body.return_value = body, None
+            EditorAPI._api_sync_push(handler, b"")
+            handler._fail.assert_not_called()
+
+        ids = [920, 123, 711, 807]
+        keys = ["beta", "late", "other", "alpha"]
+        push(dict(ops=[], upcoming_new_word_ids=ids, upcoming_new_word_keys=keys,
+                  upcoming_new_book=BOOK, upcoming_new_book_id=6))
+        push(dict(ops=[]))  # a legacy client cannot erase the saved preview
+        self.assertEqual(json.loads(self.snapshot.read_text("utf-8"))["upcoming_new_word_ids"], ids)
+        self.index["late"]["locked"] = True
+        self.runtime["done"][store.lock_key(711, 6)] = dict(engine=rewrite_protection.ENGINE, ok=True,
+                                                             at=self.now)
+        rows = worker.candidates(self.db, self.config, self.runtime)
+        self.assertEqual([(r["word"], r["word_id"], r["book_id"]) for r in rows],
+                         [("beta", 920, 6), ("alpha", 807, 6)])
+        push(dict(ops=[], upcoming_new_word_ids=[]))
+        self.assertEqual(self.targets(), ["alpha"])
+
+    def test_invalid_preview_cannot_partially_apply_progress(self):
+        from upcoming_words import parse_upcoming
+        for ids in ([1] * 51, [True], ["1"], [-1], [2**63]):
+            with self.assertRaises(ValueError):
+                parse_upcoming({"upcoming_new_word_ids": ids})
 
     def test_preview_ignores_today_new_word_budget(self):
         self.config["include_review"] = False

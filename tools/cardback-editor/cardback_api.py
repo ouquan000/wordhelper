@@ -180,7 +180,12 @@ class EditorAPI:
             return self._fail(400, "base_rev 要是整数")
         device_id = str(data.get("device_id") or "").strip()[:64]
         try:
-            result = self.context.sync_db().push(device_id, base_rev, ops)
+            from upcoming_words import parse_upcoming
+            metadata = parse_upcoming(data)
+        except ValueError as exc:
+            return self._fail(400, str(exc))
+        try:
+            result = self.context.sync_db().push(device_id, base_rev, ops, **metadata)
         except Exception as exc:  # noqa: BLE001
             return self._fail(500, "同步库写不进去：%s" % exc)
         payload = {"ok": True}

@@ -1,5 +1,9 @@
 package com.kaoyan.wordhelper.ui.screen
 
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.res.painterResource
+import com.kaoyan.wordhelper.R
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -168,6 +172,7 @@ internal fun ReviewPressureReliefBanner(
     dueReviewCount: Int,
     dailyCap: Int,
     onRelieve: () -> Unit,
+    onDismiss: () -> Unit,
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -202,6 +207,9 @@ internal fun ReviewPressureReliefBanner(
             Spacer(modifier = Modifier.size(10.dp))
             OutlinedButton(onClick = onRelieve, enabled = enabled) {
                 Text(text = "分散压力")
+            }
+            IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
+                Icon(painterResource(R.drawable.ic_pressure_close), contentDescription = "今天收起分散压力提示")
             }
         }
     }

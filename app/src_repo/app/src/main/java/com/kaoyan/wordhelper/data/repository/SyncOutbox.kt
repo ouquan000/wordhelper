@@ -28,7 +28,8 @@ internal class SyncOutbox<W>(
     private val stateStore: SyncLocalState,
     private val endpoints: SyncEndpointResolver,
     private val http: SyncHttpTransport,
-    private val factory: SyncWireFactory<W>
+    private val factory: SyncWireFactory<W>,
+    private val upcoming: suspend () -> UpcomingNewWords?
 ) {
     /**
      * 把 tb_progress 当前这一行（学习结果态）写成一条待同步记录。
@@ -122,7 +123,7 @@ internal class SyncOutbox<W>(
     suspend fun pushLocked(): Result<Int> {
         val config = endpoints.config() ?: return Result.failure(SyncException(NO_ADDRESS))
         val rows = syncDao.pending(PUSH_BATCH)
-        if (rows.isEmpty()) return Result.success(0)
+        val preview = upcoming()
 
         val state = stateStore.ensureState()
         val wordKeyCache = HashMap<Long, String>()
@@ -169,9 +170,9 @@ internal class SyncOutbox<W>(
             )
         }
         if (deadOpIds.isNotEmpty()) syncDao.deleteByOpIds(deadOpIds)
-        if (wireOps.isEmpty()) return Result.success(0)
+        if (wireOps.isEmpty() && preview == null) return Result.success(0)
 
-        val pushJson = gson.toJson(PushRequest(state.deviceId, state.serverRev, wireOps))
+        val pushJson = gson.toJson(pushRequest(state.deviceId, state.serverRev, wireOps, preview))
         // /health 说得很清楚「这台电脑没有 sync_push」：请求干脆不发，别拿 404 去撞（1.4.6 的 186 次）。
         if (ServerHealth.supports(endpoints.serverHealth, CAP_SYNC_PUSH) == false) {
             val message = RetryPolicy.missingCapabilityMessage(CAP_SYNC_PUSH)
@@ -232,7 +233,7 @@ internal class SyncOutbox<W>(
         )
 
         var newState = state.copy(
-            serverRev = response.serverRev ?: state.serverRev,
+            serverRev = if (wireOps.isEmpty()) state.serverRev else response.serverRev ?: state.serverRev,
             lastSyncAt = System.currentTimeMillis()
         )
         val serverEpoch = response.epoch ?: state.epoch
@@ -306,10 +307,18 @@ private data class LocalOp(
     @SerializedName("fsrs_state") val fsrsState: Int? = null
 )
 
-private data class PushRequest<W>(
+internal fun <W> pushRequest(deviceId: String, rev: Long, ops: List<W>, preview: UpcomingNewWords?) =
+    PushRequest(deviceId, rev, ops, preview?.words?.map { it.id }, preview?.words?.map { it.word },
+        preview?.book?.name, preview?.book?.id)
+
+internal data class PushRequest<W>(
     @SerializedName("device_id") val deviceId: String,
     @SerializedName("base_rev") val baseRev: Long,
-    @SerializedName("ops") val ops: List<W>
+    @SerializedName("ops") val ops: List<W>,
+    @SerializedName("upcoming_new_word_ids") val ids: List<Long>?,
+    @SerializedName("upcoming_new_word_keys") val keys: List<String>?,
+    @SerializedName("upcoming_new_book") val book: String?,
+    @SerializedName("upcoming_new_book_id") val bookId: Long?
 )
 
 private data class PushResponse(

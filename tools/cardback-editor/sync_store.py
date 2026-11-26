@@ -316,12 +316,8 @@ class SyncStore:
 
     # ------------------------------------------------------------ 接口
 
-    def push(self, device_id: str, base_rev: int, ops: list) -> dict:
-        """收下一批 op。返回 {server_rev, acked, rejected, conflicts, trimmed}。
-
-        过期（lrt 更小）的 op 也算 acked：手机端已经把它发出来了，留在队列里只会反复重发。
-        被丢掉的旧 op 会进 conflicts（同时在日志里留一行），不静默吞掉。
-        """
+    def push(self, device_id: str, base_rev: int, ops: list, upcoming=None) -> dict:
+        """Merge progress and atomically replace a supplied device preview."""
         acked: list[str] = []
         rejected: list[dict] = []
         conflicts: list[dict] = []
@@ -387,6 +383,8 @@ class SyncStore:
                 if len(seen) > 50000:
                     self._data["seen"] = dict(list(seen.items())[-50000:])
                 acked.append(op_id)
+            if upcoming is not None:
+                self._data.update(upcoming)
             trimmed = self._trim_rows()
             self._save()
             return {

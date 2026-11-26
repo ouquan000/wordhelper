@@ -314,6 +314,7 @@ fun LearningScreen(
                 dueReviewCount = dueReviewCount,
                 dailyCap = reviewPressureDailyCap,
                 onRelieve = viewModel::disperseReviewPressure,
+                onDismiss = viewModel::dismissReviewPressure,
                 enabled = !isAnswering
             )
             Spacer(modifier = Modifier.height(10.dp))

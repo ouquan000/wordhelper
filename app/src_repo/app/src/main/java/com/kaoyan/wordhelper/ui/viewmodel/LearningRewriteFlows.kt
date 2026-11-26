@@ -61,6 +61,9 @@ internal enum class SkipRewriteAvailability {
     RESULT_READY
 }
 
+internal fun finishRewriteStart(ids: Map<Long, String>, wordId: Long, requestId: String) =
+    if (ids[wordId] == requestId) ids - wordId else ids
+
 internal fun skipRewriteAvailability(
     wordId: Long?,
     bookId: Long?,

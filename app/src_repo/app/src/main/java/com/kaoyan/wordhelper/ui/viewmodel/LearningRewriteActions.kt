@@ -56,19 +56,18 @@ internal class LearningRewriteActions(
             // 「重写 → 跳过 → 回队 → 再重写」无限轮次。
             session.sessionSkippedWordIds.remove(word.id)
             // 1.5.2：先记「本轮开始」，旧 DONE 行在这几毫秒里不能把跳过置灰。
-            rewrite._activeRewriteRequestIds.update { it + (word.id to "") }
+            val requestId = com.kaoyan.wordhelper.data.repository.newRewriteRequestId(word.id, bookId)
+            rewrite._activeRewriteRequestIds.update { it + (word.id to requestId) }
             // 排队与进度由重写按钮直接反馈。
-            val sent = rewriteRepository.enqueueAndSync(
-                word.id,
-                word.word,
-                modelId,
-                instruction,
-                bookId = bookId
-            )
-            val roundRequestId = runCatching {
-                rewriteRepository.requestIdOf(word.id, bookId)
-            }.getOrNull().orEmpty()
-            rewrite._activeRewriteRequestIds.update { it + (word.id to roundRequestId) }
+            fun clearStartingRound() = rewrite._activeRewriteRequestIds.update { ids ->
+                finishRewriteStart(ids, word.id, requestId)
+            }
+            val sent = try {
+                rewriteRepository.enqueueAndSync(word.id, word.word, modelId, instruction,
+                    bookId = bookId, requestId = requestId, onPersisted = ::clearStartingRound)
+            } finally {
+                clearStartingRound()
+            }
             if (!sent) {
                 // 没地址/电脑没开都只是「已记下」；只有确实带了口令、且这次请求
                 // 真被 401 拦下时，才提示重粘配对行，别把离线误报成口令错。

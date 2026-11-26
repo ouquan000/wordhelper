@@ -48,7 +48,8 @@ internal class RewriteResultMerger(
     private val queueDao: RewriteQueueDao,
     private val memoryLockDao: MemoryLockDao,
     private val skippedDao: RewriteSkippedDao,
-    private val gson: Gson
+    private val gson: Gson,
+    private val transaction: suspend (suspend () -> Long?) -> Long?
 ) {
 
     /**
@@ -89,7 +90,9 @@ internal class RewriteResultMerger(
         return SKIP_CLIENT_MISMATCH
     }
 
-    suspend fun applyResult(dto: RewriteResultDto): Long? {
+    suspend fun applyResult(dto: RewriteResultDto): Long? = transaction { applyInTransaction(dto) }
+
+    private suspend fun applyInTransaction(dto: RewriteResultDto): Long? {
         val word = dto.word?.trim().orEmpty()
         if (word.isEmpty()) return null
         val wordId = wordDao.getWordIdByKey(word.lowercase(Locale.ROOT)) ?: return null
@@ -158,13 +161,14 @@ internal class RewriteResultMerger(
             // 不能把「上一版」覆盖成刚写进去的这版 —— 那样撤销只会退到一模一样的文字。
             // 1.4.7.1：文字没变也要把未复核标记刷新一下，否则先到的旧结果会让角标一直不出现。
             if (own?.approach == approach) {
-                if (own != null && (own.unverified != unverified ||
-                        own.unverifiedReason != unverifiedReason)
-                ) {
-                    bookMemoryDao.upsert(
-                        own.copy(unverified = unverified, unverifiedReason = unverifiedReason)
-                    )
-                }
+                val accepted = own.copy(
+                    source = WordMemory.SOURCE_USER,
+                    rev = dto.rev ?: own.rev.coerceAtLeast(1),
+                    method = dto.method?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: own.method,
+                    unverified = unverified,
+                    unverifiedReason = unverifiedReason
+                )
+                if (accepted != own) bookMemoryDao.upsert(accepted.copy(updatedAt = now))
                 queueDao.updateStatus(wordId, bookId, RewriteStatus.DONE, null, now)
                 return wordId
             }
@@ -194,13 +198,14 @@ internal class RewriteResultMerger(
         }
 
         if (existing?.approach == approach) {
-            if (existing != null && (existing.unverified != unverified ||
-                    existing.unverifiedReason != unverifiedReason)
-            ) {
-                wordMemoryDao.upsert(
-                    existing.copy(unverified = unverified, unverifiedReason = unverifiedReason)
-                )
-            }
+            val accepted = existing.copy(
+                source = WordMemory.SOURCE_USER,
+                rev = dto.rev ?: existing.rev.coerceAtLeast(1),
+                method = dto.method?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: existing.method,
+                unverified = unverified,
+                unverifiedReason = unverifiedReason
+            )
+            if (accepted != existing) wordMemoryDao.upsert(accepted.copy(updatedAt = now))
             queueDao.updateStatus(wordId, bookId, RewriteStatus.DONE, null, now)
             return wordId
         }

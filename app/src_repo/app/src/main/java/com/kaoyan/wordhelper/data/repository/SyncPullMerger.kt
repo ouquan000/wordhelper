@@ -87,7 +87,7 @@ internal class SyncPullMerger<W>(
                 return@repeat
             }
 
-            val result = applyRows(page.rows.orEmpty())
+            val result = applyProgressRows(page.rows.orEmpty().map(progressRow), bookDao, wordDao, progressDao)
             applied += result.applied
             if (result.skipped > 0) {
                 Log.i(TAG, "本次拉取跳过 ${result.skipped} 条（词或书不在本机 / 比本地旧）")
@@ -107,82 +107,84 @@ internal class SyncPullMerger<W>(
         return Result.failure(SyncException("同步没拉完（一次最多 $MAX_PULL_PAGES 页），再点一次同步继续"))
     }
 
-    /**
-     * 把一页 rows 写进 tb_progress。返回真正覆盖了几条、跳过了几条。
-     *
-     * 只写契约里有的字段：本地多出来的拼写次数、连续正确、平均反应时间等一律沿用原值
-     * （契约没有它们，硬覆盖会把手机上的统计抹掉）。
-     */
-    private suspend fun applyRows(rows: List<W>): PullApply {
-        if (rows.isEmpty()) return PullApply(0, 0)
-        // 服务端只存书名。用户可能自己建过同名书，取 id 最小的那本，保证每次落到同一本。
-        val bookIdByName: Map<String, Long> = bookDao.getAllBooksList()
-            .groupBy { it.name }
-            .mapValues { (_, books) -> books.minOf { it.id } }
-
-        var applied = 0
-        var skipped = 0
-        // 同一页里同一个 (词, 书) 来多条时，只让 lrt 最大的那条落地。
-        val appliedLrt = HashMap<Pair<Long, Long>, Long>()
-
-        rows.forEach { wire ->
-            val row = progressRow(wire)
-            val type = row.type
-            if (!type.isNullOrBlank() && type != TYPE_PROGRESS) {
-                skipped++
-                return@forEach
-            }
-            val wordKey = row.wordKey?.trim().orEmpty()
-            val wordId = if (wordKey.isEmpty()) null else wordDao.getWordIdByKey(wordKey)
-            val bookName = row.bookName?.trim().orEmpty()
-            val bookId = if (bookName.isEmpty()) null else bookIdByName[bookName]
-            val lrt = row.lastReviewTime
-            if (wordId == null || bookId == null || lrt == null) {
-                // 词/书不在这台手机上，或这一行没有 lrt：跳过并计数，不动本地数据。
-                skipped++
-                return@forEach
-            }
-            val key = wordId to bookId
-            val alreadyApplied = appliedLrt[key]
-            if (SyncRules.alreadyApplied(alreadyApplied, lrt)) {
-                skipped++
-                return@forEach
-            }
-            val existing = progressDao.getProgress(wordId, bookId)
-            // 最新赢：本地这条比对面新（比如刚在这台手机上复习过），就保留本地。
-            if (SyncRules.localIsNewer(existing?.lastReviewTime, lrt)) {
-                skipped++
-                return@forEach
-            }
-            val target = (existing ?: Progress(wordId = wordId, bookId = bookId)).copy(
-                status = row.status ?: existing?.status ?: Progress.STATUS_NEW,
-                repetitions = row.repetitions ?: existing?.repetitions ?: 0,
-                intervalDays = row.intervalDays ?: existing?.intervalDays ?: 0,
-                nextReviewTime = row.nextReviewTime ?: existing?.nextReviewTime ?: 0L,
-                easeFactor = row.easeFactor ?: existing?.easeFactor ?: 2.5f,
-                reviewCount = row.reviewCount ?: existing?.reviewCount ?: 0,
-                lastReviewTime = lrt,
-                // 1.4.9-P1：FSRS 4 字段是可选的「增量契约」。对面没带（老数据/老服务端）时
-                // 必须原样保留本地值，绝不能拿 0 冲掉本机已经算出来的 S/D/lapses/state。
-                fsrsStability = row.fsrsStability ?: existing?.fsrsStability ?: 0f,
-                fsrsDifficulty = row.fsrsDifficulty ?: existing?.fsrsDifficulty ?: 0f,
-                fsrsLapses = row.fsrsLapses ?: existing?.fsrsLapses ?: 0,
-                fsrsState = row.fsrsState ?: existing?.fsrsState ?: 0
-            )
-            if (existing == null) {
-                progressDao.insert(target)
-            } else {
-                // existing.copy(...) 已经带着本地主键，update 只改字段、不换行。
-                progressDao.update(target)
-            }
-            appliedLrt[key] = lrt
-            applied++
-        }
-        return PullApply(applied, skipped)
-    }
 }
 
-private data class PullApply(val applied: Int, val skipped: Int)
+/**
+ * 把一页 rows 写进 tb_progress。返回真正覆盖了几条、跳过了几条。
+ *
+ * 只写契约里有的字段：本地多出来的拼写次数、连续正确、平均反应时间等一律沿用原值
+ * （契约没有它们，硬覆盖会把手机上的统计抹掉）。
+ */
+internal suspend fun applyProgressRows(
+    rows: List<SyncProgressRow>, bookDao: BookDao, wordDao: WordDao, progressDao: ProgressDao
+): PullApply {
+    if (rows.isEmpty()) return PullApply(0, 0)
+    // 服务端只存书名。用户可能自己建过同名书，取 id 最小的那本，保证每次落到同一本。
+    val bookIdByName: Map<String, Long> = bookDao.getAllBooksList()
+        .groupBy { it.name }
+        .mapValues { (_, books) -> books.minOf { it.id } }
+
+    var applied = 0
+    var skipped = 0
+    // 同一页里同一个 (词, 书) 来多条时，只让 lrt 最大的那条落地。
+    val appliedLrt = HashMap<Pair<Long, Long>, Long>()
+
+    rows.forEach { row ->
+        val type = row.type
+        if (!type.isNullOrBlank() && type != TYPE_PROGRESS) {
+            skipped++
+            return@forEach
+        }
+        val wordKey = row.wordKey?.trim().orEmpty()
+        val wordId = if (wordKey.isEmpty()) null else wordDao.getWordIdByKey(wordKey)
+        val bookName = row.bookName?.trim().orEmpty()
+        val bookId = if (bookName.isEmpty()) null else bookIdByName[bookName]
+        val lrt = row.lastReviewTime
+        if (wordId == null || bookId == null || lrt == null) {
+            // 词/书不在这台手机上，或这一行没有 lrt：跳过并计数，不动本地数据。
+            skipped++
+            return@forEach
+        }
+        val key = wordId to bookId
+        val alreadyApplied = appliedLrt[key]
+        if (SyncRules.alreadyApplied(alreadyApplied, lrt)) {
+            skipped++
+            return@forEach
+        }
+        val existing = progressDao.getProgress(wordId, bookId)
+        // 最新赢：本地这条比对面新（比如刚在这台手机上复习过），就保留本地。
+        if (SyncRules.localIsNewer(existing?.lastReviewTime, lrt)) {
+            skipped++
+            return@forEach
+        }
+        val target = (existing ?: Progress(wordId = wordId, bookId = bookId)).copy(
+            status = row.status ?: existing?.status ?: Progress.STATUS_NEW,
+            repetitions = row.repetitions ?: existing?.repetitions ?: 0,
+            intervalDays = row.intervalDays ?: existing?.intervalDays ?: 0,
+            nextReviewTime = row.nextReviewTime ?: existing?.nextReviewTime ?: 0L,
+            easeFactor = row.easeFactor ?: existing?.easeFactor ?: 2.5f,
+            reviewCount = row.reviewCount ?: existing?.reviewCount ?: 0,
+            lastReviewTime = lrt,
+            // 1.4.9-P1：FSRS 4 字段是可选的「增量契约」。对面没带（老数据/老服务端）时
+            // 必须原样保留本地值，绝不能拿 0 冲掉本机已经算出来的 S/D/lapses/state。
+            fsrsStability = row.fsrsStability ?: existing?.fsrsStability ?: 0f,
+            fsrsDifficulty = row.fsrsDifficulty ?: existing?.fsrsDifficulty ?: 0f,
+            fsrsLapses = row.fsrsLapses ?: existing?.fsrsLapses ?: 0,
+            fsrsState = row.fsrsState ?: existing?.fsrsState ?: 0
+        )
+        if (existing == null) {
+            progressDao.insert(target)
+        } else {
+            // existing.copy(...) 已经带着本地主键，update 只改字段、不换行。
+            progressDao.update(target)
+        }
+        appliedLrt[key] = lrt
+        applied++
+    }
+    return PullApply(applied, skipped)
+}
+
+internal data class PullApply(val applied: Int, val skipped: Int)
 
 private data class PullPage<W>(
     @SerializedName("server_rev") val serverRev: Long? = null,

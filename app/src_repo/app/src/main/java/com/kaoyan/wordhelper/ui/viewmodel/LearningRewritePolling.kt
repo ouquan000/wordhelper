@@ -9,7 +9,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -142,11 +141,7 @@ internal class LearningRewritePolling(
             queue.syncRewriteNow()
             val after = rewriteRepository.markOf(word.id, bookId)?.status
             pendingTerminalSync = after != RewriteStatus.DONE && after != RewriteStatus.FAILED
-            // 1.5.3v2 C1：本轮重写已 DONE 落地展示，清理该词的活跃 requestId，
-            // 让 skipRewriteAvailability 落到 NO_MARK，右下角「跳过」彻底收回。
-            if (after == RewriteStatus.DONE) {
-                rewrite._activeRewriteRequestIds.update { it - word.id }
-            }
+
         }
     }
 

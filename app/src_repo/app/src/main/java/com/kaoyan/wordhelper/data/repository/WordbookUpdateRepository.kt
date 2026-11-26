@@ -366,8 +366,8 @@ class WordbookUpdateRepository(
 
     // ---- 地址 / 通道 ----
 
-    private fun buildEndpoints(settings: UserSettings): List<Endpoint> {
-        val out = ArrayList<Endpoint>()
+    private fun buildEndpoints(settings: UserSettings): List<WordbookEndpoint> {
+        val out = ArrayList<WordbookEndpoint>()
         val token = settings.cardBackToken
         val rawPin = TlsPinned.normalizePin(settings.cardBackTlsPin).orEmpty()
 
@@ -387,12 +387,12 @@ class WordbookUpdateRepository(
                     base = "https://$host:$port"
                 }
             }
-            out.add(Endpoint("局域网", base, token, pin, lan = true))
+            out.add(WordbookEndpoint(base, token, pin))
         }
 
         val remote = normalizeRemote(settings.wordbookRemoteUrl)
         if (remote != null) {
-            out.add(Endpoint("公网", remote, token, "", lan = false))
+            out.add(WordbookEndpoint(remote, token, ""))
         }
         return out.distinctBy { it.origin }
     }
@@ -429,7 +429,7 @@ class WordbookUpdateRepository(
      * 再拼「局域网连不上：」就重复了；没有原始异常（服务端返回空内容 / 包太大）时
      * 才需要「通道 + 原因」的前缀。
      */
-    private fun endpointFailureText(endpoint: Endpoint, prefix: String, failure: Fetch.Failed): String =
+    private fun endpointFailureText(endpoint: WordbookEndpoint, prefix: String, failure: Fetch.Failed): String =
         if (failure.error != null) failure.message else "${endpoint.label}$prefix${failure.message}"
 
     private sealed interface Fetch {
@@ -443,16 +443,16 @@ class WordbookUpdateRepository(
         data class Failed(val message: String, val error: Throwable? = null) : Fetch
     }
 
-    private fun fetch(url: String, endpoint: Endpoint, maxBytes: Int): Fetch {
+    private fun fetch(url: String, endpoint: WordbookEndpoint, maxBytes: Int): Fetch {
         val base = if (endpoint.pin.isNotEmpty()) {
             TlsPinned.clientFor(endpoint.pin) ?: DEFAULT_CLIENT
         } else {
             DEFAULT_CLIENT
         }
         val client = base.newBuilder()
-            .connectTimeout(if (endpoint.lan) 2 else 8, TimeUnit.SECONDS)
-            .readTimeout(if (endpoint.lan) 5 else 30, TimeUnit.SECONDS)
-            .callTimeout(if (endpoint.lan) 7 else 45, TimeUnit.SECONDS)
+            .connectTimeout(endpoint.connectSeconds, TimeUnit.SECONDS)
+            .readTimeout(endpoint.readSeconds, TimeUnit.SECONDS)
+            .callTimeout(endpoint.callSeconds, TimeUnit.SECONDS)
             .build()
         val builder = Request.Builder()
             .url(url)
@@ -629,14 +629,6 @@ class WordbookUpdateRepository(
     }
 
     // ---- 工具 ----
-
-    private data class Endpoint(
-        val label: String,
-        val origin: String,
-        val token: String,
-        val pin: String,
-        val lan: Boolean
-    )
 
     private data class CardManifest(
         val version: Int = 0,

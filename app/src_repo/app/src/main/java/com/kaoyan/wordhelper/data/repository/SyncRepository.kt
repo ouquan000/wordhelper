@@ -46,7 +46,9 @@ class SyncRepository(
     private val stateStore = SyncLocalState(syncDao)
     private val http = SyncHttpTransport()
     private val endpoints = SyncEndpointResolver(settingsRepository, syncDao, http)
-    private val outbox = SyncOutbox(syncDao, wordDao, bookDao, gson, stateStore, endpoints, http, SyncWireFactory(::WireOp))
+    private val outbox = SyncOutbox(syncDao, wordDao, bookDao, gson, stateStore, endpoints, http, SyncWireFactory(::WireOp)) {
+        settingsRepository?.let { readUpcomingNewWords(database, it) }
+    }
     private val merger = SyncPullMerger(syncDao, wordDao, bookDao, progressDao, gson, stateStore, endpoints, http, WireOp::class.java) { row ->
         SyncProgressRow(
             type = row.type,

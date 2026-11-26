@@ -14,6 +14,21 @@ import org.junit.Test
  */
 class SkipRewriteAvailabilityTest {
 
+    @Test fun waitingOnSameCardHidesSkipAsSoonAsContentCommits() {
+        val previous = mark(status = RewriteStatus.DONE, requestId = "old")
+        val starting = mapOf(11L to "new")
+        fun availability(row: RewriteQueueItem, ids: Map<Long, String>) =
+            skipRewriteAvailability(11, 2, row, ids[11])
+        assertEquals(SkipRewriteAvailability.AVAILABLE, availability(previous, starting))
+        val pending = previous.copy(status = RewriteStatus.PENDING, requestId = "new")
+        val persisted = finishRewriteStart(starting, 11, "new")
+        assertEquals(SkipRewriteAvailability.AVAILABLE, availability(pending, persisted))
+        val completed = pending.copy(status = RewriteStatus.DONE)
+        assertEquals(SkipRewriteAvailability.NO_MARK, availability(completed, persisted))
+        val next = mapOf(11L to "next")
+        assertEquals(SkipRewriteAvailability.AVAILABLE, availability(completed, finishRewriteStart(next, 11, "new")))
+    }
+
     private fun mark(
         wordId: Long = 11L,
         bookId: Long = 2L,

@@ -164,7 +164,7 @@ class SettingsRepository(private val context: Context) {
     @Volatile
     var endpointRevision: Long = 0L
         private set
-    private val dataStore = context.dataStore
+    internal val dataStore = context.dataStore
 
     val todayNewWordsPlanFlow: Flow<TodayNewWordsPlan> = dataStore.data.map { prefs ->
         val rawDate = prefs[KEY_TODAY_NEW_WORDS_PLAN_DATE].orEmpty()

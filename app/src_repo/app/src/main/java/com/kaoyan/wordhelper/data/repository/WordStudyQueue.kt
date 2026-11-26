@@ -83,34 +83,10 @@ internal class WordStudyQueue(
             minOf(remainingByDailyLimit, remainingInBook)
         }
         val adjustedNewWordLimit = (effectiveNewWordLimit - inLearningButUncompletedCount).coerceAtLeast(0)
-        val progressIds = progressList.map { it.wordId }.toSet()
-        val excludedIds = dueWords.map { it.id }.toSet() + earlyReviewWords.map { it.id }.toSet()
-        val autoNewWords = sourceWords
-            .filter { it.id !in progressIds && it.id !in excludedIds }
-            .take(adjustedNewWordLimit)
-
-        val plannedCandidatesById = sourceWords
-            .asSequence()
-            .filter { it.id !in progressIds && it.id !in excludedIds }
-            .associateBy { it.id }
-        val plannedNewWords = plannedNewWordIds
-            .asSequence()
-            .mapNotNull { plannedId -> plannedCandidatesById[plannedId] }
-            .distinctBy { it.id }
-            .take(adjustedNewWordLimit)
-            .toList()
-        val newWords = when {
-            book.type == Book.TYPE_NEW_WORDS -> autoNewWords
-            plannedModeEnabled -> plannedNewWords
-            plannedNewWords.isNotEmpty() -> plannedNewWords
-            else -> autoNewWords
-        }
-
-        val orderedNewWords = if (shuffleNewWords) {
-            newWords.shuffled()
-        } else {
-            newWords
-        }
+        val orderedNewWords = orderedUnlearnedWords(
+            sourceWords, progressByWordId.keys + earlyOrder.keys, book, plannedNewWordIds,
+            plannedModeEnabled, shuffleNewWords, DateUtils.currentLearningDate()
+        ).take(adjustedNewWordLimit)
 
         val reviewWords = dueWords + earlyReviewWords
         return StudyQueueSnapshot(
