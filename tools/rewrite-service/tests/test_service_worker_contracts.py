@@ -76,7 +76,7 @@ class WorkerBoundaryTests(unittest.TestCase):
                 worker, "_runtime_cache", {"path": "", "data": None}
             ), patch.object(worker, "_now", return_value="stamp"):
                 restored = worker._load_runtime()
-                self.assertEqual(restored, {"enabled": False, "washed": 4, "runs": ["old"],
+                self.assertEqual(restored, {"enabled": False, "daily": {}, "washed": 4, "runs": ["old"],
                                             "done": {"a": {"seq": 2}}, "lastRun": {}, "lastError": ""})
                 self.assertFalse(worker.enabled_now({"enabled": True}, restored))
                 self.assertIs(worker._load_runtime(), restored)
@@ -88,13 +88,17 @@ class WorkerBoundaryTests(unittest.TestCase):
     def test_lock_acquired_after_candidate_selection_skips_runner_and_budget(self):
         db = Mock()
         db.status.return_value = {"pending": 0, "running": 0}
+        db.locks.return_value = {}
+        db.results = {}
         db.is_locked.side_effect = [False, True]
         config = worker.normalize_config({"enabled": True})
         runtime = {"enabled": True, "runs": [], "done": {}, "washed": 0}
         row = {"word": "alpha", "wordId": 1, "bookId": 2, "rating": "down",
                "count": 2, "phonetic": "a", "meaning": "first"}
         runner = Mock()
-        with patch.object(worker, "_feedback_rows", return_value=[row]), patch.object(
+        with patch.object(worker, "_word_index", {"loaded": True, "by_word": {"alpha": {"word": "alpha"}}}), patch.object(
+            worker.store_mod, "_read_json", return_value={"rows": {}, "upcoming_new_word_ids": ["alpha"]}
+        ), patch.object(worker, "_feedback_rows", return_value=[row]), patch.object(
             worker, "_load_runtime", return_value=runtime
         ), patch.object(worker, "_save_runtime") as save:
             result = worker.run_once(db, runner=runner, config=config)

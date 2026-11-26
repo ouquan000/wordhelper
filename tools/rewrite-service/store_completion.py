@@ -1,6 +1,7 @@
 """代次核对、结果提交与质量拒绝。"""
 
 
+from rewrite_protection import ENGINE
 from quality_retry_policy import QUALITY_ROUND_LIMIT, rejection_state, valid_candidate
 
 
@@ -22,6 +23,8 @@ class CompletionOperations:
                 self._save_queue()
                 self._cond.notify_all()
                 return None
+            if meta.get("unverified") or meta.get("quality_rejected"):
+                return self.finish_quality_rejected(item, approach, meta)
             record = self.results.setdefault(live["word"], {"word": live["word"], "entries": []})
             prev = self._api._current(record)
             own_prev = self._api._current_in_book(record, live)
@@ -38,6 +41,7 @@ class CompletionOperations:
                 "prev": list(live.get("currentApproach") or (own_prev or {}).get("approach") or []),
                 "updatedAt": self._api._now(),
                 "status": "ok",
+                "engine": ENGINE,
                 "model": live["model"],
                 "clientId": live["clientId"],
                 "scores": meta.get("scores") or {},
@@ -104,6 +108,7 @@ class CompletionOperations:
                 "model": live["model"],
                 "clientId": live["clientId"],
                 "error": error[:400],
+                "reason": error[:400] if live.get("qualityRejected") else "",
             }
             record["entries"] = self._api._trim(record["entries"] + [entry])
             self._save_word(live["word"])
@@ -139,17 +144,9 @@ class CompletionOperations:
             state = rejection_state(attempts, failures, candidate)
             if state != "retry_wait":
                 reason = f"质量重试已达 {QUALITY_ROUND_LIMIT} 轮上限：{reason}"[:400]
-                if state == "done":
-                    self.finish_ok(item, candidate, {
-                        "method": live.get("bestMethod") or "",
-                        "scores": live.get("bestScores") or {},
-                        "attempts": attempts or failures,
-                        "reason": reason,
-                        "unverified": True,
-                    })
-                else:
-                    live.update(failures=failures, nextRunAt="", lastReason=reason, qualityRejected=True)
-                    self.finish_fail(item, reason)
+                live.update(failures=failures, nextRunAt="", lastReason=reason, qualityRejected=True,
+                            bestApproach=[], bestScores={}, bestMethod="")
+                self.finish_fail(item, reason)
                 # service._work 仅对待重试回执打印下次运行时间。
                 return None
             next_at = self._api._retry_at(failures)

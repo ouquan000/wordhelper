@@ -18,6 +18,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 SERVICE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if SERVICE_DIR not in sys.path:
@@ -50,6 +51,8 @@ def _fb(client_id, word, rating, count=1, method="meaning", word_id=None, book_i
 
 
 def _write_feedback(tmp, rows):
+    worker.store_mod._write_json(os.path.join(tmp, "tools", "cardback-editor", "sync.json"), {"rows": {
+        row["word"]: {"w": row["word"], "t": "progress", "b": "六级记忆卡", "nrt": 1} for row in rows}})
     with open(os.path.join(tmp, "feedback.jsonl"), "w", encoding="utf-8") as fh:
         for row in rows:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -60,6 +63,16 @@ class WorkerHarness(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.dir = self._tmp.name
+        names = ["enough", "single", "mixed", "lockedword", "meaningword", "polyword",
+                 "soundword", "fresh", "candidate"]
+        index = {"loaded": True, "by_word": {w: {"word": w} for w in names}}
+        for binding in (patch.object(worker, "_word_index", index),
+                        patch.object(worker, "REPO_ROOT", self.dir)):
+            binding.start()
+            self.addCleanup(binding.stop)
+        self.snapshot = os.path.join(self.dir, "tools", "cardback-editor", "sync.json")
+        worker.store_mod._write_json(self.snapshot, {"rows": {}})
+        worker.store_mod._write_json(worker.config_path(), {"new_word_fallback_limit": 0})
         self._saved = (service.DATA_DIR, service.LOG_PATH, dict(service._state))
         os.makedirs(os.path.join(self.dir, "logs"), exist_ok=True)
         service.DATA_DIR = self.dir
@@ -84,7 +97,7 @@ class WorkerConfigTest(WorkerHarness):
         config = worker.normalize_config({})
         self.assertFalse(config["enabled"])
         self.assertEqual(config["interval_sec"], 300)
-        self.assertEqual(config["max_per_hour"], 6)
+        self.assertEqual(config["max_per_hour"], 15)
         self.assertTrue(config["only_when_manual_idle"])
         self.assertEqual(config["min_downvotes"], 2)
         self.assertEqual(config["target_methods"], ["meaning", "polysemy"])
@@ -130,9 +143,9 @@ class WorkerCandidateTest(WorkerHarness):
         ])
         self.store.set_lock(14, 1, word="lockedword")
         words = [b["word"] for b in worker.candidates(self.store)]
-        self.assertEqual(words, ["enough"])
+        self.assertEqual(words, ["enough", "single"])
 
-    def test_target_methods_come_first(self):
+    def test_equal_due_targets_preserve_seed_order(self):
         _write_feedback(self.dir, [
             _fb("e1", "meaningword", "down", method="meaning", word_id=21),
             _fb("e2", "meaningword", "down", method="meaning", word_id=21),
@@ -152,7 +165,7 @@ class WorkerCandidateTest(WorkerHarness):
         worker.store_mod._write_json(os.path.join(self.dir, "worker_state.json"), {
             "enabled": True,
             "runs": [],
-            "done": {key: {"at": worker._now(), "ok": True, "failures": 0}},
+            "done": {key: {"day": (worker.datetime.now() - worker.timedelta(hours=4)).date().isoformat(), "at": worker._now(), "ok": True, "failures": 0}},
         })
         worker.configure("")  # 强制下次重读运行态
         worker.configure(self.dir)
@@ -199,7 +212,7 @@ class WorkerRunOnceTest(WorkerHarness):
     def test_run_once_with_injected_runner_never_touches_the_queue(self):
         _write_feedback(self.dir, [_fb("l1", "candidate", "down", word_id=71),
                                   _fb("l2", "candidate", "down", word_id=71)])
-        config = worker.normalize_config({"enabled": True, "per_run": 1})
+        config = worker.normalize_config({"enabled": True, "per_run": 1, "new_word_fallback_limit": 0})
         calls = []
 
         def runner(bucket, store):
@@ -228,7 +241,7 @@ class WorkerRunOnceTest(WorkerHarness):
     def test_runner_failure_is_swallowed_and_counted(self):
         _write_feedback(self.dir, [_fb("m1", "candidate", "down", word_id=81),
                                   _fb("m2", "candidate", "down", word_id=81)])
-        config = worker.normalize_config({"enabled": True, "per_run": 1})
+        config = worker.normalize_config({"enabled": True, "per_run": 1, "new_word_fallback_limit": 0})
 
         def boom(bucket, store):
             raise RuntimeError("模型抽风")
@@ -242,7 +255,7 @@ class WorkerRunOnceTest(WorkerHarness):
         self.assertEqual(list(runtime["done"].values())[0]["failures"], 1)
 
     def test_no_candidates_is_not_an_error(self):
-        config = worker.normalize_config({"enabled": True})
+        config = worker.normalize_config({"enabled": True, "new_word_fallback_limit": 0})
         result = worker.run_once(self.store, config=config)
         self.assertTrue(result["ok"])
         self.assertEqual(result["reason"], "no_candidates")
@@ -264,7 +277,7 @@ class WorkerEndpointTest(WorkerHarness):
         self.assertFalse(payload["enabled"])
         self.assertEqual(payload["priority"], worker.OFFLINE_PRIORITY)
         self.assertEqual(payload["intervalSec"], 300)
-        self.assertEqual(payload["maxPerHour"], 6)
+        self.assertEqual(payload["maxPerHour"], 15)
         self.assertEqual(payload["minDownvotes"], 2)
         self.assertTrue(payload["onlyWhenManualIdle"])
         self.assertEqual(payload["targetMethods"], ["meaning", "polysemy"])

@@ -67,7 +67,7 @@ class QualityCapTest(unittest.TestCase):
             self.item, candidate, {"reason": "示例评分未过", "method": "shape", "scores": {"score": 6}}
         )
 
-    def test_four_waits_then_saved_candidate_survives_reopen(self):
+    def test_four_waits_then_failed_receipt_survives_reopen(self):
         for number in range(1, 5):
             with patch.object(store, "_retry_at", return_value="2000-01-01") as retry_at:
                 receipt = self.reject(["最佳候选"])
@@ -82,12 +82,12 @@ class QualityCapTest(unittest.TestCase):
         self.db.close()
         resumed = store.Store(self.root).load()
         entry, = resumed.results_page(0, 10)["results"]
-        self.assertEqual(entry["approach"], ["最佳候选"])
-        self.assertTrue(entry["unverified"])
+        self.assertEqual(entry["approach"], [])
+        self.assertEqual(entry["status"], "failed")
         self.assertIn("5 轮上限", entry["reason"])
         self.assertIn("示例评分未过", entry["reason"])
-        self.assertEqual(entry["method"], "shape")
-        self.assertEqual(resumed.items[0]["state"], "done")
+        self.assertEqual(entry["method"], "")
+        self.assertEqual(resumed.items[0]["state"], "failed")
         self.assertEqual(resumed.items[0]["nextRunAt"], "")
 
     def test_fifth_without_valid_candidate_fails(self):
@@ -110,8 +110,8 @@ class QualityCapTest(unittest.TestCase):
             with patch.object(service, "log") as log:
                 service._work(claimed)
         self.assertFalse(any("后重试" in str(row) for row in log.call_args_list))
-        self.assertEqual(resumed.items[0]["state"], "done")
-        self.assertTrue(resumed.results_page(0, 10)["results"][0]["unverified"])
+        self.assertEqual(resumed.items[0]["state"], "failed")
+        self.assertEqual(resumed.results_page(0, 10)["results"][0]["approach"], [])
 
     def test_old_failures_alone_trigger_cap(self):
         self.db.items[0].update(failures=12, attempts=1)

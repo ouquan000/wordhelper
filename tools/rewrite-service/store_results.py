@@ -1,6 +1,9 @@
 """队列视图、历史分页、复用与闲时结果。"""
 
 
+import rewrite_protection as protection
+
+
 class ResultOperations:
     def status(self):
         with self._lock:
@@ -81,9 +84,12 @@ class ResultOperations:
         want_book_id, want_book = self._api.book_scope(item)
         want_model = str((item or {}).get("model") or "")
         with self._lock:
+            vote = protection.latest_votes(protection.feedback_rows(self.data_dir)).get(word.casefold())
             record = self.results.get(word) or {"entries": []}
             for entry in reversed(record.get("entries") or []):
                 if entry.get("status") != "ok" or entry.get("unverified"):
+                    continue
+                if vote and not protection.may_publish(entry, vote):
                     continue
                 if str(entry.get("model") or "") != want_model:
                     continue
@@ -120,6 +126,8 @@ class ResultOperations:
             rows = []
             for item in self.items:
                 entry = self._entry_for(item["clientId"])
+                if entry and entry.get("unverified"):
+                    entry = dict(entry, status="failed", approach=[])
                 ok = entry is not None and entry.get("status") == "ok"
                 rows.append(
                     {
@@ -186,7 +194,12 @@ class ResultOperations:
         if not approach:
             return None
         with self._cond:
-            if self.is_locked(word_id, book_id):
+            votes = protection.latest_votes(protection.feedback_rows(self.data_dir))
+            key = word.casefold()
+            vote = votes.get(key)
+            if (meta.get("unverified") or meta.get("quality_rejected") or
+                    self.is_locked(word_id, book_id) or key in protection.locked_words(self.locks(), votes)
+                    or (vote and vote[0][1])):
                 return None
             book_id_value, book_name = self._api.book_scope({"bookId": book_id, "book": book})
             record = self.results.setdefault(word, {"word": word, "entries": []})
@@ -215,6 +228,7 @@ class ResultOperations:
                 "reused": False,
                 "reuseOf": None,
                 "source": "worker",
+                "engine": protection.ENGINE,
             }
             record["entries"] = self._api._trim(record["entries"] + [entry])
             self._save_word(word)

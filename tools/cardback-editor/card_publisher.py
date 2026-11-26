@@ -30,6 +30,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -38,6 +39,13 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(HERE))
 SEED_PATH = os.path.join(PROJECT_ROOT, "content", "seed", "cet6_cards.json")
 RESULTS_DIR = os.path.join(PROJECT_ROOT, "tools", "rewrite-service", "data", "results")
 DEFAULT_PUBLISH_DIR = os.path.join(HERE, "published", "cards")
+
+# The editor already owns the dependency on its sibling rewrite service.
+for module_dir in (os.path.join(HERE, "rewrite-service"), os.path.join(HERE, "..", "rewrite-service")):
+    if os.path.isfile(os.path.join(module_dir, "rewrite_protection.py")):
+        sys.path.insert(0, os.path.abspath(module_dir))
+        break
+import rewrite_protection as protection
 
 BOOK_NAME = "六级记忆卡"
 CARDS_FILENAME = "cet6_cards.json"
@@ -178,7 +186,7 @@ def _rank(record):
     return (record["rev"], _updated_at_value(record), record["source"])
 
 
-def collect_results(results_dir=None):
+def collect_results(results_dir=None, *, votes=None, locked=None):
     """扫 results 目录，返回 (winners, stats)。
 
     winners: {word: {"approach": [...], "method": str | None, "rev": int,
@@ -188,6 +196,8 @@ def collect_results(results_dir=None):
     directory = results_dir or RESULTS_DIR
     stats = {"files": 0, "broken_files": 0, "entries": 0, "accepted": 0, "rejected": 0}
     winners = {}
+    if votes is None:
+        votes, locked = _protections(directory)
 
     for path in sorted(glob.glob(os.path.join(directory, "*.json"))):
         stats["files"] += 1
@@ -215,6 +225,11 @@ def collect_results(results_dir=None):
                 stats["rejected"] += 1
                 continue
             word = word.strip()
+
+            key = word.casefold()
+            if key in locked or not protection.may_publish(entry, votes.get(key)):
+                stats["rejected"] += 1
+                continue
 
             approach = _entry_approach(entry)
             if approach is None:
@@ -303,19 +318,46 @@ def _next_version(publish_dir):
     return version + 1
 
 
+def _protections(directory):
+    data = os.path.dirname(os.path.abspath(directory))
+    votes = protection.latest_votes(protection.feedback_rows(data))
+    try:
+        locks = _read_json(os.path.join(data, "locks.json"))["locks"]
+    except FileNotFoundError:
+        locks = {}
+    return votes, protection.locked_words(locks, votes)
+
+
 def publish(base_dir=None):
     """合并 + 原子发布，返回 manifest（额外带 merged / stats，manifest 文件本身只有 5 个字段）。
 
     base_dir 是**输出目录**，默认 `<本文件>/published/cards`；种子和 results 的位置由
     模块常量 SEED_PATH / RESULTS_DIR 决定（测试可临时改这两个常量指向假数据）。
     """
-    publish_dir = base_dir or DEFAULT_PUBLISH_DIR
+    publish_dir = os.fspath(base_dir or DEFAULT_PUBLISH_DIR)
 
     seed = _read_json(SEED_PATH)
     if not isinstance(seed, dict):
         raise ValueError("种子文件结构不对：顶层不是对象")
 
-    winners, stats = collect_results()
+    votes, locked = _protections(RESULTS_DIR)
+    for row in seed["words"]:
+        if row.get("locked") is True or str(row.get("wordId") or row.get("id")) in locked:
+            locked.add(row["word"].strip().casefold())
+    winners, stats = collect_results(votes=votes, locked=locked)
+    # Rebuilding from seed must not silently roll a protected card back to seed.
+    cards_path = os.path.join(publish_dir, CARDS_FILENAME)
+    protected = locked | set(votes)
+    if protected and os.path.exists(cards_path):
+        previous = {str(row.get("word")).casefold(): row for row in _read_json(cards_path)["words"]}
+        for row in seed["words"]:
+            key = row["word"].casefold()
+            if key in protected and key in previous and row["word"] not in winners:
+                for field in ("approach", "method"):
+                    if field in previous[key]:
+                        row[field] = previous[key][field]
+                    else:
+                        row.pop(field, None)
     merged = merge_into_seed(seed, winners)
     # 词表没变，count 跟着实际条数走，防种子被手改后 count 与实际不一致
     seed["count"] = len(seed["words"])
@@ -345,7 +387,7 @@ def ensure_published(base_dir=None):
     启动路径不能因为缺文件就崩，也不能在发布包已就绪时白白重写一份 —— 重写会换
     sha256，已经热更过的 App 又得下一遍。
     """
-    publish_dir = base_dir or DEFAULT_PUBLISH_DIR
+    publish_dir = os.fspath(base_dir or DEFAULT_PUBLISH_DIR)
     cards_path = os.path.join(publish_dir, CARDS_FILENAME)
     manifest_path = os.path.join(publish_dir, MANIFEST_FILENAME)
 

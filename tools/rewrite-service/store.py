@@ -109,7 +109,7 @@ def result_name(word):
 def _current(record):
     """这个词最近一版成功的结果（没有就空）。"""
     for entry in reversed(record["entries"]):
-        if entry.get("status") == "ok":
+        if entry.get("status") == "ok" and not entry.get("unverified"):
             return entry
     return None
 
@@ -135,7 +135,7 @@ def same_book_scope(left, right):
 
 def _current_in_book(record, item):
     return next((e for e in reversed(record["entries"])
-                 if e.get("status") == "ok" and same_book_scope(e, item)), None)
+                 if e.get("status") == "ok" and not e.get("unverified") and same_book_scope(e, item)), None)
 
 
 def _trim(entries):
@@ -165,6 +165,8 @@ def _public(entry):
     out["source"] = str(entry.get("source") or "")
     if entry.get("reuseOf") is not None:
         out["reuseOf"] = entry.get("reuseOf")
+    if entry.get("unverified") or entry.get("status") == "failed":
+        out.update(status="failed", approach=[], error=entry.get("error") or out["reason"] or "质量未过审")
     return out
 
 

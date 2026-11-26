@@ -101,7 +101,7 @@ NEGATION_STOPS = "，。；：！？、\n\r\t—…"
 NOTE_PREFIX = re.compile(r"^\s*(?:注|附|顺带|ps|p\.s\.)[:：]?", re.IGNORECASE)
 
 ARROW = "——>"
-MIN_STEPS, MAX_STEPS = 3, 5
+MIN_STEPS, MAX_STEPS = 2, 5
 _NUM_PREFIX = re.compile(r"^\s*(?:[①-⑳]|\d{1,2}\s*[.、,，:：)\]])\s*")
 
 
@@ -184,12 +184,12 @@ def _feedback(hits):
         return ""
     rows = ["这版没过确定性硬拦截，下面每一条都必须改："]
     rows.extend("- " + hit for hit in hits)
-    rows.append("只改 derivation：保持 3–5 行，末行必须是「——> 中文释义」；上面点名的词一个都不许留。")
+    rows.append("只改 derivation：保持 2–5 行，末行必须是「——> 中文释义」；上面点名的词一个都不许留。")
     return "\n".join(rows)
 
 
-def check(derivation, instruction="", banned_terms=None, elements=None):
-    """机械扫描最终 3–5 步推导，返回 HardResult。
+def check(derivation, instruction="", banned_terms=None, elements=None, target_word=""):
+    """机械扫描最终 2–5 步推导，返回 HardResult。
 
     依次检查：行数、末行箭头、教材腔、翻译腔、黑榜①②③（慢动作铺垫／生僻零件／
     词源硬扯）、用户禁令。所有命中都写进 hits / feedback，ok 只有在零命中时为 True。
@@ -207,7 +207,7 @@ def check(derivation, instruction="", banned_terms=None, elements=None):
         add("derivation 为空")
     else:
         if not (MIN_STEPS <= len(lines) <= MAX_STEPS):
-            add("步数 %d（必须 3–5 行）" % len(lines))
+            add("步数 %d（必须 2–5 行）" % len(lines))
         last = lines[-1]
         if ARROW not in last:
             # 末行是「注：……」这类旁注时，箭头在倒数第二行也认（与 pipeline.normalize 一致）。
@@ -239,6 +239,9 @@ def check(derivation, instruction="", banned_terms=None, elements=None):
         body = "\n".join(lines)
         lowered = body.lower()
         pool = [str(x).strip().lower() for x in (elements or []) if str(x).strip()]
+
+        if any(token.strip() == "dole" for token in pool) and str(target_word or "").strip().casefold() != "dole":
+            add("黑榜②生僻零件：dole，换成熟悉锚点")
 
         # 黑榜②③：生僻零件（用户原话「我怎么知道 hemi 是什么意思」）出现即打回。
         for part, pattern in _OBSCURE_RES:

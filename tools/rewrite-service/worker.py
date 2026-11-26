@@ -1,6 +1,6 @@
 """闲时洗词 worker（v1.5.3）。
 
-这个 worker 只在「手动队列彻底空着」的时候，捡用户踩过差评的旧词，
+这个 worker 只在「手动队列彻底空着」的时候，选取明日新词、限额未学词与到期复习词，
 用现有 pipeline/Judge 重跑一遍记忆思路，成品写进 results/<word>.json，
 由现有的结果流推给前端。
 
@@ -46,7 +46,9 @@ OFFLINE_PRIORITY = 10
 DEFAULTS = {
     "enabled": False,
     "interval_sec": 300,
-    "max_per_hour": 6,
+    "max_per_hour": 15,
+    "max_per_day": 50,
+    "new_word_fallback_limit": 25,
     "only_when_manual_idle": True,
     "min_downvotes": 2,
     "target_methods": ["meaning", "polysemy"],
@@ -178,10 +180,7 @@ def _word_source_lookup(word):
 
 
 def candidates(store, config=None, runtime=None, limit=20):
-    """挑出「该洗」的词：差评够多、差评多于好评、没锁定、最近没洗过。
-
-    返回按优先级排好的列表（meaning/polysemy 优先，然后按差评票数）。
-    """
+    """从学习日靶心中选择未受保护的六级词。"""
     return worker_candidates.candidates(_api, store, config, runtime, limit)
 
 
@@ -202,12 +201,16 @@ def run_candidate(bucket, store):
     return worker_run.run_candidate(_api, bucket, store)
 
 
+_cycle_lock = threading.Lock()
+
+
 def run_once(store=None, runner=None, config=None, limit=None):
     """跑一轮。runner 可注入 —— 测试绝不碰真模型。
 
     返回 {"ok","reason","washed":[{word,key,seq}],"candidates","at"}；不抛异常。
     """
-    return worker_run.run_once(_api, store, runner, config, limit)
+    with _cycle_lock:
+        return worker_run.run_once(_api, store, runner, config, limit)
 
 
 # ------------------------------------------------------------ 线程

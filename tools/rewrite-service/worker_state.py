@@ -73,6 +73,10 @@ def normalize_config(api, raw):
         "interval_sec": api._clamp_int(raw.get("interval_sec"), api.DEFAULTS["interval_sec"], 30, 86400),
         "max_per_hour": api._clamp_int(raw.get("max_per_hour"), api.DEFAULTS["max_per_hour"], 0, 60),
         "only_when_manual_idle": bool(raw.get("only_when_manual_idle", api.DEFAULTS["only_when_manual_idle"])),
+        "sync_path": api.os.path.join(api.REPO_ROOT, raw.get("sync_path") or "tools/cardback-editor/sync.json"),
+        "upcoming_new_word_ids": raw.get("upcoming_new_word_ids") or [],
+        "max_per_day": api._clamp_int(raw.get("max_per_day"), api.DEFAULTS["max_per_day"], 0, 1440),
+        "new_word_fallback_limit": api._clamp_int(raw.get("new_word_fallback_limit"), 25, 0, 1440),
         "min_downvotes": api._clamp_int(raw.get("min_downvotes"), api.DEFAULTS["min_downvotes"], 1, 20),
         "target_methods": methods,
         "per_run": api._clamp_int(raw.get("per_run"), api.DEFAULTS["per_run"], 1, 5),
@@ -115,6 +119,7 @@ def _load_runtime(api):
     data = raw if isinstance(raw, dict) else {}
     runtime = {
         "enabled": data.get("enabled") if isinstance(data.get("enabled"), bool) else None,
+        "daily": data.get("daily") or {},
         "runs": [str(x) for x in (data.get("runs") or []) if isinstance(x, str)],
         "done": data.get("done") if isinstance(data.get("done"), dict) else {},
         "washed": int(data.get("washed") or 0) if str(data.get("washed") or 0).lstrip("-").isdigit() else 0,

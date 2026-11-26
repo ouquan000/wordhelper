@@ -39,7 +39,7 @@ def style_active(api):
 
 
 def method_weights(api):
-    """方法路由权重：sound 73.9% 实测优势，meaning/polysemy 只做保底。"""
+    """历史方法占比，保留给状态页和兼容调用方。"""
     raw = api.style_rules().get("method_weights")
     if not isinstance(raw, dict):
         return dict(api.DEFAULT_METHOD_WEIGHTS)
@@ -132,7 +132,7 @@ def style_block(api, method="", judge=False):
         return ""
     few = api.style_rules().get("few_shot") or {}
     lines = []
-    weights = api.method_weights()
+    lines.append("选招以自然契合为先，熟悉零件 → 稳定画面 → 词义。")
     if judge:
         lines.append("【风格规则·黑榜（v1.5.3）】")
         for row in api.black_rules():
@@ -141,12 +141,6 @@ def style_block(api, method="", judge=False):
                 "打回" if row.get("severity") == "block" else "扣分",
                 row.get("detail") or "",
             ))
-        if weights:
-            lines.append(
-                "方法权重实测："
-                + "、".join("%s %.1f%%" % (k, v) for k, v in sorted(weights.items(), key=lambda kv: -kv[1]))
-                + "；meaning / polysemy 只有一种情况算对：别的招确实做不出画面。"
-            )
         return "\n".join(lines)
     red = api._red_sample_block(method or "", 2)
     if red:
@@ -158,13 +152,6 @@ def style_block(api, method="", judge=False):
     black = api._black_rule_block()
     if black:
         lines.append(black)
-    if weights:
-        lines.append(
-            "【方法权重实测·按这个比例选招】"
-            + "、".join("%s %.1f%%" % (k, v) for k, v in sorted(weights.items(), key=lambda kv: -kv[1]))
-            + "\nmeaning（含义联想）和 polysemy（熟词生义）是保底：只有 sound / root / shape / contrast "
-            "都做不出画面时才允许，且画面必须和读音或拼写焊死。"
-        )
     return "\n".join(lines)
 
 
@@ -232,11 +219,6 @@ def style_hits(api, item, draft, approach):
     if method == "sound" and not api._SOUND_EVIDENCE.search(body):
         _add("label_mismatch", "黑榜③：method 写 sound，但正文没有读音或谐音锚点，标签贴歪了。")
 
-    # ④ meaning / polysemy 是保底不是首选：当主线就按 method_penalty 扣「方法选对」
-    penalty = api.method_penalty()
-    if method in penalty and penalty[method] > 0:
-        _add("weak_method", "黑榜④：%s 是保底招（实测路由权重 %.1f%%），不该当主线。"
-             % (method, api.method_weight(method)), method=method)
     return hits
 
 

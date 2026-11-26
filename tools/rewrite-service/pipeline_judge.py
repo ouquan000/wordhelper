@@ -74,7 +74,7 @@ def _judge_flags(api, item, approach):
     target = api.providers.judge_target(item["model"])
     user = "\n\n".join([
         api._judge_brief(item),
-        "【新版成品 3–5 步】\n" + "\n".join(approach),
+        "【新版成品 2–5 步】\n" + "\n".join(approach),
         "只输出 JSON：{\"intent\":\"change_method|explain|fix_detail|other\","
         "\"same_method\":true|false,\"history_repeat\":true|false}",
     ])
@@ -89,6 +89,23 @@ def _judge_flags(api, item, approach):
     return api.extract_json(text) or {}
 
 
+def judge_context(api, draft):
+    method = api._method_key((draft or {}).get("method"))
+    rows = ["本稿方法：" + method, api.style_block(method, judge=True)]
+    try:
+        samples = api.exemplars.retrieve(method, k_pos=1, k_neg=1)
+    except (OSError, ValueError):
+        samples = {}
+    for kind, label in (("pos", "点赞正例"), ("neg", "点踩反例")):
+        for sample in (samples.get(kind) or [])[:1]:
+            if sample.get("method") != method:
+                continue
+            text = " ".join(sample.get("derivation") or [])[:180]
+            note = str(sample.get("note") or "")[:60]
+            rows.append(f"{label}（仅校准尺度）：{text} {note}")
+    return "\n".join(filter(None, rows))
+
+
 def judge(api, item, draft, approach):
     """第三步：另一个脑子打分。只给它成品，不给前面「怎么想出来的」过程。
 
@@ -99,11 +116,8 @@ def judge(api, item, draft, approach):
     rows = [api._judge_brief(item)]
     if not api._has_instruction(item):
         rows.append("【本轮没有用户意见：第 7 维「诉求落实」不判，也不要输出这个键】")
-    rows.append("【新版成品 3–5 步】\n" + "\n".join(approach))
-    # 黑榜扣分表：让评委按同一份规则扣分/打回，而不是各凭手感。
-    _style = api.style_block("", judge=True)
-    if _style:
-        rows.append(_style)
+    rows.append("【新版成品 2–5 步】\n" + "\n".join(approach))
+    rows.append(api.judge_context(draft))
     user = "\n\n".join(rows)
     user_short = user + chr(10) * 2 + "（输出从简：issues 最多 2 条，每条不超过 40 字。）"
     text = api.providers.complete(

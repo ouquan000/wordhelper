@@ -92,6 +92,7 @@ def run(api, item, log=None, on_stage=None):
             # 不花 Judge Token。feedback 直接进下一轮生成。
             hard = api.rules_hard.check(
                 approach,
+                elements=draft.get("elements"), target_word=item.get("word"),
                 instruction=str(item.get("instruction") or ""),
                 banned_terms=[ban["needle"] for ban in _bans] if _bans else None,
             )

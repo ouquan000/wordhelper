@@ -160,7 +160,11 @@ providers.py 适配模型，WB 经 8788。测试使用假供应商。AppDatabase
 | store_feedback.py | 反馈幂等、记忆信号与按书锁词 |
 | quality_retry_policy.py | 按队列领取次数或累计失败次数判定五轮上限，检查候选有效性 |
 
-Store 的各组方法共用同一实例及条件锁，通过实例的模块引用读取可替换依赖。质量未过的前四轮沿用退避，到顶有候选时写入带原因的未复核结果，无候选时写入失败终态。传输错误仍由独立的退避路径处理。
+Store 的各组方法共用同一实例及条件锁，通过实例的模块引用读取可替换依赖。质量拒绝前四轮退避，第五轮写 failed 回执、原修订号和空正文。Android 可按原 clientId 认领并结束轮询。旧未复核成功记录也以失败回执重放。
+
+worker_target.py 只读 config/worker.json 指定的 sync_path。学习日按本地 04:00 切换，明日结束采用下一学习日 04:00 的开区间。upcoming_new_word_ids 可传规范词头，或可由种子 id / wordId、已有反馈 wordId 对应的 ID；Android 本地自增 ID 不按种子位置猜测。同步快照缺失时休眠。未指定名单时每天最多尝试 25 个未学六级词，再处理到期和遗留词。每日和每小时配额含失败尝试，先记账再调用模型。默认关闭，独立低优先级运行。
+
+card_publisher.py 与后台共用 rewrite_protection.py 的事件时间和保护规则。先比 createdAt，旧客户端回退到 receivedAt，同刻点赞优先。已发布的保护词保留 approach / method。人工抽检后通过既有编辑器 POST /cards/publish 发布，失败回执、未复核、锁定、旧差评稿不能合入。点赞后只接受严格更新的手动通过稿。发布和后台开关各自独立。
 
 ## 拆分优先级
 

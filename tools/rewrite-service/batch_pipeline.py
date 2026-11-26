@@ -214,7 +214,7 @@ def _draft_from_entry(item, entry):
         return None, "derivation 含非字符串"
     lines = [line.strip() for line in raw_lines if line.strip()]
     if pipeline.normalize(lines) is None:
-        return None, "derivation 不是合规的 3–5 步"
+        return None, "derivation 不是合规的 2–5 步"
 
     draft = {
         "method": method,
@@ -331,14 +331,14 @@ def _approach_map(items, approaches):
     return result
 
 
-def _judge_user(chunk, approach_map):
+def _judge_user(chunk, approach_map, drafts):
     rows = ["【本批共 %d 个词：必须逐词返回，一个都不能少，顺序与下面一致】" % len(chunk)]
     for index, item in enumerate(chunk, 1):
         word = str(item["word"]).strip()
         rows.append("")
         rows.append("### 第 %d 个词（返回项的 word 必须原样写：%s）" % (index, word))
-        rows.append(pipeline._judge_brief(item))
-        rows.append("【新版成品 3–5 步】\n" + "\n".join(_approach_list(_lookup(approach_map, word, []))))
+        rows.extend((pipeline._judge_brief(item), pipeline.judge_context(_lookup(drafts, word, {}))))
+        rows.append("【新版成品 2–5 步】\n" + "\n".join(_approach_list(_lookup(approach_map, word, []))))
         if not pipeline._has_instruction(item):
             rows.append(
                 "【本轮没有用户意见：第 7 维「诉求落实」不判，也不要输出这个键；"
@@ -436,7 +436,7 @@ def judge_batch(items, drafts, approaches):
     只把该词回退到 ``pipeline.judge(item, draft, approach)``；批调用整体失败
     或数组解析失败时，整批逐词回退，不抛整批错误。
 
-    ``approaches`` 可以是 ``{word: 3–5 步}``，也可以是与 items 等长的列表。
+    ``approaches`` 可以是 ``{word: 2–5 步}``，也可以是与 items 等长的列表。
     """
     selected = [
         item for item in (items or [])
@@ -458,7 +458,7 @@ def judge_batch(items, drafts, approaches):
             text = providers.complete(
                 target,
                 pipeline._prompt("judge_batch"),
-                _judge_user(chunk, approach_map),
+                _judge_user(chunk, approach_map, drafts or {}),
                 max_tokens=8192,
                 temperature=0.2,
                 timeout=300,

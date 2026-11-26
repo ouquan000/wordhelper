@@ -112,7 +112,13 @@ class WorkerBackfeedTest(unittest.TestCase):
             _down_row(word="enough", word_id=11, reasons=["太烂了"], comment="像废话"),
             _down_row(word="enough", word_id=11, reasons=["太烂了"], comment="像废话"),
         ])
-        buckets = worker.candidates(self.store)
+        config = worker.normalize_config({"new_word_fallback_limit": 0})
+        config["sync_path"] = os.path.join(self.root, "snapshot.json")
+        worker.store_mod._write_json(config["sync_path"], {"rows": {
+            "e": {"t": "progress", "b": "六级记忆卡", "w": "enough", "nrt": 1}}})
+        from unittest.mock import patch
+        with patch.object(worker, "_word_index", {"loaded": True, "by_word": {"enough": {"word": "enough"}}}):
+            buckets = worker.candidates(self.store, config)
         self.assertEqual(len(buckets), 1)
         instruction = buckets[0]["instruction"]
         self.assertIn("太烂了", instruction)

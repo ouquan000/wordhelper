@@ -59,6 +59,7 @@ def test_store_finish_ok(tmp):
     print("\n[1] Store.finish_ok 落 unverified / reason")
     st = make_store(tmp)
     item = enqueue_and_claim(st, "c-unverified", "abandon")
+    st.items[0]["attempts"] = 5
     entry = st.finish_ok(
         item, ["拆词", "词根"], {
             "method": "联想",
@@ -68,39 +69,22 @@ def test_store_finish_ok(tmp):
             "reason": "评分模型超时，未复核",
         }
     )
-    check("finish_ok 仍返回 ok entry", entry is not None and entry.get("status") == "ok",
-          repr(entry and entry.get("status")))
-    check("entry.unverified=True", entry.get("unverified") is True, repr(entry.get("unverified")))
-    check("entry.reason 原文保留", entry.get("reason") == "评分模型超时，未复核",
-          repr(entry.get("reason")))
-
-    public = st.results_page(0, 10)["results"][0]
-    check("results 对外 JSON 带 unverified", public.get("unverified") is True, repr(public.get("unverified")))
-    check("results 对外 JSON 带 reason", public.get("reason") == "评分模型超时，未复核",
-          repr(public.get("reason")))
-
+    check("拒绝终态", entry is None, repr(entry))
+    public, = st.results_page(0, 10)["results"]
+    check("标准失败回执", public["status"] == "failed", repr(public))
+    check("未交付正文", public["approach"] == [], repr(public))
+    check("原因保留", "评分模型超时" in public["error"], repr(public))
+    check("请求可认领", public["clientId"] == "c-unverified", repr(public))
     status = st.status()
-    row = next((r for r in status["items"] if r["word"] == "abandon"), None)
-    check("status.items 带 unverified", row is not None and row.get("unverified") is True, repr(row))
-    check("status.items 带 reason", row is not None and row.get("reason") == "评分模型超时，未复核",
-          repr(row and row.get("reason")))
-    recent = next((r for r in status["recent"] if r.get("word") == "abandon"), None)
-    check("status.recent 带 unverified", recent is not None and recent.get("unverified") is True,
-          repr(recent))
-
-    records = st.records_page()
-    rec = next((r for r in records["records"] if r["word"] == "abandon"), None)
-    check("records 带 unverified", rec is not None and rec.get("unverified") is True, repr(rec))
-    check("records 带 reason", rec is not None and rec.get("reason") == "评分模型超时，未复核",
-          repr(rec and rec.get("reason")))
-
-    # 落盘后再载入，标记不能丢
+    check("队列终止", status["failed"] == 1, repr(status["failed"]))
+    check("没有成功", status["done"] == 0, repr(status["done"]))
+    check("面板显示失败", status["recent"][0]["status"] == "failed", repr(status["recent"]))
+    rec, = st.records_page()["records"]
+    check("记录状态", rec["state"] == "failed", repr(rec))
+    check("记录无废稿", rec["approach"] == [], repr(rec))
     again = store_mod.Store(tmp).load()
-    again_public = again.results_page(0, 10)["results"][0]
-    check("重新载入后 results 仍带标记",
-          again_public.get("unverified") is True
-          and again_public.get("reason") == "评分模型超时，未复核",
-          repr(again_public))
+    check("重新载入保留回执", again.results_page(0, 10)["results"] == [public], repr(public))
+    check("下一页不重复", again.results_page(public["seq"], 10)["results"] == [], repr(public))
 
     # 旧记录缺字段 → false / ""
     st2 = make_store(os.path.join(tmp, "legacy"))

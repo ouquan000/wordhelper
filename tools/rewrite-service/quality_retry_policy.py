@@ -15,4 +15,4 @@ def rejection_state(attempts, failures, candidate):
     """failures 已含本次拒绝。任一持久化计数到顶即终结。"""
     if max(attempts, failures) < QUALITY_ROUND_LIMIT:
         return "retry_wait"
-    return "done" if valid_candidate(candidate) else "failed"
+    return "failed"

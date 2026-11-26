@@ -60,10 +60,11 @@ class RulesHardTest(unittest.TestCase):
             result = rules_hard.check(lines(CLEAN[0], row, CLEAN[2]))
             self.assertFalse(result.ok, row)
 
-    def test_step_count_must_be_three_to_five(self):
+    def test_step_count_must_be_two_to_five(self):
         two = lines("① cat 是猫。", "② ——> 大教堂。")
         six = lines("① a", "② b", "③ c", "④ d", "⑤ e", "⑥ ——> 词义")
-        for body in (two, six):
+        self.assertTrue(rules_hard.check(two).ok)
+        for body in (two[-1:], six):
             result = rules_hard.check(body)
             self.assertFalse(result.ok)
             self.assertTrue(any("步数" in hit for hit in result.hits), result.hits)

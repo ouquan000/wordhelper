@@ -44,7 +44,7 @@ def _work(api, item):
         out = api.pipeline.run(item, log=api.log, on_stage=on_stage)
         # 1.4.7.2：质量没过不再「照发 unverified」——那会让用户永远卡在两轮都不过
         # 的稿子上。这里只留最佳候选，按指数退避排下一次；合格的那次才 finish_ok。
-        if out.get("quality_rejected"):
+        if out.get("quality_rejected") or out.get("unverified"):
             rejected = store.finish_quality_rejected(
                 item,
                 out.get("approach") or [],
@@ -194,6 +194,7 @@ def _work_batch(api, items):
                         violations.append(hit)
             hard = api.pipeline.rules_hard.check(
                 approach,
+                elements=draft.get("elements"), target_word=item.get("word"),
                 instruction=str(item.get("instruction") or ""),
                 banned_terms=[ban["needle"] for ban in bans] if bans else None,
             )
@@ -222,7 +223,8 @@ def _work_batch(api, items):
                 continue
             scores, issues, intent, same_method, history_repeat = result
             binary = getattr(result, "binary", None)
-            if not api.pipeline._passed(
+            scores, _, blocked = api.pipeline.style_gate(item, draft, approach, scores)
+            if blocked or not api.pipeline._passed(
                 item, scores, intent, same_method, history_repeat,
                 binary=binary, hard_ok=True,
             ):

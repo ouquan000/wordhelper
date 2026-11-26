@@ -85,15 +85,15 @@ def _judge_brief(item):
         rows.append("【用户这一版指出的问题（原话，未改写）】\n" + instruction)
     prev = [str(x).strip() for x in (item.get("currentApproach") or []) if str(x).strip()]
     if prev:
-        rows.append("【上一版成品（被用户否掉的那一版 3–5 步）】\n" + "\n".join(prev[:5]))
+        rows.append("【上一版成品（被用户否掉的那一版 2–5 步）】\n" + "\n".join(prev[:5]))
     history = str(item.get("history") or "").strip()
     if history:
         # 后台自动重写没有新的用户原话时，评委只看上一版会漏掉「这个词已经被
         # 同一条路线坑过好几次」。历史必须进评委上下文，否则它会继续给同一招打高分。
         rows.append(
             "【这个词的历史（用户原话/被点踩路线/被点赞版本）】\n"
-            "这是判 same_method 与诉求落实的硬证据；历史里同一方法被用户明确否掉过一次，"
-            "新版仍以该方法为主线就算没解决（只有更晚的明确允许可解除）。\n" + history
+            "这是判 same_method 与诉求落实的硬证据；历史里被用户明确否掉过一次的具体路线，"
+            "新版仍重复才算没解决，共用方法标签不算重复（只有更晚的明确允许可解除）。\n" + history
         )
     return "\n".join(rows)
 
@@ -103,19 +103,13 @@ def _judge_brief(item):
 
 # ------------------------------------------------------------------ 跨词经验
 def _recommended_methods(api, item):
-    """画像 Top-2：只作倾向提示，权重低于用户原话、高于默认模板。
-
-    v1.5.3 起再过一道风格权重：实测吃不开的招（polysemy 0%）不给提示，
-    其余按 sound 73.9% > meaning 9.4% > root 8.2% … 的顺序排，放大谐音优势。
-    """
+    """历史偏好只作提示，契合当前词优先。"""
     try:
         rows = api.profile.recommend_top(2, item.get("history") or "")
     except Exception:  # noqa: BLE001 - 画像坏了不能拖垮生成
         return []
     rows = [row for row in rows if row in api.METHOD_KEYS.values()][:2]
-    weights = api.method_weights()
-    rows = [row for row in rows if weights.get(row, 1.0) > 0]
-    return sorted(rows, key=lambda row: -weights.get(row, 0.0))
+    return rows
 
 
 def _exemplar_block(api, method):
@@ -262,8 +256,8 @@ def polish(api, item, draft):
     """第二步：单独开一次请求磨文字。磨坏了就退回草稿，别让润色拖垮整条链。"""
     draft_lines = api.normalize(draft["derivation"])
     if not draft_lines:
-        raise api.PipelineError("草稿的 derivation 不是合规的 3–5 步：%s" % draft["derivation"])
-    user = "%s\n\n拆法：%s\n\n待润色的 3–5 步：\n%s" % (
+        raise api.PipelineError("草稿的 derivation 不是合规的 2–5 步：%s" % draft["derivation"])
+    user = "%s\n\n拆法：%s\n\n待润色的 2–5 步：\n%s" % (
         api._brief(item),
         draft["split"] or draft["method"],
         "\n".join(draft_lines),

@@ -77,7 +77,7 @@ DEFAULT_METHOD_WEIGHTS = {
     "meaning": 9.4,  # 保底，不许当首选
     "polysemy": 0.0,  # 实测 0%：只在熟词生义的高频考点上才用
 }
-DEFAULT_METHOD_PENALTY = {"meaning": 1, "polysemy": 2}
+DEFAULT_METHOD_PENALTY = {}
 DEFAULT_REJECT_ON = ("slow_start", "advanced_teaches_basic", "root_overreach", "label_mismatch")
 _STYLE_CACHE = {"path": None, "data": None}
 
@@ -272,6 +272,10 @@ def _canonical_dim(key):
 
 def _judge_flags(item, approach):
     return pipeline_judge._judge_flags(_api, item, approach)
+
+
+def judge_context(draft):
+    return pipeline_judge.judge_context(_api, draft)
 
 
 def judge(item, draft, approach):

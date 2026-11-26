@@ -11,8 +11,8 @@ NUM = re.compile(r"^[\s①-⑳0-9０-９]{0,3}(?:[.、,，:：)\]]\s*)?")
 ARROW = re.compile(r"\s*(?:-{1,}>|={1,2}>|→|⇒|—{1,}>)\s*")
 ARROW_TEXT = " ——> "
 
-CIRCLED = ("①", "②", "③", "④", "⑤")  # 3–5 步，最多 5 个号
-MIN_STEPS, MAX_STEPS = 3, 5
+CIRCLED = ("①", "②", "③", "④", "⑤")  # 2–5 步，最多 5 个号
+MIN_STEPS, MAX_STEPS = 2, 5
 
 # generate.txt 让模型吐英文键，它偶尔还是回中文名；这里收一下口，手机端按 key 出「联想 · 词根」标签。
 METHOD_KEYS = {
@@ -117,7 +117,7 @@ def extract_json(api, text):
 
 
 def normalize(api, derivation):
-    """3–5 行归一：按实际行数重挂 ①②③④⑤，末行箭头统一成 ——>，行数越界直接判废。"""
+    """2–5 行归一：按实际行数重挂 ①②③④⑤，末行箭头统一成 ——>，行数越界直接判废。"""
     lines = []
     if isinstance(derivation, str):
         derivation = [derivation]

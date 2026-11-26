@@ -13,10 +13,10 @@
   },
   "route_order": ["sound", "root", "shape", "contrast", "meaning", "polysemy"],
   "method_penalty": {
-    "meaning": 1,
-    "polysemy": 2
+    "meaning": 0,
+    "polysemy": 0
   },
-  "weight_note": "sound 73.9% 是实测吃得最开的招；meaning 9.4%、polysemy 0% 属于保底，当选主线时评委在「方法选对」上按 method_penalty 硬扣分。",
+  "weight_note": "历史占比仅供统计，实际选招与评审看自然契合。",
   "red_samples": [
     {
       "word": "maintain",
@@ -126,27 +126,18 @@
       "penalty": {"方法选对": 4},
       "witness": ["monopoly", "referee"],
       "fix": "要么把内容补成这个方法该有的样子，要么把 method 改成真正用的那招。"
-    },
-    {
-      "id": "weak_method",
-      "name": "meaning / polysemy 是保底不是首选",
-      "severity": "warn",
-      "detail": "meaning 只占实测 9.4%、polysemy 0%；只有当 sound / root / shape / contrast 都做不出画面时才允许，且画面必须和读音或拼写焊死。",
-      "penalty": {"方法选对": 1},
-      "witness": [],
-      "fix": "先试一跳谐音或熟词块；保底画面也要求遮住英文能反推出这个词。"
     }
   ],
   "judge_rules": {
     "reject_on": ["slow_start", "advanced_teaches_basic", "root_overreach", "label_mismatch"],
-    "deduct_on": ["slow_start", "advanced_teaches_basic", "root_overreach", "label_mismatch", "weak_method"],
+    "deduct_on": ["slow_start", "advanced_teaches_basic", "root_overreach", "label_mismatch"],
     "floor": 0,
     "note": "reject_on 命中即当轮打回（pass=false，不给通过）；deduct_on 按 black_rules[].penalty 从对应维度硬扣，扣到 0 为止。"
   },
   "few_shot": {
     "red_header": "【红榜手感·照这个手感写，不许抄词】",
     "black_header": "【黑榜铁律·命中即打回】",
-    "keep_magic": "魔性谐音不许阉割：「一个骚体克」「面瘫」「拉底抠」这种才是记忆钩子；要求的是每一块都交代落点，不是把谐音改乖。",
+    "keep_magic": "只用天然贴音、能直接带出词义的妙梗；严禁硬造怪人名。",
     "persona": "活人感第一：像刚背完这个词的聪明室友递小抄，有画面、有动作、有人味儿，不像老师也不像词典。"
   }
 }

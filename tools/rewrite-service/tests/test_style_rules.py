@@ -80,7 +80,7 @@ class StyleRulesLoadTest(unittest.TestCase):
         ids = [row.get("id") for row in pipeline.black_rules()]
         for rule_id in ("slow_start", "advanced_teaches_basic", "root_overreach", "label_mismatch"):
             self.assertIn(rule_id, ids)
-        self.assertIn("weak_method", ids)
+        self.assertNotIn("weak_method", ids)
         self.assertTrue(pipeline.black_rule("slow_start").get("penalty"))
         rejecting = pipeline.reject_on()
         for rule_id in ("slow_start", "advanced_teaches_basic", "root_overreach", "label_mismatch"):
@@ -92,7 +92,8 @@ class StyleRulesLoadTest(unittest.TestCase):
         block = pipeline.style_block("sound")
         self.assertIn("红榜", block)
         self.assertIn("黑榜", block)
-        self.assertIn("73.9", block)
+        self.assertIn("自然契合", block)
+        self.assertNotIn("73.9", block)
         # 生成 / 润色 / 评委三侧提示词都要带上黑榜铁律
         for name in ("generate", "polish", "judge"):
             self.assertIn("黑榜", pipeline._prompt(name), name)
@@ -218,15 +219,15 @@ class BlackRuleHitTest(unittest.TestCase):
         hits = pipeline.style_hits({}, {"method": "sound"}, [RED_LINE])
         self.assertNotIn("label_mismatch", [hit["id"] for hit in hits])
 
-    def test_weak_method_warns_but_does_not_reject(self):
-        for method, extra in (("meaning", 1), ("polysemy", 2)):
+    def test_method_label_alone_has_no_penalty(self):
+        for method in ("meaning", "polysemy"):
             approach = ["① 脑子里先放一个画面。", "② 画面推一步就是这个词的意思。",
                         "③ 落到词义上 ——> 意思。"]
             hits = pipeline.style_hits({}, {"method": method}, approach)
             ids = [hit["id"] for hit in hits]
-            self.assertIn("weak_method", ids, method)
+            self.assertNotIn("weak_method", ids, method)
             gated = pipeline.style_penalty_scores(hits, _scores())
-            self.assertEqual(gated["方法选对"], 9 - 1 - extra, method)  # 配置 1 分 + 保底力度
+            self.assertEqual(gated["方法选对"], 9, method)  # 配置 1 分 + 保底力度
             _gated, _hits, rejected = pipeline.style_gate({}, {"method": method}, approach, _scores())
             self.assertFalse(rejected, method)
 
@@ -255,12 +256,10 @@ class MethodRoutingTest(unittest.TestCase):
     def test_polysemy_weight_is_zero(self):
         self.assertEqual(pipeline.method_weight("polysemy"), 0.0)
 
-    def test_recommended_methods_respect_weights(self):
-        ranked = pipeline._recommended_methods({"word": "monopoly"})
-        weights = pipeline.method_weights()
-        self.assertNotIn("polysemy", ranked)
-        scores = [weights.get(method, 0.0) for method in ranked]
-        self.assertEqual(scores, sorted(scores, reverse=True))
+    def test_profile_may_recommend_polysemy(self):
+        from unittest.mock import patch
+        with patch.object(pipeline.profile, "recommend_top", return_value=["polysemy", "root"]):
+            self.assertEqual(pipeline._recommended_methods({}), ["polysemy", "root"])
 
     def test_route_order_from_config(self):
         order = pipeline.style_rules().get("route_order") or []

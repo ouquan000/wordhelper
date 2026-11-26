@@ -60,7 +60,8 @@ try {
     if (!(Get-Command openssl -CommandType Application -ErrorAction SilentlyContinue)) {
         throw '完整模式需要 openssl，以运行 TLS 指纹交叉验证。请将 CLI 加入本次进程 PATH。'
     }
-    $tmp=Join-Path $r ('.preflight-'+[guid]::NewGuid().ToString('N'))
+    $tempRoot=[IO.Path]::GetTempPath().TrimEnd('\','/')
+    $tmp=Join-Path $tempRoot ('.preflight-'+[guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $tmp | Out-Null
     $oldGradle=$env:GRADLE_USER_HOME
     $oldJava=$env:JAVA_HOME
@@ -112,7 +113,7 @@ try {
         $env:JAVA_HOME=$oldJava
         $env:GRADLE_USER_HOME=$oldGradle
         $env:REWRITE_DATA_DIR=$oldData
-        if ((Split-Path (Resolve-Path -LiteralPath $tmp).Path) -ne $r -or (Split-Path $tmp -Leaf) -notmatch '^\.preflight-[a-f0-9]{32}$') {throw '临时目录边界异常'}
+        if ((Split-Path (Resolve-Path -LiteralPath $tmp).Path) -ne $tempRoot -or (Split-Path $tmp -Leaf) -notmatch '^\.preflight-[a-f0-9]{32}$') {throw '临时目录边界异常'}
         Remove-Item -LiteralPath $tmp -Recurse -Force
     }
 } finally {$env:PATH=$originalPath; Pop-Location}
