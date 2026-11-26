@@ -231,10 +231,30 @@ def _worker_toggle(api, body):
     if "enabled" not in payload:
         raise api.ApiError("缺 enabled")
     enabled = bool(payload.get("enabled"))
+    review = payload.get("includeReview")
     store = api._state["store"]
-    status = api.worker_mod.toggle(enabled, api.DATA_DIR, store=store)
+    status = api.worker_mod.toggle(
+        enabled, api.DATA_DIR, store=store, review=review if isinstance(review, bool) else None
+    )
     api.log("闲时洗词 worker：%s" % ("启用" if enabled else "关闭"))
     return {"ok": True, "enabled": bool(status.get("enabled")), "status": status}
+
+
+def _worker_preview(api):
+    """明日靶心预览：只读，忽略配额，不触发洗词。"""
+    store = api._state["store"]
+    try:
+        api.worker_mod.attach(store, api.DATA_DIR)
+    except Exception as exc:  # noqa: BLE001 - 只读接口，失败也回空列表
+        api.log("worker attach 失败：%r" % (exc,))
+    rows = api.worker_mod.preview(limit=8)
+    return {"ok": True, "candidates": rows, "count": len(rows)}
+
+
+def _anchors_count(api):
+    """真熟词锚点池计数：只回数字，不暴露同步文件或词表。"""
+    rows = api.familiar_anchors.index()
+    return {"ok": True, "count": len(rows), "book": api.familiar_anchors.DEFAULT_BOOK}
 
 
 def _taste(api):

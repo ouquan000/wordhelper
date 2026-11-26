@@ -94,6 +94,8 @@ def run_once(api, store=None, runner=None, config=None, limit=None):
     usage = daily(runtime, day)
     if usage["attempts"] >= config["max_per_day"]:
         return {"ok": True, "reason": "daily_budget", "washed": [], "at": started}
+    if not api.review_enabled(config, runtime) and usage.get("new", 0) >= config["max_new_per_day"]:
+        return {"ok": True, "reason": "new_word_budget", "washed": [], "at": started}
 
     pool = api.candidates(store, config, runtime, limit=max(20, (limit or config["per_run"]) * 4))
     if not pool:
@@ -117,6 +119,8 @@ def run_once(api, store=None, runner=None, config=None, limit=None):
             record = {"failures": 0}
         usage["attempts"] += 1
         usage["fallback"] += int(bucket.get("fallback", False))
+        if bucket.get("new"):
+            usage["new"] = int(usage.get("new") or 0) + 1
         runtime["daily"] = usage
         runtime["runs"] = [ts for ts in runtime["runs"] if api._recent(ts, 3600)] + [api._now()]
         api._save_runtime(runtime)

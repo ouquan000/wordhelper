@@ -9,7 +9,7 @@ service.py 起两个 worker 时，生成、润色、评委和补判可以同时�
 设计边界：
 - 只管本项目的进程（rewrite-service 及其测试实例）。DSH 自己的模型调用不经过
   这里，无法从服务端强控；用 wb_phase 分阶段让路，并在报告里写清楚。
-- 槽位数由 WB_GATE_SLOTS 控制（默认 6）。进程内用 BoundedSemaphore 排队，
+- 槽位数由 WB_GATE_SLOTS 控制（默认 2）。进程内用 BoundedSemaphore 排队，
   同一 gate 路径 + 同一 N 共享一个信号量；跨进程用每个槽独立的文件锁
   （<gate_path>.slot_0.lock … <gate_path>.slot_{N-1}.lock）互斥。
 - 共享状态仍写 <gate_path>（默认 data/wb_gate.json），用 .state.lock 保护；
@@ -39,7 +39,7 @@ DEFAULT_GATE = os.path.join(
 # 超过这个时间的持有记录视为上次崩溃留下的僵尸槽，允许回收。
 STALE_ACTIVE_SECONDS = 1800.0
 
-DEFAULT_SLOTS = 6
+DEFAULT_SLOTS = 2
 DEFAULT_WAIT_TIMEOUT = 300.0
 DEFAULT_RECOVERY_SUCCESSES = 5
 # 限流降档的下限；N < 2 时以 N 为准。

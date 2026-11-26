@@ -11,6 +11,8 @@
   "per_run": 1,
   "done_cooldown_sec": 604800,
   "max_per_day": 50,
+  "max_new_per_day": 25,
+  "include_review": false,
   "new_word_fallback_limit": 25,
   "sync_path": "tools/cardback-editor/sync.json"
 }

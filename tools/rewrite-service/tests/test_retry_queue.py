@@ -12,6 +12,10 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import service
+from _isolation import guard_network, isolate  # noqa: E402
+
+isolate(service)
+guard_network()
 import store as store_mod
 from store import Store
 

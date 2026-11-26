@@ -27,7 +27,8 @@ class FlywheelTest(unittest.TestCase):
         self.addCleanup(self.db.close)
         self.snapshot = self.root / "snapshot.json"
         self.config = worker.normalize_config({"enabled": True, "sync_path": str(self.snapshot),
-                                               "new_word_fallback_limit": 1, "max_per_day": 4})
+                                               "new_word_fallback_limit": 1, "max_per_day": 4,
+                                               "include_review": True})
         self.runtime = {"runs": [], "done": {}, "washed": 0}
         self.words = ["alpha", "beta", "due", "late", "far", "other"]
         self.index = {w: {"word": w, "id": i + 1, "approach": ["seed"]} for i, w in enumerate(self.words)}
@@ -61,6 +62,54 @@ class FlywheelTest(unittest.TestCase):
         self.assertEqual(self.targets(), ["beta", "other", "late", "due"])
         self.sync([])
         self.assertEqual(self.targets(), ["alpha", "other", "late", "due"])
+
+    def test_include_review_false_skips_all_review_words(self):
+        self.config["include_review"] = False
+        self.config["new_word_fallback_limit"] = 10
+        self.sync([])
+        rows = worker.candidates(self.db, self.config, self.runtime)
+        self.assertEqual([b["word"] for b in rows], ["alpha", "beta"])
+        self.assertTrue(all(b["new"] for b in rows))
+        self.assertFalse(any(b["why"] == "review" for b in rows))
+
+    def test_runtime_review_override_enables_review_words(self):
+        self.config["include_review"] = False
+        self.runtime["includeReview"] = True
+        self.sync([])
+        self.assertIn("due", self.targets())
+
+    def test_new_word_daily_cap_sleeps_after_only_new_words(self):
+        self.config["include_review"] = False
+        self.config["new_word_fallback_limit"] = 10
+        self.config["max_new_per_day"] = 1
+        self.sync([])
+        self.assertEqual([b["word"] for b in worker.candidates(
+            self.db, self.config, self.runtime)], ["alpha"])
+        run = Mock(return_value={"ok": True, "entry": {"seq": 1}})
+        first = worker.run_once(self.db, run, self.config)
+        self.assertEqual(first["reason"], "ok")
+        self.assertEqual([w["word"] for w in first["washed"]], ["alpha"])
+        second = worker.run_once(self.db, run, self.config)
+        self.assertEqual(second["reason"], "new_word_budget")
+        self.assertEqual(run.call_count, 1)
+
+    def test_upcoming_word_ids_still_outrank_alphabetical_new_words(self):
+        self.config["include_review"] = False
+        self.config["new_word_fallback_limit"] = 10
+        self.sync(["beta"])
+        rows = worker.candidates(self.db, self.config, self.runtime)
+        self.assertEqual(rows[0]["word"], "beta")
+        self.assertEqual(rows[0]["why"], "upcoming")
+
+    def test_preview_ignores_today_new_word_budget(self):
+        self.config["include_review"] = False
+        day, _ = learning_window(self.now)
+        self.runtime["daily"] = {"day": day, "attempts": 4, "fallback": 0, "new": 25}
+        with patch.object(worker, "load_config", return_value=self.config), \
+                patch.dict(worker._state, {"store": self.db}, clear=False):
+            rows = worker.preview(limit=2)
+        self.assertEqual([row["word"] for row in rows], ["alpha", "beta"])
+        self.assertTrue(all(row["new"] for row in rows))
 
     def test_daily_reservation_survives_failed_run_and_pool_sleeps(self):
         self.config["max_per_day"] = 2

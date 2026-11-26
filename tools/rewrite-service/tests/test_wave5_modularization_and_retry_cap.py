@@ -12,6 +12,10 @@ sys.path.insert(0, str(ROOT))
 
 import pipeline
 import service
+from _isolation import guard_network, isolate  # noqa: E402
+
+isolate(service)
+guard_network()
 import store
 
 

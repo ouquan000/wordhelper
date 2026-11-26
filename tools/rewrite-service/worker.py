@@ -31,6 +31,7 @@ import profile
 import providers
 import store as store_mod
 import worker_state
+import worker_target
 import worker_candidates
 import worker_run
 
@@ -48,6 +49,8 @@ DEFAULTS = {
     "interval_sec": 300,
     "max_per_hour": 15,
     "max_per_day": 50,
+    "max_new_per_day": 25,
+    "include_review": False,
     "new_word_fallback_limit": 25,
     "only_when_manual_idle": True,
     "min_downvotes": 2,
@@ -282,13 +285,50 @@ def stop(timeout=5.0):
     return status()
 
 
-def toggle(enabled, path=None, store=None):
+def review_enabled(config=None, runtime=None):
+    """是否允许洗已学/到期复习词；运行态覆盖优先，默认 False（只洗新词）。"""
+    config = config or load_config()
+    runtime = runtime or _load_runtime()
+    value = runtime.get("includeReview")
+    if isinstance(value, bool):
+        return value
+    return bool(config.get("include_review", False))
+
+
+def preview(limit=8):
+    """明日靶心预览：只读候选，忽略当日配额，不启动线程。"""
+    config = load_config()
+    runtime = _load_runtime()
+    store = _state.get("store")
+    if store is None:
+        return []
+    try:
+        rows = worker_target.select(_api, store, config, runtime, limit=limit, ignore_budget=True)
+    except Exception as exc:  # noqa: BLE001 - 预览失败不影响控制台
+        _log("候选预览失败：%r" % (exc,))
+        return []
+    out = []
+    for bucket in rows:
+        out.append({
+            "word": bucket.get("word", ""),
+            "wordId": bucket.get("word_id"),
+            "book": bucket.get("book", ""),
+            "meaning": bucket.get("meaning", ""),
+            "why": bucket.get("why", ""),
+            "new": bool(bucket.get("new")),
+        })
+    return out
+
+
+def toggle(enabled, path=None, store=None, review=None):
     """面板开关：写运行态（不动 config/worker.json），并立刻启停线程。"""
     configure(path)
     if store is not None:
         _state["store"] = store
     runtime = _load_runtime()
     runtime["enabled"] = bool(enabled)
+    if isinstance(review, bool):
+        runtime["includeReview"] = review
     _save_runtime(runtime)
     if enabled:
         start(path=path, store=store)
@@ -308,15 +348,23 @@ def status(detail=False):
     running = bool(thread is not None and thread.is_alive())
     enabled = enabled_now(config, runtime)
     done = runtime.get("done") or {}
+    day = worker_target.learning_window(_now())[0]
+    usage = worker_target.daily(runtime, day)
     payload = {
         "enabled": enabled,
         "running": running,
         "configEnabled": bool(config["enabled"]),
         "runtimeEnabled": runtime.get("enabled"),
+        "includeReview": review_enabled(config, runtime),
         "configPath": config.get("configPath") or "",
         "configFound": bool(config.get("configFound")),
         "intervalSec": config["interval_sec"],
         "maxPerHour": config["max_per_hour"],
+        "maxPerDay": config["max_per_day"],
+        "maxNewPerDay": config["max_new_per_day"],
+        "attemptsToday": int(usage.get("attempts") or 0),
+        "newWordsToday": int(usage.get("new") or 0),
+        "fallbackToday": int(usage.get("fallback") or 0),
         "minDownvotes": config["min_downvotes"],
         "onlyWhenManualIdle": config["only_when_manual_idle"],
         "targetMethods": list(config["target_methods"]),

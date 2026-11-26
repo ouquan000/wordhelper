@@ -112,7 +112,7 @@ class WorkerBackfeedTest(unittest.TestCase):
             _down_row(word="enough", word_id=11, reasons=["太烂了"], comment="像废话"),
             _down_row(word="enough", word_id=11, reasons=["太烂了"], comment="像废话"),
         ])
-        config = worker.normalize_config({"new_word_fallback_limit": 0})
+        config = worker.normalize_config({"new_word_fallback_limit": 0, "include_review": True})
         config["sync_path"] = os.path.join(self.root, "snapshot.json")
         worker.store_mod._write_json(config["sync_path"], {"rows": {
             "e": {"t": "progress", "b": "六级记忆卡", "w": "enough", "nrt": 1}}})

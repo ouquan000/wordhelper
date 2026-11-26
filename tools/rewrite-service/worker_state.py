@@ -76,6 +76,10 @@ def normalize_config(api, raw):
         "sync_path": api.os.path.join(api.REPO_ROOT, raw.get("sync_path") or "tools/cardback-editor/sync.json"),
         "upcoming_new_word_ids": raw.get("upcoming_new_word_ids") or [],
         "max_per_day": api._clamp_int(raw.get("max_per_day"), api.DEFAULTS["max_per_day"], 0, 1440),
+        "max_new_per_day": api._clamp_int(
+            raw.get("max_new_per_day"), api.DEFAULTS["max_new_per_day"], 0, 1440
+        ),
+        "include_review": bool(raw.get("include_review", api.DEFAULTS["include_review"])),
         "new_word_fallback_limit": api._clamp_int(raw.get("new_word_fallback_limit"), 25, 0, 1440),
         "min_downvotes": api._clamp_int(raw.get("min_downvotes"), api.DEFAULTS["min_downvotes"], 1, 20),
         "target_methods": methods,
@@ -126,6 +130,9 @@ def _load_runtime(api):
         "lastRun": data.get("lastRun") if isinstance(data.get("lastRun"), dict) else {},
         "lastError": str(data.get("lastError") or ""),
     }
+    # 兼容旧运行态：只有显式布尔值才覆盖配置里的 include_review。
+    if isinstance(data.get("includeReview"), bool):
+        runtime["includeReview"] = data["includeReview"]
     api._runtime_cache["path"] = path
     api._runtime_cache["data"] = runtime
     return runtime

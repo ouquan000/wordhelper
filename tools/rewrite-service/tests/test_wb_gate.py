@@ -114,6 +114,7 @@ class WbGateTest(unittest.TestCase):
 
     def _run_pool_probe(self, slots, threads_count, hold=0.3):
         os.environ["WB_GATE_SLOTS"] = str(slots)
+        wb_gate.reset()  # effectiveLimit 跟随本用例的 N，而不是上一个用例的 N
         active = 0
         max_active = 0
         lock = threading.Lock()
@@ -141,11 +142,11 @@ class WbGateTest(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads), "并发线程未退出")
         return max_active
 
-    def test_default_slots_is_six(self):
-        self.assertEqual(wb_gate.slot_count(), 6)
+    def test_default_slots_is_two(self):
+        self.assertEqual(wb_gate.slot_count(), 2)
         state = wb_gate.status()
-        self.assertEqual(state["slots"], 6)
-        self.assertEqual(state["effectiveLimit"], 6)
+        self.assertEqual(state["slots"], 2)
+        self.assertEqual(state["effectiveLimit"], 2)
         self.assertEqual(state["waitTimeout"], 300.0)
 
     def test_pool_allows_three_parallel_slots(self):

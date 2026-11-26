@@ -54,7 +54,7 @@ MODELS = {
         "name": "DeepSeek V4.1 Flash",
         "provider": "wb",
         "model": "cn:deepseek-v4.1-flash",
-        "reasoning": "max",
+        "reasoning": "medium",
     },
     "step5": {
         "name": "Step 5",

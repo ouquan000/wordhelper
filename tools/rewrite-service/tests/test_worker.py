@@ -26,6 +26,10 @@ if SERVICE_DIR not in sys.path:
 
 import providers  # noqa: E402
 import service  # noqa: E402
+from _isolation import guard_network, isolate  # noqa: E402
+
+isolate(service)
+guard_network()
 import worker  # noqa: E402
 from store import Store  # noqa: E402
 
@@ -72,7 +76,8 @@ class WorkerHarness(unittest.TestCase):
             self.addCleanup(binding.stop)
         self.snapshot = os.path.join(self.dir, "tools", "cardback-editor", "sync.json")
         worker.store_mod._write_json(self.snapshot, {"rows": {}})
-        worker.store_mod._write_json(worker.config_path(), {"new_word_fallback_limit": 0})
+        worker.store_mod._write_json(worker.config_path(),
+                                     {"new_word_fallback_limit": 0, "include_review": True})
         self._saved = (service.DATA_DIR, service.LOG_PATH, dict(service._state))
         os.makedirs(os.path.join(self.dir, "logs"), exist_ok=True)
         service.DATA_DIR = self.dir
@@ -101,6 +106,8 @@ class WorkerConfigTest(WorkerHarness):
         self.assertTrue(config["only_when_manual_idle"])
         self.assertEqual(config["min_downvotes"], 2)
         self.assertEqual(config["target_methods"], ["meaning", "polysemy"])
+        self.assertTrue(config["include_review"] is False)
+        self.assertEqual(config["max_new_per_day"], 25)
 
     def test_bad_config_is_clamped_not_trusted(self):
         config = worker.normalize_config({
@@ -109,8 +116,12 @@ class WorkerConfigTest(WorkerHarness):
             "max_per_hour": 999,
             "min_downvotes": 99,
             "per_run": 50,
+            "max_new_per_day": 99999,
+            "include_review": True,
             "target_methods": ["meaning", "不存在的招式", "meaning"],
         })
+        self.assertEqual(config["max_new_per_day"], 1440)
+        self.assertTrue(config["include_review"])
         self.assertEqual(config["interval_sec"], 30)
         self.assertEqual(config["max_per_hour"], 60)
         self.assertEqual(config["min_downvotes"], 20)
@@ -121,12 +132,14 @@ class WorkerConfigTest(WorkerHarness):
         path = os.path.join(self.dir, "worker.json")
         with open(path, "w", encoding="utf-8") as fh:
             json.dump({"enabled": True, "min_downvotes": 3}, fh)
-        before = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as fh:
+            before = fh.read()
         config = worker.load_config(path)
         self.assertTrue(config["configFound"])
         self.assertTrue(config["enabled"])
         self.assertEqual(config["min_downvotes"], 3)
-        self.assertEqual(open(path, encoding="utf-8").read(), before)
+        with open(path, encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), before)
 
 
 class WorkerCandidateTest(WorkerHarness):
@@ -212,7 +225,8 @@ class WorkerRunOnceTest(WorkerHarness):
     def test_run_once_with_injected_runner_never_touches_the_queue(self):
         _write_feedback(self.dir, [_fb("l1", "candidate", "down", word_id=71),
                                   _fb("l2", "candidate", "down", word_id=71)])
-        config = worker.normalize_config({"enabled": True, "per_run": 1, "new_word_fallback_limit": 0})
+        config = worker.normalize_config({"enabled": True, "per_run": 1, "new_word_fallback_limit": 0,
+                                          "include_review": True})
         calls = []
 
         def runner(bucket, store):
@@ -241,7 +255,8 @@ class WorkerRunOnceTest(WorkerHarness):
     def test_runner_failure_is_swallowed_and_counted(self):
         _write_feedback(self.dir, [_fb("m1", "candidate", "down", word_id=81),
                                   _fb("m2", "candidate", "down", word_id=81)])
-        config = worker.normalize_config({"enabled": True, "per_run": 1, "new_word_fallback_limit": 0})
+        config = worker.normalize_config({"enabled": True, "per_run": 1, "new_word_fallback_limit": 0,
+                                          "include_review": True})
 
         def boom(bucket, store):
             raise RuntimeError("模型抽风")
@@ -290,7 +305,8 @@ class WorkerEndpointTest(WorkerHarness):
         self.assertTrue(payload["enabled"])
         self.assertTrue(payload["status"]["enabled"])
         # 落在 data/worker_state.json，重启也记得
-        raw = json.load(open(os.path.join(self.dir, "worker_state.json"), encoding="utf-8"))
+        with open(os.path.join(self.dir, "worker_state.json"), encoding="utf-8") as fh:
+            raw = json.load(fh)
         self.assertIs(raw["enabled"], True)
         status, payload = self._call("POST", "/rewrite/worker/toggle", {"enabled": False})
         self.assertEqual(status, 200)

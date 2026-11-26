@@ -14,6 +14,10 @@ if SERVICE_DIR not in sys.path:
 
 import profile  # noqa: E402
 import service  # noqa: E402
+from _isolation import guard_network, isolate  # noqa: E402
+
+isolate(service)
+guard_network()
 from store import Store  # noqa: E402
 
 

@@ -15,17 +15,31 @@ def learning_window(now):
 
 def daily(runtime, day):
     value = runtime.get("daily") or {}
-    if value.get("day") == day:
-        return value
-    return {"day": day, "attempts": 0, "fallback": 0}
+    if value.get("day") != day:
+        return {"day": day, "attempts": 0, "fallback": 0, "new": 0}
+    out = dict(value)
+    out.setdefault("attempts", 0)
+    out.setdefault("fallback", 0)
+    out.setdefault("new", 0)
+    return out
 
 
-def select(api, store, config, runtime, limit):
+def select(api, store, config, runtime, limit, ignore_budget=False):
     day, end = learning_window(api._now())
     usage = daily(runtime, day)
-    available = min(limit, config["max_per_day"] - usage["attempts"])
-    if available <= 0:
-        return []
+    include_review = bool(config.get("include_review", False))
+    if isinstance(runtime.get("includeReview"), bool):
+        include_review = runtime["includeReview"]
+    max_new = int(config.get("max_new_per_day", 25))
+    new_left = max_new - int(usage.get("new") or 0)
+    if not ignore_budget:
+        available = min(limit, config["max_per_day"] - usage["attempts"])
+        if not include_review:
+            available = min(available, new_left)
+        if available <= 0:
+            return []
+    else:
+        available = limit
     snapshot = api.store_mod._read_json(config["sync_path"])
     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("rows"), dict):
         return []
@@ -42,7 +56,7 @@ def select(api, store, config, runtime, limit):
     # Populate the same seed index used by the public lookup facade.
     api._word_source_lookup("")
     pool = []
-    for word, entry in api._word_index["by_word"].items():
+    for order, (word, entry) in enumerate(api._word_index["by_word"].items()):
         vote = votes.get(word)
         stamp, liked = vote[0] if vote else (0, False)
         if liked or word in locked or entry.get("locked") is True:
@@ -67,11 +81,14 @@ def select(api, store, config, runtime, limit):
             continue
         progress = learned.get(word)
         position = positions.get(str(word_id).casefold(), positions.get(word))
-        if position is not None and progress is None:
-            rank = (0, position)
-        elif not positions and progress is None:
-            rank = (1, 0)
-        elif progress is not None:
+        is_new = progress is None
+        if is_new:
+            if positions and position is None:
+                continue
+            if not ignore_budget and new_left <= 0:
+                continue
+            rank = (0, position) if position is not None else (1, order)
+        elif include_review:
             due = progress.get("nrt")
             if type(due) is not int or due <= 0 or due >= end:
                 continue
@@ -80,15 +97,16 @@ def select(api, store, config, runtime, limit):
             rank = (2, tier, due)
         else:
             continue
+        why = "upcoming" if rank[0] == 0 else "new" if rank[0] == 1 else "review"
         bucket = dict(key=key, word=entry["word"], word_id=word_id, book_id=book_id, book=BOOK,
                       phonetic=entry.get("phonetic"), meaning=entry.get("meaning"), pos=entry.get("pos"),
                       approach=feedback.get("approach") or entry.get("approach") or [],
                       instruction=api._row_complaint(feedback), method=feedback.get("method") or "",
-                      model="ds-v41-flash", fallback=rank[0] == 1)
+                      model="ds-v41-flash", fallback=rank[0] == 1, new=is_new, why=why)
         pool.append((rank, bucket))
     pool.sort(key=lambda pair: pair[0])
     picked = []
-    fallback_left = config["new_word_fallback_limit"] - usage["fallback"]
+    fallback_left = 10 ** 9 if ignore_budget else config["new_word_fallback_limit"] - usage["fallback"]
     for _, bucket in pool:
         if bucket["fallback"]:
             if fallback_left <= 0:

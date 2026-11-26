@@ -1,169 +1,162 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>卡背结构编辑器 · 1.4.2</title>
-<link rel="stylesheet" href="styles.css">
+<meta name="color-scheme" content="dark">
+<title>卡背控制台 · 六级记忆卡</title>
+<link rel="stylesheet" href="console.css">
 </head>
 <body>
+<div class="ambient" aria-hidden="true"></div>
 
-<div class="app">
+<header class="topbar">
+  <a class="brand" href="/" aria-label="卡背控制台首页">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="7" width="17" height="16" rx="3"></rect>
+        <path d="M8 3.5h13.5A2.5 2.5 0 0 1 24 6v13"></path>
+        <path d="M11.5 12.5h4M8 17h11M8 20.5h7"></path>
+      </svg>
+    </span>
+    <span class="brand-text"><strong>卡背控制台</strong><small>Rewrite Ops · 六级记忆卡</small></span>
+  </a>
+  <nav class="nav" aria-label="主导航">
+    <a class="nav-link is-active" href="/" aria-current="page">控制台</a>
+    <a class="nav-link" href="/editor.html">卡背编辑器</a>
+  </nav>
+  <div class="top-status" title="本地服务状态">
+    <span id="server-dot" class="lamp"></span>
+    <span id="server-text">连接中…</span>
+  </div>
+</header>
 
-  <header class="titlebar">
-    <div class="brand">
-      <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2.5" y="5" width="19" height="14" rx="3"></rect>
-          <path d="M6.5 9.5h7M6.5 13.5h10"></path>
-        </svg>
-      </span>
-      <div class="brand-text">
-        <h1>卡背结构编辑器</h1>
-        <p>六级记忆卡 · schema v1 · 1.4.2</p>
-      </div>
+<main class="shell">
+  <section class="page-head">
+    <div>
+      <h1>今日飞轮</h1>
+      <p id="today-line">读取今日学习窗口…</p>
     </div>
-
-    <div class="titlebar-fields">
-      <label class="field field-book">
-        <span>词书名</span>
-        <input id="book-input" type="text" maxlength="40" autocomplete="off" spellcheck="false">
-      </label>
-      <label class="field field-spacing">
-        <span>块间距 dp</span>
-        <input id="spacing-input" type="number" min="4" max="32" step="1">
-      </label>
+    <div class="head-actions">
+      <span id="version-chip" class="chip">v—</span>
+      <button id="refresh-all" class="ghost" type="button">刷新</button>
     </div>
-
-    <div class="server-state" id="server-state" title="本地服务连接状态">
-      <span class="dot connecting" id="server-dot"></span>
-      <span id="server-state-text">连接中…</span>
-    </div>
-  </header>
-
-  <aside class="panel library-panel" aria-label="组件库">
-    <header class="panel-head">
-      <div>
-        <h2>组件库</h2>
-        <p>点一下加到末尾</p>
-      </div>
-      <span class="panel-tag" id="library-tag">11 种</span>
-    </header>
-    <div class="library-list" id="library-list"></div>
-    <div class="library-foot">
-      <button id="reset-layout" class="btn btn-quiet btn-block" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"></path>
-          <path d="M3.5 4.5v5h5"></path>
-        </svg>
-        重置为默认结构
-      </button>
-      <p class="hint">同一类型可以加多次，靠 id 区分。手机不认识的类型会跳过，不报错。</p>
-    </div>
-  </aside>
-
-  <main class="panel canvas-panel" aria-label="卡背结构">
-    <header class="panel-head canvas-head">
-      <div>
-        <h2>卡背结构 <span class="count-chip" id="block-count">0 块</span></h2>
-        <p>从上到下＝手机上从上到下，拖动可改顺序</p>
-      </div>
-      <div class="head-tools">
-        <a class="btn btn-outline btn-sm" href="/rewrite" target="_blank" rel="noopener">重写记录</a>
-        <button id="show-all" class="btn btn-quiet btn-sm" type="button">全部显示</button>
-      </div>
-    </header>
-    <div class="block-list" id="block-list"></div>
-  </main>
-
-  <section class="panel preview-panel" aria-label="实时预览">
-    <header class="panel-head preview-head">
-      <div>
-        <h2>实时预览</h2>
-        <p>浅色 · 与手机同结构</p>
-      </div>
-      <label class="field field-sample">
-        <span>示例词</span>
-        <select id="sample-select" class="select"></select>
-      </label>
-    </header>
-
-    <div class="preview-stage" id="preview-stage">
-      <div class="phone">
-        <div class="phone-screen">
-          <article class="cb-card" id="cb-card" aria-label="卡背预览">
-            <div class="cb-body" id="cb-body"></div>
-          </article>
-        </div>
-      </div>
-    </div>
-
-    <footer class="preview-foot">
-      <p id="preview-note"></p>
-      <p class="preview-foot-dim">预览只保证结构与顺序；字号、颜色以手机渲染为准。</p>
-    </footer>
   </section>
 
-  <footer class="actionbar">
-    <div class="actions">
-      <button id="save-draft" class="btn btn-secondary" type="button">保存草稿</button>
-      <button id="publish" class="btn btn-primary" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"></path>
-        </svg>
-        发布到手机
-      </button>
-      <button id="open-history" class="btn btn-outline" type="button">回退到上一版</button>
-      <button id="copy-json" class="btn btn-quiet btn-sm" type="button" title="复制当前配置的 JSON（就是发布时发给服务端的内容）">复制 JSON</button>
-    </div>
+  <div class="grid">
+    <section class="card card-flywheel" aria-labelledby="flywheel-title">
+      <header class="card-head">
+        <div>
+          <h2 id="flywheel-title">飞轮中控</h2>
+          <p>闲时只洗未学新词，洗满当日新词额度自动休眠。</p>
+        </div>
+        <div class="worker-state">
+          <span id="worker-lamp" class="lamp"></span>
+          <span id="worker-state">读取中</span>
+        </div>
+      </header>
 
-    <div class="actionbar-meta">
-      <span class="meta-item" id="draft-state">尚未修改</span>
-      <span class="meta-sep" aria-hidden="true"></span>
-      <span class="meta-item">revision <b class="rev-badge" id="revision-badge">–</b></span>
-      <span class="meta-sep" aria-hidden="true"></span>
-      <span class="meta-item meta-address">
-        <span class="meta-label">手机粘贴这一行：</span>
-        <code id="lan-url" title="地址 # 口令：复制后整行粘到手机上">未获取</code>
-        <button id="copy-url" class="icon-btn" type="button" title="复制这一行" aria-label="复制手机要粘贴的那一行">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="9" y="9" width="11" height="11" rx="2.5"></rect>
-            <path d="M15 5.5A2.5 2.5 0 0 0 12.5 3H6.5A3.5 3.5 0 0 0 3 6.5v6A2.5 2.5 0 0 0 5.5 15"></path>
-          </svg>
+      <div class="control-row">
+        <button id="worker-toggle" class="switch" type="button" role="switch" aria-checked="false">
+          <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+          <span id="worker-toggle-label">飞轮关闭</span>
         </button>
-      </span>
-    </div>
-  </footer>
+        <label class="check" for="include-review">
+          <input id="include-review" type="checkbox" checked>
+          <span>仅洗未学新词</span>
+        </label>
+      </div>
 
-</div>
+      <div class="quota" aria-label="今日配额">
+        <div class="quota-row">
+          <div class="quota-label"><span>今日总上限</span><b id="quota-total-text">—</b></div>
+          <div class="bar"><i id="quota-total-bar"></i></div>
+        </div>
+        <div class="quota-row">
+          <div class="quota-label"><span>新词额度</span><b id="quota-new-text">—</b></div>
+          <div class="bar"><i id="quota-new-bar"></i></div>
+        </div>
+        <div class="quota-row">
+          <div class="quota-label"><span>每小时节流</span><b id="quota-hour-text">—</b></div>
+          <div class="bar"><i id="quota-hour-bar"></i></div>
+        </div>
+      </div>
 
-<div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+      <div class="preview">
+        <div class="subhead">
+          <h3>明日靶心</h3>
+          <span id="preview-count" class="counter">—</span>
+        </div>
+        <ol id="preview-list" class="preview-list">
+          <li class="empty">读取候选…</li>
+        </ol>
+      </div>
+    </section>
 
-<dialog id="history-dialog" class="modal" aria-labelledby="history-title">
-  <header class="modal-head">
-    <div>
-      <h2 id="history-title">历史版本</h2>
-      <p>选一版恢复为当前，手机下次刷新即生效。</p>
-    </div>
-    <button class="icon-btn modal-close" type="button" data-close aria-label="关闭">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-        <path d="M6 6l12 12M18 6 6 18"></path>
-      </svg>
-    </button>
-  </header>
-  <div class="modal-body">
-    <div class="history-list" id="history-list"></div>
+    <section class="card card-publish" aria-labelledby="publish-title">
+      <header class="card-head">
+        <div>
+          <h2 id="publish-title">一键安全发布</h2>
+          <p>合并结果后原子写包，旧版本不会被半截文件覆盖。</p>
+        </div>
+      </header>
+      <button id="publish" class="primary" type="button">一键安全发布</button>
+      <p class="hint">只发布已通过 Judge 且未被保护的结果。</p>
+      <div id="publish-result" class="result" hidden>
+        <div class="result-head">
+          <span id="publish-status">发布完成</span>
+          <span id="publish-version" class="chip">v—</span>
+        </div>
+        <dl id="publish-stats" class="stat-grid">
+          <div><dt>合并条数</dt><dd id="stat-merged">—</dd></div>
+          <div><dt>通过条目</dt><dd id="stat-accepted">—</dd></div>
+          <div><dt>保护 / 废稿</dt><dd id="stat-rejected">—</dd></div>
+          <div><dt>损坏文件</dt><dd id="stat-broken">—</dd></div>
+        </dl>
+        <p id="publish-sha" class="mono-line">—</p>
+      </div>
+    </section>
+
+    <section class="card card-taste" aria-labelledby="taste-title">
+      <header class="card-head">
+        <div>
+          <h2 id="taste-title">动态审美画像</h2>
+          <p id="taste-meta">读取规则中…</p>
+        </div>
+        <button id="taste-refresh" class="ghost small" type="button">重新读取</button>
+      </header>
+      <div id="rule-list" class="rule-list" aria-live="polite"></div>
+      <div class="taste-actions">
+        <button id="add-rule" class="ghost small" type="button">添加规则</button>
+        <span id="rule-count" class="counter">0 / 8</span>
+        <span class="spacer"></span>
+        <button id="save-taste" class="primary small" type="button">保存规则</button>
+        <button id="distill" class="warn small" type="button">蒸馏画像</button>
+      </div>
+    </section>
+
+    <section class="card card-anchors" aria-labelledby="anchors-title">
+      <header class="card-head">
+        <div>
+          <h2 id="anchors-title">真熟词锚点池</h2>
+          <p>只读 · 已解锁的稳定记忆。</p>
+        </div>
+      </header>
+      <div class="anchor-count">
+        <strong id="anchor-count">—</strong>
+        <span>个真熟词</span>
+      </div>
+      <p class="hint">来自同步学习进度，只显示总数，不展示词表或路径。</p>
+    </section>
   </div>
-  <footer class="modal-foot">
-    <p class="modal-hint">回退会用线上版本替换编辑器里的内容，未发布的改动会丢失。</p>
-    <div class="modal-foot-actions">
-      <button id="history-reload" class="btn btn-quiet" type="button">重新读取</button>
-      <button class="btn btn-secondary" type="button" data-close>关闭</button>
-    </div>
-  </footer>
-</dialog>
 
-<script src="samples.js"></script>
-<script src="app.js"></script>
+  <footer class="foot">
+    <span>本地服务 · 127.0.0.1:8765</span>
+    <span>数据不出内网 · Judge 通过才发布</span>
+  </footer>
+</main>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<script src="console.js"></script>
 </body>
 </html>

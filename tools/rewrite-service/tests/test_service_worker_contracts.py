@@ -13,6 +13,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import service
+from _isolation import guard_network, isolate  # noqa: E402
+
+isolate(service)
+guard_network()
 import worker
 
 
@@ -64,6 +68,47 @@ class ServiceRoutesTests(unittest.TestCase):
             status, _, raw = service.respond("POST", "/rewrite/marks", b"{}")
         self.assertEqual(status, 400)
         self.assertEqual(json.loads(raw), {"error": "marks 必须是数组"})
+
+
+class ConsoleReadOnlyRouteTests(unittest.TestCase):
+    def test_worker_preview_is_read_only_and_shape_is_stable(self):
+        store = Mock()
+        rows = [{"word": "alpha", "wordId": 1, "book": "六级记忆卡",
+                 "meaning": "第一", "why": "new", "new": True}]
+        with patch.object(service, "startup"), patch.object(
+            service, "_state", {"store": store}
+        ), patch.object(service.worker_mod, "attach") as attach, patch.object(
+            service.worker_mod, "preview", return_value=rows
+        ):
+            status, mime, raw = service.respond("GET", "/rewrite/worker/preview", b"")
+        self.assertEqual((status, mime), (200, "application/json; charset=utf-8"))
+        self.assertEqual(json.loads(raw), {"ok": True, "candidates": rows, "count": 1})
+        attach.assert_called_once()
+        self.assertNotIn("path", json.dumps(json.loads(raw)))
+
+    def test_anchors_count_exposes_only_a_number(self):
+        with patch.object(service, "startup"), patch.object(
+            service.familiar_anchors, "index", return_value={"alpha": {}, "beta": {}}
+        ):
+            status, _, raw = service.respond("GET", "/rewrite/anchors/count", b"")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(raw), {"ok": True, "count": 2, "book": "六级记忆卡"})
+        self.assertNotIn("sync.json", raw.decode("utf-8"))
+
+    def test_toggle_forwards_include_review_override(self):
+        with patch.object(service, "startup"), patch.object(
+            service, "_state", {"store": Mock()}
+        ), patch.object(service.worker_mod, "attach"), patch.object(
+            service.worker_mod, "toggle", return_value={"enabled": True}
+        ) as toggle:
+            status, _, raw = service.respond(
+                "POST", "/rewrite/worker/toggle",
+                json.dumps({"enabled": True, "includeReview": True}).encode("utf-8"),
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(raw)["enabled"], True)
+        toggle.assert_called_once()
+        self.assertTrue(toggle.call_args.kwargs["review"])
 
 
 class WorkerBoundaryTests(unittest.TestCase):

@@ -1,5 +1,7 @@
 """评分协议、评委调用、通过条件与候选排序。"""
 
+import taste_flow
+
 PASS_LINE = 8  # judge.txt 的及格线：六维每一维都要 ≥8
 COMPLIANCE_DIM = "诉求落实"  # 第 7 维：用户这一版指出的问题，这版到底处理了没有
 COMPLIANCE_FLOOR = 6  # 两段式的第二段：诉求到位时，六维允许的最低分（真换了招的稿子常有一维 6–7）
@@ -94,6 +96,7 @@ def judge_context(api, draft):
     rows = ["本稿方法：" + method, api.style_block(method, judge=True)]
     try:
         samples = api.exemplars.retrieve(method, k_pos=1, k_neg=1)
+        samples = taste_flow.refine(samples, data_dir=getattr(api, "DATA_DIR", None))
     except (OSError, ValueError):
         samples = {}
     for kind, label in (("pos", "点赞正例"), ("neg", "点踩反例")):

@@ -23,6 +23,7 @@ if HERE not in sys.path:
 
 import history  # noqa: E402
 import exemplars  # noqa: E402
+import familiar_anchors  # noqa: E402
 import batch_pipeline  # noqa: E402
 import pipeline  # noqa: E402
 import profile  # noqa: E402
@@ -298,6 +299,16 @@ def _worker_toggle(body):
     return service_handlers._worker_toggle(_api, body)
 
 
+def _worker_preview():
+    """明日靶心候选预览（只读，不吃配额）。"""
+    return service_handlers._worker_preview(_api)
+
+
+def _anchors_count():
+    """真熟词锚点池只读计数，不返回路径/词表。"""
+    return service_handlers._anchors_count(_api)
+
+
 # --------------------------------------------------- 动态审美画像（WAE-20261126-002）
 def _taste(body=None):
     return service_handlers._taste(_api)
@@ -341,6 +352,10 @@ def _dispatch(method, raw_path, body):
         return _json(_locks(query))
     if method == "GET" and path == "/rewrite/worker/status":
         return _json(_worker_status())
+    if method == "GET" and path == "/rewrite/worker/preview":
+        return _json(_worker_preview())
+    if method == "GET" and path == "/rewrite/anchors/count":
+        return _json(_anchors_count())
     if method == "GET" and path == "/rewrite/taste":
         return _json(_taste())
     if method == "POST" and path == "/rewrite/marks":

@@ -16,6 +16,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import batch_pipeline  # noqa: E402
 import pipeline  # noqa: E402
 import service  # noqa: E402
+from _isolation import guard_network, isolate  # noqa: E402
+
+isolate(service)
+guard_network()
 
 
 class FakeStore:
@@ -73,9 +77,9 @@ class BatchServiceTest(unittest.TestCase):
             self.skipTest("BATCH_MODE 已由外部环境指定")
         self.assertFalse(service.BATCH_ENABLED)
 
-    def test_default_concurrency_follows_six_gate_slots(self):
+    def test_default_concurrency_follows_two_gate_slots(self):
         with mock.patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(service._default_concurrency(), 6)
+            self.assertEqual(service._default_concurrency(), 2)
 
     def test_batch_sets_thread_priority_from_current_items(self):
         items = [

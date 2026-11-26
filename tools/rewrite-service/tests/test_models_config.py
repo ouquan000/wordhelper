@@ -79,7 +79,12 @@ class ModelsConfigTest(unittest.TestCase):
         target = providers.resolve("ds-v41-flash")
         self.assertEqual(target["provider"], "wb")
         self.assertEqual(target["model"], "cn:deepseek-v4.1-flash")
-        self.assertIn("reasoning", target)
+        self.assertEqual(target["reasoning"], "medium")
+
+    def test_flywheel_default_effort_is_medium(self):
+        providers.reload_config()
+        self.assertEqual(providers.MODELS["ds-v41-flash"]["reasoning"], "medium")
+        self.assertEqual(providers.resolve("ds-v41-flash")["reasoning"], "medium")
 
     def test_missing_config_falls_back_to_constants(self):
         path = os.path.join(self._tmp, "nope.json")
